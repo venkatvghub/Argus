@@ -7,22 +7,65 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/venkatvghub/argus/pkg/config"
+	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/models"
 )
 
-type JobManager struct {
-	mu        sync.RWMutex
-	jobs      map[string]*models.Job
-	listeners map[string][]chan models.Job
-	cancels   map[string]context.CancelFunc
+type workItem struct {
+	jobID string
+	fn    func()
 }
 
-func NewJobManager() *JobManager {
-	return &JobManager{
-		jobs:      make(map[string]*models.Job),
-		listeners: make(map[string][]chan models.Job),
-		cancels:   make(map[string]context.CancelFunc),
+type JobManager struct {
+	mu               sync.RWMutex
+	jobs             map[string]*models.Job
+	listeners        map[string][]chan models.Job
+	cancels          map[string]context.CancelFunc
+	workQueue        chan workItem
+	listenerBuffer   int
+	wg               sync.WaitGroup
+	stopMu           sync.RWMutex
+	stopped          bool
+	stopOnce         sync.Once
+	closeCh          chan struct{}
+}
+
+const (
+	defaultWorkerCount       = 3
+	defaultWorkQueueSize     = 32
+	defaultJobListenerBuffer = 10
+)
+
+func NewJobManager(cfg *config.Config) *JobManager {
+	workerCount := defaultWorkerCount
+	queueSize := defaultWorkQueueSize
+	listenerBuffer := defaultJobListenerBuffer
+	if cfg != nil {
+		if cfg.WorkerCount > 0 {
+			workerCount = cfg.WorkerCount
+		}
+		if cfg.WorkQueueSize > 0 {
+			queueSize = cfg.WorkQueueSize
+		}
+		if cfg.JobListenerBuffer > 0 {
+			listenerBuffer = cfg.JobListenerBuffer
+		}
 	}
+
+	jm := &JobManager{
+		jobs:           make(map[string]*models.Job),
+		listeners:      make(map[string][]chan models.Job),
+		cancels:        make(map[string]context.CancelFunc),
+		workQueue:      make(chan workItem, queueSize),
+		listenerBuffer: listenerBuffer,
+		closeCh:        make(chan struct{}),
+	}
+	jm.wg.Add(workerCount)
+	for range workerCount {
+		go jm.runWorker()
+	}
+	return jm
 }
 
 func (jm *JobManager) CreateJob(jobType string) *models.Job {
@@ -65,7 +108,7 @@ func (jm *JobManager) UpdateStatus(id string, status models.JobStatus, progress 
 		jobListeners = make([]chan models.Job, len(l))
 		copy(jobListeners, l)
 	}
-	if l, ok := jm.listeners["*"]; ok {
+	if l, ok := jm.listeners[constants.AllJobsWildcard]; ok {
 		jobListeners = append(jobListeners, l...)
 	}
 	jm.mu.Unlock()
@@ -82,7 +125,7 @@ func (jm *JobManager) Subscribe(jobID string) (<-chan models.Job, func()) {
 	jm.mu.Lock()
 	defer jm.mu.Unlock()
 
-	ch := make(chan models.Job, 10)
+	ch := make(chan models.Job, jm.listenerBuffer)
 	jm.listeners[jobID] = append(jm.listeners[jobID], ch)
 	unsubscribe := func() {
 		jm.mu.Lock()
@@ -147,4 +190,57 @@ func (jm *JobManager) ListJobs() []models.Job {
 		jobs = append(jobs, *j)
 	}
 	return jobs
+}
+
+// Submit enqueues a work function to the bounded worker pool. It blocks until
+// queue space is available rather than bypassing the pool with extra goroutines.
+func (jm *JobManager) Submit(jobID string, fn func()) {
+	item := workItem{jobID: jobID, fn: fn}
+
+	jm.stopMu.RLock()
+	if jm.stopped {
+		jm.stopMu.RUnlock()
+		return
+	}
+	select {
+	case jm.workQueue <- item:
+		jm.stopMu.RUnlock()
+		return
+	default:
+		jm.stopMu.RUnlock()
+	}
+
+	select {
+	case <-jm.closeCh:
+		return
+	case jm.workQueue <- item:
+	}
+}
+
+// Close stops accepting new work, drains the queue, and waits for workers to exit.
+func (jm *JobManager) Close() {
+	jm.stopOnce.Do(func() {
+		jm.stopMu.Lock()
+		jm.stopped = true
+		close(jm.closeCh)
+		close(jm.workQueue)
+		jm.stopMu.Unlock()
+	})
+	jm.wg.Wait()
+}
+
+func (jm *JobManager) runWorker() {
+	defer jm.wg.Done()
+	for item := range jm.workQueue {
+		jm.executeWork(item)
+	}
+}
+
+func (jm *JobManager) executeWork(item workItem) {
+	defer func() {
+		if r := recover(); r != nil {
+			jm.UpdateStatus(item.jobID, models.JobStatusFailed, "", fmt.Errorf("panic: %v", r))
+		}
+	}()
+	item.fn()
 }

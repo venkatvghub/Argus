@@ -9,6 +9,7 @@ import (
 
 	"github.com/venkatvghub/argus/pkg/analysis"
 	"github.com/venkatvghub/argus/pkg/config"
+	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/ingestion"
 	"github.com/venkatvghub/argus/pkg/logger"
 	"github.com/venkatvghub/argus/pkg/models"
@@ -46,7 +47,7 @@ func New(ctx context.Context, cfg *config.Config) (*Instance, error) {
 	}
 	log := logger.FromContext(ctx)
 
-	db, err := persistence.New(cfg.DBPath)
+	db, err := persistence.New(cfg.ResolveDBPath())
 	if err != nil {
 		return nil, fmt.Errorf("persistence init: %w", err)
 	}
@@ -61,7 +62,7 @@ func New(ctx context.Context, cfg *config.Config) (*Instance, error) {
 		db:      db,
 		log:     log,
 		parser:  parser,
-		Jobs:    NewJobManager(),
+		Jobs:    NewJobManager(cfg),
 		engines: make(map[string]*analysis.GraphEngine),
 		markers: make(map[string][]models.Marker),
 	}, nil
@@ -75,6 +76,9 @@ func (i *Instance) Config() *config.Config {
 
 // Close releases all resources.
 func (i *Instance) Close() error {
+	if i.Jobs != nil {
+		i.Jobs.Close()
+	}
 	if i.db != nil {
 		if err := i.db.Close(); err != nil {
 			return fmt.Errorf("db close: %w", err)
@@ -86,9 +90,14 @@ func (i *Instance) Close() error {
 
 // Analyze traverses the repository at the given path and performs deep analysis.
 func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error) {
-	job := i.Jobs.CreateJob("analysis")
+	job := i.Jobs.CreateJob(jobTypeAnalysis)
 
-	go func() {
+	jobCtx, cancel := context.WithCancel(ctx)
+	i.Jobs.RegisterCancel(job.ID, cancel)
+
+	i.Jobs.Submit(job.ID, func() {
+		defer cancel()
+
 		i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, "Indexing...", nil)
 
 		absPath, err := filepath.Abs(repoPath)
@@ -97,12 +106,12 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 			return
 		}
 		repoName := filepath.Base(absPath)
-		repoID := fmt.Sprintf("%x", sha256.Sum256([]byte(absPath)))[:12]
+		repoID := fmt.Sprintf("%x", sha256.Sum256([]byte(absPath)))[:constants.RepoIDLength]
 
 		i.log.Info("starting analysis", "repo_path", absPath, "repo_id", repoID)
 
 		walker := ingestion.NewGitWalker(absPath, i.parser)
-		nodes, symbols, err := walker.Walk(ctx)
+		nodes, symbols, err := walker.Walk(jobCtx)
 		if err != nil {
 			i.Jobs.UpdateStatus(job.ID, models.JobStatusFailed, "Failed", err)
 			return
@@ -119,7 +128,7 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 		}
 		_ = engine.DetectCommunities()
 
-		markerEngine := analysis.NewMarkerEngine(absPath)
+		markerEngine := analysis.NewMarkerEngine(absPath, i.cfg)
 		markers := markerEngine.Run(nodes, symbols, engine)
 
 		// Persist
@@ -128,7 +137,7 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 			Name: repoName,
 			Path: absPath,
 		}
-		if err := i.db.UpsertRepository(ctx, repo); err != nil {
+		if err := i.db.UpsertRepository(jobCtx, repo); err != nil {
 			i.log.Warn("failed to persist repo", "error", err)
 		}
 
@@ -138,7 +147,7 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 		i.mu.Unlock()
 
 		i.Jobs.UpdateStatus(job.ID, models.JobStatusCompleted, "Complete", nil)
-	}()
+	})
 
 	return job.ID, nil
 }
@@ -175,7 +184,7 @@ func (i *Instance) GetFileMarkers(ctx context.Context, repoID string, filePath s
 	defer i.mu.RUnlock()
 	markers, ok := i.markers[repoID]
 	if !ok {
-		return nil, fmt.Errorf("repo not found")
+		return nil, ErrRepoNotFound
 	}
 	var results []models.Marker = []models.Marker{}
 	for _, m := range markers {
@@ -192,7 +201,7 @@ func (i *Instance) GetCommunityGraph(ctx context.Context, repoID string, communi
 	defer i.mu.RUnlock()
 	engine, ok := i.engines[repoID]
 	if !ok {
-		return nil, fmt.Errorf("repo not found")
+		return nil, ErrRepoNotFound
 	}
 	var results []*analysis.Node
 	for _, n := range engine.GetNodes() {
@@ -210,7 +219,7 @@ func (i *Instance) GetRepoSymbols(ctx context.Context, repoID string) ([]models.
 
 	engine, ok := i.engines[repoID]
 	if !ok {
-		return nil, fmt.Errorf("repo not found")
+		return nil, ErrRepoNotFound
 	}
 
 	var results []models.Symbol = []models.Symbol{}
@@ -232,7 +241,7 @@ func (i *Instance) GetRepoMarkers(ctx context.Context, repoID string) ([]models.
 
 	markers, ok := i.markers[repoID]
 	if !ok {
-		return nil, fmt.Errorf("repo not found")
+		return nil, ErrRepoNotFound
 	}
 	return markers, nil
 }
@@ -240,6 +249,6 @@ func (i *Instance) GetRepoMarkers(ctx context.Context, repoID string) ([]models.
 // Run starts the default pipeline.
 
 func (i *Instance) Run(ctx context.Context) error {
-	_, err := i.Analyze(ctx, ".")
+	_, err := i.Analyze(ctx, defaultAnalyzePath)
 	return err
 }

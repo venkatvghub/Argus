@@ -20,12 +20,19 @@ type Config struct {
 	LogLevel string `envconfig:"LOG_LEVEL" default:"info"`
 
 	// Persistence configuration
-	DBPath  string `envconfig:"DB_PATH" default:"data/argus.db"`
+	DBPath  string `envconfig:"DB_PATH" default:"argus.db"`
 	DataDir string `envconfig:"DATA_DIR" default:"data"`
 	DocsDir string `envconfig:"DOCS_DIR" default:"docs"`
 
-	// Compliance patterns (comma-separated regex or identifiers)
-	PIIPatterns []string `envconfig:"PII_PATTERNS" default:"AADHAAR,PAN,UPI_ID"`
+	// Compliance patterns (comma-separated identifiers: AADHAAR, PAN, UPI_ID, MOBILE, EMAIL)
+	PIIPatterns []string `envconfig:"PII_PATTERNS" default:"AADHAAR,PAN,UPI_ID,MOBILE,EMAIL"`
+	// TokenBloatThreshold is the max tokens-per-line before flagging token_bloat markers.
+	TokenBloatThreshold float64 `envconfig:"TOKEN_BLOAT_THRESHOLD" default:"50"`
+
+	// JobManager worker pool sizing
+	WorkerCount       int `envconfig:"WORKER_COUNT" default:"3"`
+	WorkQueueSize     int `envconfig:"WORK_QUEUE_SIZE" default:"32"`
+	JobListenerBuffer int `envconfig:"JOB_LISTENER_BUFFER" default:"10"`
 
 	// LLM Configuration
 	LLMProvider  string `envconfig:"LLM_PROVIDER" default:"openai"`
@@ -34,9 +41,15 @@ type Config struct {
 	GeminiKey    string `envconfig:"GEMINI_API_KEY"`
 
 	// Model Names
-	OpenAIModel    string `envconfig:"OPENAI_MODEL" default:"gpt-4-turbo"`
-	AnthropicModel string `envconfig:"ANTHROPIC_MODEL" default:"claude-3-opus-20240229"`
-	GeminiModel    string `envconfig:"GEMINI_MODEL" default:"gemini-1.5-flash"`
+	OpenAIModel    string `envconfig:"OPENAI_MODEL" default:"gpt-4o-mini"`
+	AnthropicModel string `envconfig:"ANTHROPIC_MODEL" default:"claude-3-5-haiku-20241022"`
+	GeminiModel    string `envconfig:"GEMINI_MODEL" default:"gemini-2.0-flash"`
+
+	// MockStreamTokenDelayMS is the per-token delay for stub LLM streaming implementations.
+	MockStreamTokenDelayMS int `envconfig:"MOCK_STREAM_TOKEN_DELAY_MS" default:"50"`
+
+	// CORSAllowedOrigins lists origins permitted for browser SSE access (comma-separated).
+	CORSAllowedOrigins []string `envconfig:"CORS_ALLOWED_ORIGINS"`
 }
 
 var (

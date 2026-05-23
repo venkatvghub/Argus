@@ -11,15 +11,20 @@ import (
 
 // OpenAIProvider implements the Provider interface for OpenAI.
 type OpenAIProvider struct {
-	apiKey string
-	model  string
+	apiKey      string
+	model       string
+	streamDelay time.Duration
 }
 
 // NewOpenAIProvider creates a new OpenAI provider instance.
 func NewOpenAIProvider(cfg *config.Config) *OpenAIProvider {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
 	return &OpenAIProvider{
-		apiKey: cfg.OpenAIKey,
-		model:  cfg.OpenAIModel,
+		apiKey:      cfg.OpenAIKey,
+		model:       cfg.OpenAIModel,
+		streamDelay: mockStreamDelay(cfg),
 	}
 }
 
@@ -34,7 +39,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, prompt string) (string, error
 }
 
 // ChatStream sends a prompt to OpenAI and returns a stream of tokens.
-func (p *OpenAIProvider) ChatStream(ctx context.Context, prompt string) (<-chan string, <-chan error, error) {
+func (p *OpenAIProvider) ChatStream(ctx context.Context, repoID string, prompt string) (<-chan string, <-chan error, error) {
 	if p.apiKey == "" {
 		return nil, nil, fmt.Errorf("OpenAI API key is missing")
 	}
@@ -45,7 +50,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, prompt string) (<-chan 
 		defer close(out)
 		defer close(errCh)
 
-		response := fmt.Sprintf("[OpenAI %s] Response to: %s", p.model, prompt)
+		response := fmt.Sprintf("[OpenAI %s repo:%s] Response to: %s", p.model, repoID, prompt)
 		words := strings.Fields(response)
 		for _, word := range words {
 			select {
@@ -53,7 +58,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, prompt string) (<-chan 
 				errCh <- ctx.Err()
 				return
 			case out <- word + " ":
-				time.Sleep(50 * time.Millisecond)
+				time.Sleep(p.streamDelay)
 			}
 		}
 	}()

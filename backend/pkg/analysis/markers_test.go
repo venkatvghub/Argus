@@ -8,12 +8,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/venkatvghub/argus/pkg/config"
 	"github.com/venkatvghub/argus/pkg/models"
 )
 
 func TestMarkerEngine_PIIDetection(t *testing.T) {
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	content := "Aadhaar: 123456789012, PAN: ABCDE1234F, UPI: test@okaxis"
 	filePath := "test.txt"
@@ -30,9 +31,37 @@ func TestMarkerEngine_PIIDetection(t *testing.T) {
 	assert.True(t, types["dpdp_pii_exposure"])
 }
 
+func TestMarkerEngine_PIIPatternsFromConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{PIIPatterns: []string{"AADHAAR"}}
+	me := NewMarkerEngine(dir, cfg)
+
+	content := "Aadhaar: 123456789012, PAN: ABCDE1234F, UPI: test@okaxis"
+	filePath := "test.txt"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
+
+	markers := me.Run([]models.FileNode{{Path: filePath, IsFile: true}}, nil, nil)
+
+	var aadhaarFound, panFound, upiFound bool
+	for _, m := range markers {
+		switch {
+		case strings.Contains(m.Message, "Aadhaar"):
+			aadhaarFound = true
+		case strings.Contains(m.Message, "PAN"):
+			panFound = true
+		case strings.Contains(m.Message, "UPI"):
+			upiFound = true
+		}
+	}
+
+	assert.True(t, aadhaarFound, "PIIPatterns AADHAAR should flag Aadhaar exposure")
+	assert.False(t, panFound, "PIIPatterns without PAN should not flag PAN")
+	assert.False(t, upiFound, "PIIPatterns without UPI_ID should not flag UPI")
+}
+
 func TestMarkerEngine_TokenBloat(t *testing.T) {
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	// Create a file with very long lines to trigger token bloat
 	content := ""
@@ -55,9 +84,35 @@ func TestMarkerEngine_TokenBloat(t *testing.T) {
 	assert.True(t, found)
 }
 
+func TestMarkerEngine_TokenBloatThresholdFromConfig(t *testing.T) {
+	dir := t.TempDir()
+	// Single line (~52 tokens) — above default TokenBloatThreshold (50), below raised threshold (60).
+	content := strings.TrimSpace(strings.Repeat("word ", 51))
+	filePath := "bloat.txt"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
+	files := []models.FileNode{{Path: filePath, IsFile: true}}
+
+	meDefault := NewMarkerEngine(dir, nil)
+	defaultMarkers := meDefault.Run(files, nil, nil)
+	defaultFound := false
+	for _, m := range defaultMarkers {
+		if m.Type == "token_bloat" {
+			defaultFound = true
+			break
+		}
+	}
+	assert.True(t, defaultFound, "default TokenBloatThreshold should detect bloat")
+
+	meCustom := NewMarkerEngine(dir, &config.Config{TokenBloatThreshold: 60})
+	customMarkers := meCustom.Run(files, nil, nil)
+	for _, m := range customMarkers {
+		assert.NotEqual(t, "token_bloat", m.Type, "raised TokenBloatThreshold should suppress detection")
+	}
+}
+
 func TestMarkerEngine_ZombieExports(t *testing.T) {
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 	ge := NewGraphEngine()
 
 	symbols := []models.Symbol{
@@ -101,7 +156,7 @@ func TestDetectPhantomCoupling_HighChurnLowOwnershipNoEdges(t *testing.T) {
 	// Build graph with no file-to-file edges
 	require.NoError(t, ge.BuildGraph([]models.FileNode{file}, nil, nil))
 
-	me := NewMarkerEngine("")
+	me := NewMarkerEngine("", nil)
 	markers := me.detectPhantomCoupling([]models.FileNode{file}, ge)
 
 	require.Len(t, markers, 1, "Should produce exactly one phantom_coupling marker")
@@ -128,7 +183,7 @@ func TestDetectPhantomCoupling_LowChurnNoMarker(t *testing.T) {
 
 	require.NoError(t, ge.BuildGraph([]models.FileNode{file}, nil, nil))
 
-	me := NewMarkerEngine("")
+	me := NewMarkerEngine("", nil)
 	markers := me.detectPhantomCoupling([]models.FileNode{file}, ge)
 
 	assert.Len(t, markers, 0, "Low churn should not produce marker")
@@ -148,7 +203,7 @@ func TestDetectPhantomCoupling_HighOwnershipNoMarker(t *testing.T) {
 
 	require.NoError(t, ge.BuildGraph([]models.FileNode{file}, nil, nil))
 
-	me := NewMarkerEngine("")
+	me := NewMarkerEngine("", nil)
 	markers := me.detectPhantomCoupling([]models.FileNode{file}, ge)
 
 	assert.Len(t, markers, 0, "High ownership should not produce marker")
@@ -178,7 +233,7 @@ func TestDetectPhantomCoupling_HasStructuralEdgesNoMarker(t *testing.T) {
 	// Add a file-to-file edge (structural relationship)
 	require.NoError(t, ge.AddCoChangeEdge(file1.Path, file2.Path))
 
-	me := NewMarkerEngine("")
+	me := NewMarkerEngine("", nil)
 	markers := me.detectPhantomCoupling([]models.FileNode{file1}, ge)
 
 	assert.Len(t, markers, 0, "File with structural edges should not produce marker")
@@ -198,7 +253,7 @@ func TestDetectPhantomCoupling_DirectoryNodeSkipped(t *testing.T) {
 
 	require.NoError(t, ge.BuildGraph([]models.FileNode{dir}, nil, nil))
 
-	me := NewMarkerEngine("")
+	me := NewMarkerEngine("", nil)
 	markers := me.detectPhantomCoupling([]models.FileNode{dir}, ge)
 
 	assert.Len(t, markers, 0, "Directory nodes should be skipped")
@@ -218,7 +273,7 @@ func TestDetectPhantomCoupling_MessageFormat(t *testing.T) {
 
 	require.NoError(t, ge.BuildGraph([]models.FileNode{file}, nil, nil))
 
-	me := NewMarkerEngine("")
+	me := NewMarkerEngine("", nil)
 	markers := me.detectPhantomCoupling([]models.FileNode{file}, ge)
 
 	require.Len(t, markers, 1)
@@ -261,7 +316,7 @@ func TestDetectPhantomCoupling_MultipleFiles(t *testing.T) {
 
 	require.NoError(t, ge.BuildGraph(files, nil, nil))
 
-	me := NewMarkerEngine("")
+	me := NewMarkerEngine("", nil)
 	markers := me.detectPhantomCoupling(files, ge)
 
 	// Only the first file should produce a marker
@@ -276,7 +331,7 @@ func TestDetectPhantomCoupling_EmptyFiles(t *testing.T) {
 
 	require.NoError(t, ge.BuildGraph(nil, nil, nil))
 
-	me := NewMarkerEngine("")
+	me := NewMarkerEngine("", nil)
 	markers := me.detectPhantomCoupling([]models.FileNode{}, ge)
 
 	// A nil slice and an empty slice are both len==0, and that's correct behavior
@@ -297,7 +352,7 @@ func TestDetectPhantomCoupling_BoundaryChurn5(t *testing.T) {
 
 	require.NoError(t, ge.BuildGraph([]models.FileNode{file}, nil, nil))
 
-	me := NewMarkerEngine("")
+	me := NewMarkerEngine("", nil)
 	markers := me.detectPhantomCoupling([]models.FileNode{file}, ge)
 
 	require.Len(t, markers, 1, "Churn=5 should be included (>= 5)")
@@ -317,7 +372,7 @@ func TestDetectPhantomCoupling_BoundaryOwnership0_5(t *testing.T) {
 
 	require.NoError(t, ge.BuildGraph([]models.FileNode{file}, nil, nil))
 
-	me := NewMarkerEngine("")
+	me := NewMarkerEngine("", nil)
 	markers := me.detectPhantomCoupling([]models.FileNode{file}, ge)
 
 	assert.Len(t, markers, 0, "Ownership=0.5 should not match (criteria is < 0.5)")
@@ -379,7 +434,7 @@ func TestDetectPhantomCoupling_AllCriteriaRequired(t *testing.T) {
 				require.NoError(t, ge.BuildGraph(files, nil, nil))
 			}
 
-			me := NewMarkerEngine("")
+			me := NewMarkerEngine("", nil)
 			markers := me.detectPhantomCoupling([]models.FileNode{tt.file}, ge)
 
 			if tt.expectMap {
@@ -424,7 +479,7 @@ func TestDetectPhantomCoupling_CallEdgesDoNotPreventMarker(t *testing.T) {
 	// Add a symbol-level "calls" edge (not a file-to-file edge)
 	require.NoError(t, ge.AddCallEdge("src/a.go", "FuncA", "src/b.go", "FuncB"))
 
-	me := NewMarkerEngine("")
+	me := NewMarkerEngine("", nil)
 	markers := me.detectPhantomCoupling([]models.FileNode{file1}, ge)
 
 	// Should still produce marker because symbol-level edge doesn't count as
@@ -446,7 +501,7 @@ func TestDetectPhantomCoupling_OwnershipPercentageFormatting(t *testing.T) {
 
 	require.NoError(t, ge.BuildGraph([]models.FileNode{file}, nil, nil))
 
-	me := NewMarkerEngine("")
+	me := NewMarkerEngine("", nil)
 	markers := me.detectPhantomCoupling([]models.FileNode{file}, ge)
 
 	require.Len(t, markers, 1)
@@ -497,7 +552,7 @@ async void loadData() {
 	}
 
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -560,7 +615,7 @@ async void load() {
 	}
 
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -624,7 +679,7 @@ void printData(String data) {
 	}
 
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -666,7 +721,7 @@ class SafeWidget extends StatelessWidget {
 }
 `
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	filePath := "safe.dart"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
@@ -689,7 +744,7 @@ async void load() {
 }
 `
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	// Write to non-Dart file
 	filePath := "wrong.txt"
@@ -758,7 +813,7 @@ SELECT * FROM accounts WHERE type = 'premium'
 	}
 
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -812,7 +867,7 @@ SELECT product_id, name, price FROM products
 	}
 
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -864,7 +919,7 @@ INSERT INTO audit_log VALUES ('action_performed', 'timestamp')
 	}
 
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -901,7 +956,7 @@ DELETE FROM logs WHERE timestamp < :cutoff_date
 UPDATE settings SET value = @newValue WHERE key = @key
 `
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	filePath := "safe_queries.sql"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
@@ -921,7 +976,7 @@ func TestMarkerEngineRun_SQLFileGated(t *testing.T) {
 SELECT * FROM users WHERE id = ' + userId
 `
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	// Write to non-SQL file
 	filePath := "readme.md"
@@ -1007,7 +1062,7 @@ func TestCheckPII_IndianMobile(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1080,7 +1135,7 @@ func TestCheckPII_InternationalMobile(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1162,7 +1217,7 @@ func TestCheckPII_Email(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1193,7 +1248,7 @@ func TestCheckPII_Email(t *testing.T) {
 func TestCheckPII_EmailCount(t *testing.T) {
 	content := "Emails: alice@company.com, bob@startup.io, charlie@bank.co.in"
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	filePath := "test.txt"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
@@ -1247,7 +1302,7 @@ func TestCheckPII_NoFalsePositives(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1365,7 +1420,7 @@ func TestCheckPII_MobileEmailCombined(t *testing.T) {
 	`
 
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	filePath := "customer_data.txt"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
@@ -1428,7 +1483,7 @@ func TestCheckPII_IndianMobileVariations(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	me := NewMarkerEngine(dir)
+	me := NewMarkerEngine(dir, nil)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

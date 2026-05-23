@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/venkatvghub/argus/pkg/config"
@@ -13,6 +14,9 @@ import (
 type MockProvider struct {
 	name     string
 	chatFunc func(ctx context.Context, prompt string) (string, error)
+
+	mu                   sync.Mutex
+	lastChatStreamRepoID string
 }
 
 func (m *MockProvider) Chat(ctx context.Context, prompt string) (string, error) {
@@ -26,7 +30,18 @@ func (m *MockProvider) Name() string {
 	return m.name
 }
 
-func (m *MockProvider) ChatStream(ctx context.Context, prompt string) (<-chan string, <-chan error, error) {
+// LastChatStreamRepoID returns the repoID most recently passed to ChatStream.
+func (m *MockProvider) LastChatStreamRepoID() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastChatStreamRepoID
+}
+
+func (m *MockProvider) ChatStream(ctx context.Context, repoID string, prompt string) (<-chan string, <-chan error, error) {
+	m.mu.Lock()
+	m.lastChatStreamRepoID = repoID
+	m.mu.Unlock()
+
 	ch := make(chan string)
 	errCh := make(chan error)
 	close(ch)
@@ -110,5 +125,21 @@ func TestOpenAIProviderKeyMissing(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "OpenAI API key") {
 		t.Errorf("expected error containing %q, got %q", "OpenAI API key", err.Error())
+	}
+}
+
+func TestRouterChatStreamForwardsRepoID(t *testing.T) {
+	mock := &MockProvider{name: "mock1"}
+	router := &Router{
+		providers: map[string]Provider{"mock1": mock},
+		active:    "mock1",
+	}
+
+	_, _, err := router.ChatStream(context.Background(), "repo-abc", "hello")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if got := mock.LastChatStreamRepoID(); got != "repo-abc" {
+		t.Errorf("expected repoID %q, got %q", "repo-abc", got)
 	}
 }

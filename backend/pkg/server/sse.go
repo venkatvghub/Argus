@@ -2,11 +2,91 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
+	"github.com/venkatvghub/argus/pkg/constants"
+	"github.com/venkatvghub/argus/pkg/logger"
 	"github.com/venkatvghub/argus/pkg/models"
+	"github.com/venkatvghub/argus/pkg/repowise"
 )
+
+func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
+	repoID := strings.TrimSpace(r.URL.Query().Get("repoID"))
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if repoID == "" {
+		http.Error(w, "repoID is required", http.StatusBadRequest)
+		return
+	}
+	if query == "" {
+		http.Error(w, "q is required", http.StatusBadRequest)
+		return
+	}
+	if s.provider == nil {
+		http.Error(w, "LLM provider not configured", http.StatusServiceUnavailable)
+		return
+	}
+	if _, err := s.argus.GetRepoSymbols(r.Context(), repoID); err != nil {
+		if errors.Is(err, repowise.ErrRepoNotFound) {
+			http.Error(w, "repo not found", http.StatusNotFound)
+			return
+		}
+		logger.FromContext(r.Context()).Error("get repo symbols failed", "repo_id", repoID, "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	setSSEHeaders(w, r, s.corsAllowedOrigins())
+
+	tokens, errs, err := s.provider.ChatStream(r.Context(), repoID, query)
+	if err != nil {
+		writeSSEEvent(w, "[ERROR] "+err.Error())
+		flusher.Flush()
+		return
+	}
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case e, ok := <-errs:
+			if !ok {
+				errs = nil
+				continue
+			}
+			if e != nil {
+				writeSSEEvent(w, "[ERROR] "+e.Error())
+				flusher.Flush()
+				return
+			}
+		case token, ok := <-tokens:
+			if !ok {
+				writeSSEEvent(w, "[DONE]")
+				flusher.Flush()
+				return
+			}
+			writeSSEEvent(w, token)
+			flusher.Flush()
+		}
+	}
+}
+
+// writeSSEEvent writes a single SSE event, splitting payload on newlines so
+// each line is emitted as a separate "data:" field per the EventSource spec.
+func writeSSEEvent(w http.ResponseWriter, payload string) {
+	for _, line := range strings.Split(payload, "\n") {
+		fmt.Fprintf(w, "data: %s\n", line)
+	}
+	fmt.Fprint(w, "\n")
+}
 
 func (s *RESTServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
@@ -15,14 +95,11 @@ func (s *RESTServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	setSSEHeaders(w, r, s.corsAllowedOrigins())
 
 	jobID := r.URL.Query().Get("jobId")
 	if jobID == "" {
-		jobID = "*"
+		jobID = constants.AllJobsWildcard
 	}
 
 	ch, unsubscribe := s.argus.Jobs.Subscribe(jobID)
@@ -42,7 +119,7 @@ func (s *RESTServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 			if job.Status == models.JobStatusCompleted || job.Status == models.JobStatusFailed {
 				// Don't return immediately if we want to keep connection open for other jobs
 				// but if it's a specific jobID, we can return.
-				if jobID != "*" {
+				if jobID != constants.AllJobsWildcard {
 					return
 				}
 			}

@@ -11,15 +11,20 @@ import (
 
 // GeminiProvider implements the Provider interface for Google Gemini.
 type GeminiProvider struct {
-	apiKey string
-	model  string
+	apiKey      string
+	model       string
+	streamDelay time.Duration
 }
 
 // NewGeminiProvider creates a new Gemini provider instance.
 func NewGeminiProvider(cfg *config.Config) *GeminiProvider {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
 	return &GeminiProvider{
-		apiKey: cfg.GeminiKey,
-		model:  cfg.GeminiModel,
+		apiKey:      cfg.GeminiKey,
+		model:       cfg.GeminiModel,
+		streamDelay: mockStreamDelay(cfg),
 	}
 }
 
@@ -33,7 +38,7 @@ func (p *GeminiProvider) Chat(ctx context.Context, prompt string) (string, error
 }
 
 // ChatStream sends a prompt to Gemini and returns a stream of tokens.
-func (p *GeminiProvider) ChatStream(ctx context.Context, prompt string) (<-chan string, <-chan error, error) {
+func (p *GeminiProvider) ChatStream(ctx context.Context, repoID string, prompt string) (<-chan string, <-chan error, error) {
 	if p.apiKey == "" {
 		return nil, nil, fmt.Errorf("Gemini API key is missing")
 	}
@@ -44,7 +49,7 @@ func (p *GeminiProvider) ChatStream(ctx context.Context, prompt string) (<-chan 
 		defer close(out)
 		defer close(errCh)
 
-		response := fmt.Sprintf("[Gemini %s] Response to: %s", p.model, prompt)
+		response := fmt.Sprintf("[Gemini %s repo:%s] Response to: %s", p.model, repoID, prompt)
 		words := strings.Fields(response)
 		for _, word := range words {
 			select {
@@ -52,7 +57,7 @@ func (p *GeminiProvider) ChatStream(ctx context.Context, prompt string) (<-chan 
 				errCh <- ctx.Err()
 				return
 			case out <- word + " ":
-				time.Sleep(50 * time.Millisecond)
+				time.Sleep(p.streamDelay)
 			}
 		}
 	}()

@@ -103,7 +103,7 @@ All markers are executed concurrently via `errgroup` and Tree-sitter AST queries
 - [x] **3.1 Tiered Providers:** Anthropic/Gemini drivers with cost-routing logic.
 - [x] **3.2 MCP Server:** 20 tools via `mark3labs/mcp-go`.
 - [x] **3.3 REST API:** `chi` routers for Dashboard support and Cognee Export.
-- [ ] **3.4 SSE & Jobs:** Async chat streaming and worker-pool job execution.
+- [x] **3.4 SSE & Jobs:** Async chat streaming and worker-pool job execution.
 
 ### Phase 4: CLI & Final Distribution (Weeks 15-18)
 - [ ] **4.1 Cobra CLI:** Implement all 20 subcommands with decoupled pathing.

@@ -27,7 +27,7 @@ type DB struct {
 // New initializes a new SQLite connection at the specified path and
 // runs pending migrations.
 func New(dbPath string) (*DB, error) {
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), defaultDirPerm); err != nil {
 		return nil, fmt.Errorf("failed to create db directory: %w", err)
 	}
 

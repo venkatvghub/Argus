@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/pkoukk/tiktoken-go"
+	"github.com/venkatvghub/argus/pkg/config"
 	"github.com/venkatvghub/argus/pkg/models"
 	gonum_graph "gonum.org/v1/gonum/graph"
 )
@@ -29,33 +30,77 @@ var (
 
 // Regex patterns for Dart/Flutter biomarkers (package-level, compiled once)
 var (
-	dartSetStateAfterAwait  = regexp.MustCompile(`(?s)await\s+.{1,200}setState\s*\(`)
-	dartContextAfterAwait   = regexp.MustCompile(`(?s)await\s+.{1,200}(?:Navigator|ScaffoldMessenger|Theme|MediaQuery)\s*\.of\s*\(\s*context\s*\)`)
+	dartSetStateAfterAwait  = regexp.MustCompile(fmt.Sprintf(`(?s)await\s+.{1,%d}setState\s*\(`, dartAsyncGapMaxRunes))
+	dartContextAfterAwait   = regexp.MustCompile(fmt.Sprintf(`(?s)await\s+.{1,%d}(?:Navigator|ScaffoldMessenger|Theme|MediaQuery)\s*\.of\s*\(\s*context\s*\)`, dartAsyncGapMaxRunes))
 	dartBrokenCryptoPattern = regexp.MustCompile(`(?i)MD5|SHA1[^2-9]|DES(?:ede)?[^A-Z]`)
 )
 
 // Regex patterns for SQL biomarkers (package-level, compiled once)
 var (
-	sqlConcatPattern = regexp.MustCompile(`(?i)(SELECT|INSERT|UPDATE|DELETE)\s+.{0,100}(\+\s*['"]|['"]\s*\+|CONCAT\s*\()`)
+	sqlConcatPattern = regexp.MustCompile(fmt.Sprintf(`(?i)(SELECT|INSERT|UPDATE|DELETE)\s+.{0,%d}(\+\s*['"]|['"]\s*\+|CONCAT\s*\()`, sqlConcatWindowRunes))
 	sqlSelectStar    = regexp.MustCompile(`(?i)SELECT\s+\*\s+FROM`)
-	sqlCredsPattern  = regexp.MustCompile(`(?i)(PASSWORD|IDENTIFIED BY)\s+['"][^'"]{3,}['"]`)
+	sqlCredsPattern  = regexp.MustCompile(fmt.Sprintf(`(?i)(PASSWORD|IDENTIFIED BY)\s+['"][^'"]{%d,}['"]`, sqlCredentialMinLen))
+
+	nonIndianCloudRegionsRegex = regexp.MustCompile(`us-east-1|us-west-2|eu-central-1`)
 )
 
 // MarkerEngine performs regulatory and efficiency analysis.
 type MarkerEngine struct {
-	repoPath string
+	repoPath            string
+	piiEnabled          map[string]bool
+	tokenBloatThreshold float64
 }
 
-// NewMarkerEngine creates a new MarkerEngine.
-func NewMarkerEngine(repoPath string) *MarkerEngine {
-	return &MarkerEngine{repoPath: repoPath}
+// NewMarkerEngine creates a new MarkerEngine. When cfg is nil, all default PII
+// patterns and tokenBloatThresholdDefault are used (typical in tests).
+func NewMarkerEngine(repoPath string, cfg *config.Config) *MarkerEngine {
+	threshold := tokenBloatThresholdDefault
+	patterns := defaultPIIPatterns()
+	if cfg != nil {
+		if cfg.TokenBloatThreshold > 0 {
+			threshold = cfg.TokenBloatThreshold
+		}
+		if len(cfg.PIIPatterns) > 0 {
+			patterns = normalizePIIPatterns(cfg.PIIPatterns)
+		}
+	}
+	return &MarkerEngine{
+		repoPath:            repoPath,
+		piiEnabled:          patterns,
+		tokenBloatThreshold: threshold,
+	}
+}
+
+func defaultPIIPatterns() map[string]bool {
+	return normalizePIIPatterns([]string{"AADHAAR", "PAN", "UPI_ID", "MOBILE", "EMAIL"})
+}
+
+func normalizePIIPatterns(patterns []string) map[string]bool {
+	enabled := make(map[string]bool, len(patterns))
+	for _, p := range patterns {
+		key := strings.ToUpper(strings.TrimSpace(p))
+		if key == "UPI" {
+			key = "UPI_ID"
+		}
+		if key != "" {
+			enabled[key] = true
+		}
+	}
+	return enabled
+}
+
+func (me *MarkerEngine) piiPatternEnabled(name string) bool {
+	if me.piiEnabled == nil {
+		return true
+	}
+	return me.piiEnabled[strings.ToUpper(name)]
 }
 
 // Run executes all markers on the provided files, symbols, and the assembled graph.
 func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, graph *GraphEngine) []models.Marker {
 	var markers []models.Marker
 
-	tkm, _ := tiktoken.GetEncoding("cl100k_base")
+	tkm, _ := tiktoken.GetEncoding(tiktokenEncoding)
 
 	for _, file := range files {
 		if !file.IsFile {
@@ -101,7 +146,7 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 
 func (me *MarkerEngine) checkPII(filePath, content string) []models.Marker {
 	var markers []models.Marker
-	if aadhaarRegex.MatchString(content) {
+	if me.piiPatternEnabled("AADHAAR") && aadhaarRegex.MatchString(content) {
 		markers = append(markers, models.Marker{
 			Type:     "dpdp_pii_exposure",
 			Severity: "high",
@@ -109,7 +154,7 @@ func (me *MarkerEngine) checkPII(filePath, content string) []models.Marker {
 			File:     filePath,
 		})
 	}
-	if panRegex.MatchString(content) {
+	if me.piiPatternEnabled("PAN") && panRegex.MatchString(content) {
 		markers = append(markers, models.Marker{
 			Type:     "dpdp_pii_exposure",
 			Severity: "high",
@@ -117,7 +162,7 @@ func (me *MarkerEngine) checkPII(filePath, content string) []models.Marker {
 			File:     filePath,
 		})
 	}
-	if upiRegex.MatchString(content) {
+	if me.piiPatternEnabled("UPI_ID") && upiRegex.MatchString(content) {
 		markers = append(markers, models.Marker{
 			Type:     "dpdp_pii_exposure",
 			Severity: "medium",
@@ -127,7 +172,7 @@ func (me *MarkerEngine) checkPII(filePath, content string) []models.Marker {
 	}
 
 	// Indian mobile numbers (DPDP regulated)
-	if indianMobileRegex.MatchString(content) {
+	if me.piiPatternEnabled("MOBILE") && indianMobileRegex.MatchString(content) {
 		markers = append(markers, models.Marker{
 			Type:     "dpdp_mobile_exposure",
 			Severity: "high",
@@ -137,33 +182,37 @@ func (me *MarkerEngine) checkPII(filePath, content string) []models.Marker {
 	}
 
 	// International mobile (E.164) — exclude Indian numbers (+91 prefix)
-	intlMobiles := intlMobileRegex.FindAllString(content, -1)
-	nonIndianIntl := 0
-	for _, mobile := range intlMobiles {
-		// Exclude +91 which are Indian
-		if !strings.HasPrefix(mobile, "+91") {
-			nonIndianIntl++
+	if me.piiPatternEnabled("MOBILE") {
+		intlMobiles := intlMobileRegex.FindAllString(content, -1)
+		nonIndianIntl := 0
+		for _, mobile := range intlMobiles {
+			// Exclude +91 which are Indian
+			if !strings.HasPrefix(mobile, "+91") {
+				nonIndianIntl++
+			}
 		}
-	}
-	if nonIndianIntl > 0 {
-		markers = append(markers, models.Marker{
-			Type:     "pii_mobile_exposure",
-			Severity: "medium",
-			Message:  "Potential international mobile number (E.164) exposure detected",
-			File:     filePath,
-		})
+		if nonIndianIntl > 0 {
+			markers = append(markers, models.Marker{
+				Type:     "pii_mobile_exposure",
+				Severity: "medium",
+				Message:  "Potential international mobile number (E.164) exposure detected",
+				File:     filePath,
+			})
+		}
 	}
 
 	// Email addresses — filter out test/placeholder domains
-	emails := emailRegex.FindAllString(content, -1)
-	realEmails := filterTestEmails(emails)
-	if len(realEmails) > 0 {
-		markers = append(markers, models.Marker{
-			Type:     "pii_email_exposure",
-			Severity: "medium",
-			Message:  fmt.Sprintf("Potential email address exposure detected (%d occurrence(s))", len(realEmails)),
-			File:     filePath,
-		})
+	if me.piiPatternEnabled("EMAIL") {
+		emails := emailRegex.FindAllString(content, -1)
+		realEmails := filterTestEmails(emails)
+		if len(realEmails) > 0 {
+			markers = append(markers, models.Marker{
+				Type:     "pii_email_exposure",
+				Severity: "medium",
+				Message:  fmt.Sprintf("Potential email address exposure detected (%d occurrence(s))", len(realEmails)),
+				File:     filePath,
+			})
+		}
 	}
 
 	return markers
@@ -232,19 +281,15 @@ func (me *MarkerEngine) checkRBILogging(filePath, content string) []models.Marke
 
 func (me *MarkerEngine) checkDataSovereignty(filePath, content string) []models.Marker {
 	var markers []models.Marker
-	// Heuristic: check for non-Indian region identifiers in AWS/GCP configs
-	regions := []regexp.Regexp{
-		*regexp.MustCompile(`us-east-1|us-west-2|eu-central-1`),
-	}
-	for _, reg := range regions {
-		if reg.MatchString(content) && (aadhaarRegex.MatchString(content) || panRegex.MatchString(content)) {
-			markers = append(markers, models.Marker{
-				Type:     "data_sovereignty_leak",
-				Severity: "critical",
-				Message:  "PII data potentially routed to non-Indian regions",
-				File:     filePath,
-			})
-		}
+	hasPII := (me.piiPatternEnabled("AADHAAR") && aadhaarRegex.MatchString(content)) ||
+		(me.piiPatternEnabled("PAN") && panRegex.MatchString(content))
+	if nonIndianCloudRegionsRegex.MatchString(content) && hasPII {
+		markers = append(markers, models.Marker{
+			Type:     "data_sovereignty_leak",
+			Severity: "critical",
+			Message:  "PII data potentially routed to non-Indian regions",
+			File:     filePath,
+		})
 	}
 	return markers
 }
@@ -255,7 +300,7 @@ func (me *MarkerEngine) checkTokenBloat(filePath, content string, tkm *tiktoken.
 	lineCount := strings.Count(content, "\n") + 1
 	if lineCount > 0 {
 		density := float64(len(tokens)) / float64(lineCount)
-		if density > 50.0 {
+		if density > me.tokenBloatThreshold {
 			markers = append(markers, models.Marker{
 				Type:     "token_bloat",
 				Severity: "low",
@@ -377,17 +422,14 @@ func (me *MarkerEngine) detectPhantomCoupling(files []models.FileNode, graph *Gr
 	var markers []models.Marker
 	// Phantom Coupling: high co-change activity (high churn + low single-author ownership)
 	// combined with zero structural file-to-file edges in the graph.
-	const churnThreshold = 5
-	const ownershipThreshold = 0.5
-
 	for _, f := range files {
 		if !f.IsFile {
 			continue
 		}
-		if f.Churn < churnThreshold {
+		if f.Churn < phantomCouplingChurnThreshold {
 			continue
 		}
-		if f.Ownership >= ownershipThreshold {
+		if f.Ownership >= phantomCouplingOwnershipThreshold {
 			continue
 		}
 
@@ -412,7 +454,7 @@ func (me *MarkerEngine) detectPhantomCoupling(files []models.FileNode, graph *Gr
 		}()
 
 		if !hasStructuralEdges {
-			ownershipPercent := int(f.Ownership * 100)
+			ownershipPercent := int(f.Ownership * ownershipPercentMultiplier)
 			markers = append(markers, models.Marker{
 				Type:     "phantom_coupling",
 				Severity: "medium",

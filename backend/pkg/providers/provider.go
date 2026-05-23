@@ -7,8 +7,8 @@ import "context"
 type Provider interface {
 	// Chat sends a prompt to the LLM and returns the response string.
 	Chat(ctx context.Context, prompt string) (string, error)
-	// ChatStream sends a prompt to the LLM and returns a stream of tokens.
-	ChatStream(ctx context.Context, prompt string) (<-chan string, <-chan error, error)
+	// ChatStream sends a prompt to the LLM scoped to a repository and returns a stream of tokens.
+	ChatStream(ctx context.Context, repoID string, prompt string) (<-chan string, <-chan error, error)
 	// Name returns the provider's identifier.
 	Name() string
 }

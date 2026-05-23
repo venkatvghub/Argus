@@ -85,7 +85,7 @@ Argus runs a **23-biomarker** pipeline concurrently via `errgroup`. Every file s
 | **Concurrency Risk** | uncapped | goroutine_shared_state, java_thread_unsync, py_await_race, js_closure_race, dart_state_after_await | Goroutine/thread mutating outer scope without sync |
 | **DPDP Compliance** | uncapped | dpdp_aadhaar, dpdp_pan, dpdp_upi, dpdp_mobile, pii_email, untracked_consent, rbi_logger_gap, data_sovereignty | PII regex hit; missing consent check; non-Indian outbound routing |
 | **AppSec** | uncapped | tainted_sql, ssrf_blind, broken_crypto, bypassed_rbac, hardcoded_secret | String-concat SQL; unvalidated URL; MD5/SHA1/DES; RBAC skip; literal secret |
-| **AI-Agent Efficiency** | uncapped | token_bloat, hallucination_bait, phantom_coupling, zombie_exports | >50 tokens/line; duplicate symbol names; co-change without imports |
+| **AI-Agent Efficiency** | uncapped | token_bloat, hallucination_bait, phantom_coupling, zombie_exports | >`REPOWISE_TOKEN_BLOAT_THRESHOLD` tokens/line; duplicate symbol names; co-change without imports |
 
 ## Scoring Architecture
 
@@ -99,6 +99,20 @@ Argus runs a **23-biomarker** pipeline concurrently via `errgroup`. Every file s
 ```
 
 `models.FileScore` holds the result. `models.CategoryCaps` defines the per-category maximums. Score computation will live in `pkg/analysis/scorer.go` (Phase 5).
+
+## Async Job Execution & SSE Chat Streaming
+
+### Worker Pool (Phase 3.4)
+
+The `JobManager` in `pkg/repowise/jobs.go` bounds analysis work to a configurable worker pool (`REPOWISE_WORKER_COUNT`, default 3) with a buffered queue (`REPOWISE_WORK_QUEUE_SIZE`, default 32). The `Submit(jobID, fn)` method replaces raw `go func()` spawning in `Analyze()`, preventing unbounded goroutine proliferation during bulk repository processing. Each job is wrapped with panic recovery via `executeWork()`.
+
+### SSE Chat Streaming (Phase 3.4)
+
+The `chatStreamHandler` in `pkg/server/sse.go` exposes `GET /api/chat/stream?repoID=<id>&q=<query>` for token-level LLM streaming. CORS is restricted via `REPOWISE_CORS_ALLOWED_ORIGINS` (allowlist echo, not `*`). It consumes token and error channels from `provider.ChatStream()`, flushing each token to the client as a Server-Sent Event. Client disconnection is detected via `r.Context().Done()`.
+
+### Provider Wiring (Phase 3.4)
+
+`RESTServer.SetProvider(p *providers.Router)` post-construction injects the active LLM router (Anthropic, Gemini, OpenAI) after the server is instantiated. This defers provider initialization until runtime and supports cost-based tier selection.
 
 ## Server Modes
 

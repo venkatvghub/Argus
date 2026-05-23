@@ -46,12 +46,12 @@ func (r *Router) Chat(ctx context.Context, prompt string) (string, error) {
 }
 
 // ChatStream delegates the chat stream request to the active provider.
-func (r *Router) ChatStream(ctx context.Context, prompt string) (<-chan string, <-chan error, error) {
+func (r *Router) ChatStream(ctx context.Context, repoID string, prompt string) (<-chan string, <-chan error, error) {
 	p, ok := r.providers[r.active]
 	if !ok {
 		return nil, nil, fmt.Errorf("provider %s not registered", r.active)
 	}
-	return p.ChatStream(ctx, prompt)
+	return p.ChatStream(ctx, repoID, prompt)
 }
 
 // GetProvider returns a registered provider by name.

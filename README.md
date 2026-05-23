@@ -39,14 +39,7 @@ Copy `.env.example` to `.env`:
 cp .env.example .env
 ```
 
-Edit `.env` and set your API keys and preferences:
-
-```env
-REPOWISE_LLM_PROVIDER=openai
-REPOWISE_OPENAI_API_KEY=sk-...
-REPOWISE_GEMINI_MODEL=gemini-2.0-flash
-REPOWISE_PII_PATTERNS=AADHAAR,PAN,UPI_ID,MOBILE,EMAIL
-```
+Edit `.env` and set your API keys and preferences. See **[Configuration](docs/configuration.md)** for the full list of `REPOWISE_*` variables and defaults.
 
 ### Run (MCP Mode)
 
@@ -70,6 +63,7 @@ Starts a Gin REST server on `:8080`. Health check: `curl http://localhost:8080/h
 
 ## Documentation
 
+- **[Configuration](docs/configuration.md)** — `REPOWISE_*` environment variables, defaults, and path resolution
 - **[Philosophy & Why Go](docs/PHILOSOPHY.md)** — Problem statement, rewrite rationale, foundational mandates, and biomarker categories
 - **[Architecture](docs/architecture.md)** — System diagram, package responsibilities, analysis pipeline, server modes, LLM tiers
 - **[Implementation Plan](docs/plan.md)** — Phase-wise roadmap (Weeks 1–18), structural design, Cognee integration
