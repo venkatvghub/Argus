@@ -18,6 +18,7 @@ func TestSetCORSHeaders_AllowlistedOrigin(t *testing.T) {
 	assert.Equal(t, "https://app.example.com", rr.Header().Get("Access-Control-Allow-Origin"))
 	assert.Equal(t, "Origin", rr.Header().Get("Vary"))
 	assert.Equal(t, "GET, OPTIONS", rr.Header().Get("Access-Control-Allow-Methods"))
+	assert.Equal(t, "Accept, Cache-Control, Last-Event-ID", rr.Header().Get("Access-Control-Allow-Headers"))
 }
 
 func TestSetCORSHeaders_UnknownOrigin(t *testing.T) {

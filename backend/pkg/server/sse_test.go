@@ -181,6 +181,25 @@ func TestChatStreamHandler_MissingQuery(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), "q is required")
 }
 
+func TestChatStreamHandler_RepoNotFound(t *testing.T) {
+	ctx := context.Background()
+	inst, err := repowise.New(ctx, nil)
+	require.NoError(t, err)
+	defer inst.Close()
+
+	srv := NewRESTServer(inst)
+	router := createRouterWithMockProvider([]string{"token"}, nil)
+	srv.SetProvider(router)
+
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoID=unknown-repo&q=test", nil)
+	rr := httptest.NewRecorder()
+
+	srv.chatStreamHandler(rr, req)
+
+	assert.Equal(t, http.StatusNotFound, rr.Code)
+	assert.Contains(t, rr.Body.String(), "repo not found")
+}
+
 func TestChatStreamHandler_NoProvider(t *testing.T) {
 	ctx := context.Background()
 	inst, err := repowise.New(ctx, nil)

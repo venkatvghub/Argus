@@ -2,12 +2,15 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/venkatvghub/argus/pkg/constants"
+	"github.com/venkatvghub/argus/pkg/logger"
 	"github.com/venkatvghub/argus/pkg/models"
+	"github.com/venkatvghub/argus/pkg/repowise"
 )
 
 func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
@@ -26,7 +29,12 @@ func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := s.argus.GetRepoSymbols(r.Context(), repoID); err != nil {
-		http.Error(w, "repo not found", http.StatusNotFound)
+		if errors.Is(err, repowise.ErrRepoNotFound) {
+			http.Error(w, "repo not found", http.StatusNotFound)
+			return
+		}
+		logger.FromContext(r.Context()).Error("get repo symbols failed", "repo_id", repoID, "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 

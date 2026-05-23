@@ -30,16 +30,16 @@ var (
 
 // Regex patterns for Dart/Flutter biomarkers (package-level, compiled once)
 var (
-	dartSetStateAfterAwait  = regexp.MustCompile(`(?s)await\s+.{1,200}setState\s*\(`)
-	dartContextAfterAwait   = regexp.MustCompile(`(?s)await\s+.{1,200}(?:Navigator|ScaffoldMessenger|Theme|MediaQuery)\s*\.of\s*\(\s*context\s*\)`)
+	dartSetStateAfterAwait  = regexp.MustCompile(fmt.Sprintf(`(?s)await\s+.{1,%d}setState\s*\(`, dartAsyncGapMaxRunes))
+	dartContextAfterAwait   = regexp.MustCompile(fmt.Sprintf(`(?s)await\s+.{1,%d}(?:Navigator|ScaffoldMessenger|Theme|MediaQuery)\s*\.of\s*\(\s*context\s*\)`, dartAsyncGapMaxRunes))
 	dartBrokenCryptoPattern = regexp.MustCompile(`(?i)MD5|SHA1[^2-9]|DES(?:ede)?[^A-Z]`)
 )
 
 // Regex patterns for SQL biomarkers (package-level, compiled once)
 var (
-	sqlConcatPattern = regexp.MustCompile(`(?i)(SELECT|INSERT|UPDATE|DELETE)\s+.{0,100}(\+\s*['"]|['"]\s*\+|CONCAT\s*\()`)
+	sqlConcatPattern = regexp.MustCompile(fmt.Sprintf(`(?i)(SELECT|INSERT|UPDATE|DELETE)\s+.{0,%d}(\+\s*['"]|['"]\s*\+|CONCAT\s*\()`, sqlConcatWindowRunes))
 	sqlSelectStar    = regexp.MustCompile(`(?i)SELECT\s+\*\s+FROM`)
-	sqlCredsPattern  = regexp.MustCompile(`(?i)(PASSWORD|IDENTIFIED BY)\s+['"][^'"]{3,}['"]`)
+	sqlCredsPattern  = regexp.MustCompile(fmt.Sprintf(`(?i)(PASSWORD|IDENTIFIED BY)\s+['"][^'"]{%d,}['"]`, sqlCredentialMinLen))
 
 	nonIndianCloudRegionsRegex = regexp.MustCompile(`us-east-1|us-west-2|eu-central-1`)
 )

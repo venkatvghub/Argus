@@ -28,6 +28,7 @@ type JobManager struct {
 	stopMu           sync.RWMutex
 	stopped          bool
 	stopOnce         sync.Once
+	closeCh          chan struct{}
 }
 
 const (
@@ -58,6 +59,7 @@ func NewJobManager(cfg *config.Config) *JobManager {
 		cancels:        make(map[string]context.CancelFunc),
 		workQueue:      make(chan workItem, queueSize),
 		listenerBuffer: listenerBuffer,
+		closeCh:        make(chan struct{}),
 	}
 	jm.wg.Add(workerCount)
 	for range workerCount {
@@ -193,12 +195,26 @@ func (jm *JobManager) ListJobs() []models.Job {
 // Submit enqueues a work function to the bounded worker pool. It blocks until
 // queue space is available rather than bypassing the pool with extra goroutines.
 func (jm *JobManager) Submit(jobID string, fn func()) {
+	item := workItem{jobID: jobID, fn: fn}
+
 	jm.stopMu.RLock()
-	defer jm.stopMu.RUnlock()
 	if jm.stopped {
+		jm.stopMu.RUnlock()
 		return
 	}
-	jm.workQueue <- workItem{jobID: jobID, fn: fn}
+	select {
+	case jm.workQueue <- item:
+		jm.stopMu.RUnlock()
+		return
+	default:
+		jm.stopMu.RUnlock()
+	}
+
+	select {
+	case <-jm.closeCh:
+		return
+	case jm.workQueue <- item:
+	}
 }
 
 // Close stops accepting new work, drains the queue, and waits for workers to exit.
@@ -206,6 +222,7 @@ func (jm *JobManager) Close() {
 	jm.stopOnce.Do(func() {
 		jm.stopMu.Lock()
 		jm.stopped = true
+		close(jm.closeCh)
 		close(jm.workQueue)
 		jm.stopMu.Unlock()
 	})

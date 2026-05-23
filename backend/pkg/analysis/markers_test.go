@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/venkatvghub/argus/pkg/config"
 	"github.com/venkatvghub/argus/pkg/models"
 )
 
@@ -28,6 +29,34 @@ func TestMarkerEngine_PIIDetection(t *testing.T) {
 	}
 
 	assert.True(t, types["dpdp_pii_exposure"])
+}
+
+func TestMarkerEngine_PIIPatternsFromConfig(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{PIIPatterns: []string{"AADHAAR"}}
+	me := NewMarkerEngine(dir, cfg)
+
+	content := "Aadhaar: 123456789012, PAN: ABCDE1234F, UPI: test@okaxis"
+	filePath := "test.txt"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
+
+	markers := me.Run([]models.FileNode{{Path: filePath, IsFile: true}}, nil, nil)
+
+	var aadhaarFound, panFound, upiFound bool
+	for _, m := range markers {
+		switch {
+		case strings.Contains(m.Message, "Aadhaar"):
+			aadhaarFound = true
+		case strings.Contains(m.Message, "PAN"):
+			panFound = true
+		case strings.Contains(m.Message, "UPI"):
+			upiFound = true
+		}
+	}
+
+	assert.True(t, aadhaarFound, "PIIPatterns AADHAAR should flag Aadhaar exposure")
+	assert.False(t, panFound, "PIIPatterns without PAN should not flag PAN")
+	assert.False(t, upiFound, "PIIPatterns without UPI_ID should not flag UPI")
 }
 
 func TestMarkerEngine_TokenBloat(t *testing.T) {
@@ -53,6 +82,32 @@ func TestMarkerEngine_TokenBloat(t *testing.T) {
 		}
 	}
 	assert.True(t, found)
+}
+
+func TestMarkerEngine_TokenBloatThresholdFromConfig(t *testing.T) {
+	dir := t.TempDir()
+	// Single line (~52 tokens) — above default TokenBloatThreshold (50), below raised threshold (60).
+	content := strings.TrimSpace(strings.Repeat("word ", 51))
+	filePath := "bloat.txt"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
+	files := []models.FileNode{{Path: filePath, IsFile: true}}
+
+	meDefault := NewMarkerEngine(dir, nil)
+	defaultMarkers := meDefault.Run(files, nil, nil)
+	defaultFound := false
+	for _, m := range defaultMarkers {
+		if m.Type == "token_bloat" {
+			defaultFound = true
+			break
+		}
+	}
+	assert.True(t, defaultFound, "default TokenBloatThreshold should detect bloat")
+
+	meCustom := NewMarkerEngine(dir, &config.Config{TokenBloatThreshold: 60})
+	customMarkers := meCustom.Run(files, nil, nil)
+	for _, m := range customMarkers {
+		assert.NotEqual(t, "token_bloat", m.Type, "raised TokenBloatThreshold should suppress detection")
+	}
 }
 
 func TestMarkerEngine_ZombieExports(t *testing.T) {

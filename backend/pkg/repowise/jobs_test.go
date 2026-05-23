@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/venkatvghub/argus/pkg/config"
 	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/models"
 )
@@ -215,5 +216,54 @@ func TestWorkerPoolConcurrency(t *testing.T) {
 	// Verify all jobs completed
 	for i := 0; i < jobCount; i++ {
 		assert.True(t, completedJobs[jobs[i].ID], "job %s should have completed", jobs[i].ID)
+	}
+}
+
+func TestJobManager_SubmitAfterClose(t *testing.T) {
+	jm := NewJobManager(&config.Config{WorkerCount: 1, WorkQueueSize: 1})
+	jm.Close()
+
+	assert.NotPanics(t, func() {
+		jm.Submit("job-id", func() {})
+	})
+}
+
+func TestJobManager_CloseWithBlockedSubmit(t *testing.T) {
+	jm := NewJobManager(&config.Config{WorkerCount: 1, WorkQueueSize: 1})
+
+	block := make(chan struct{})
+	jm.Submit("blocker", func() {
+		<-block
+	})
+	time.Sleep(50 * time.Millisecond) // let worker pick up blocker
+
+	jm.Submit("queued", func() {}) // fills the buffered queue
+
+	submitted := make(chan struct{})
+	go func() {
+		jm.Submit("blocked", func() {})
+		close(submitted)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	closeDone := make(chan struct{})
+	go func() {
+		jm.Close()
+		close(closeDone)
+	}()
+
+	select {
+	case <-submitted:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("blocked Submit did not return after Close signaled shutdown")
+	}
+
+	close(block)
+
+	select {
+	case <-closeDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close did not finish after worker unblocked")
 	}
 }

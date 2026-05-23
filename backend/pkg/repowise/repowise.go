@@ -184,7 +184,7 @@ func (i *Instance) GetFileMarkers(ctx context.Context, repoID string, filePath s
 	defer i.mu.RUnlock()
 	markers, ok := i.markers[repoID]
 	if !ok {
-		return nil, fmt.Errorf("repo not found")
+		return nil, ErrRepoNotFound
 	}
 	var results []models.Marker = []models.Marker{}
 	for _, m := range markers {
@@ -201,7 +201,7 @@ func (i *Instance) GetCommunityGraph(ctx context.Context, repoID string, communi
 	defer i.mu.RUnlock()
 	engine, ok := i.engines[repoID]
 	if !ok {
-		return nil, fmt.Errorf("repo not found")
+		return nil, ErrRepoNotFound
 	}
 	var results []*analysis.Node
 	for _, n := range engine.GetNodes() {
@@ -219,7 +219,7 @@ func (i *Instance) GetRepoSymbols(ctx context.Context, repoID string) ([]models.
 
 	engine, ok := i.engines[repoID]
 	if !ok {
-		return nil, fmt.Errorf("repo not found")
+		return nil, ErrRepoNotFound
 	}
 
 	var results []models.Symbol = []models.Symbol{}
@@ -241,7 +241,7 @@ func (i *Instance) GetRepoMarkers(ctx context.Context, repoID string) ([]models.
 
 	markers, ok := i.markers[repoID]
 	if !ok {
-		return nil, fmt.Errorf("repo not found")
+		return nil, ErrRepoNotFound
 	}
 	return markers, nil
 }
