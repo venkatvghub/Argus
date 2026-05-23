@@ -1,410 +1,213 @@
-# repowise Platform — Architecture
+# Architecture
 
----
-
-## Overview
-
-repowise is a codebase intelligence platform. It parses source repositories
-into a structured dependency graph, runs analysis (community detection,
-execution flows, dead code, health biomarkers), and exposes results via MCP
-tools and a REST API consumed by a Next.js dashboard.
-
-The target architecture separates concerns across three layers:
-
-1. **repowise Go** — fast static analysis binary per repo (or shared across repos)
-2. **Cognee** — unified Python knowledge graph fusing code, Slack, and product docs
-3. **Agent MCP Servers** — persona-specific Claude agents (PM, Engineer, EM)
-
----
-
-## Component Diagram
+## System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  SOURCE DATA                                                             │
-│                                                                         │
-│  Git Repos ──────────────────────────────────────────────────────────┐  │
-│  Slack channels ─────────────────────────────────────────────────┐   │  │
-│  Confluence / Notion / Linear / ADRs ────────────────────────┐   │   │  │
-└──────────────────────────────────────────────────────────────┼───┼───┼──┘
-                                                               │   │   │
-                                           ┌───────────────────┘   │   │
-                                           ▼                       │   │
-┌──────────────────────────────────────────────────────────────────┼───┼──┐
-│  repowise Go Binary  (:8080)                                      │   │  │
-│                                                                   │   │  │
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────────────┐    │   │  │
-│  │  Ingestion  │  │   Analysis   │  │    Server            │    │   │  │
-│  │             │  │              │  │                      │    │   │  │
-│  │ tree-sitter │  │ community    │  │ MCP (stdio)          │    │   │  │
-│  │ graph build │  │ flows        │  │ REST API (chi)       │    │   │  │
-│  │ git index   │  │ dead code    │  │ /api/export/cognee ──┼────┘   │  │
-│  │ pipeline    │  │ health       │  │ SSE chat             │        │  │
-│  │             │  │ blast radius │  │ jobs + scheduler     │        │  │
-│  └─────────────┘  └──────────────┘  └──────────────────────┘        │  │
-│                                                                       │  │
-│  Persistence: modernc.org/sqlite · FTS5 · InMemory vector             │  │
-└───────────────────────────────────────────────────────────────────────┼──┘
-                                                                        │
-                              ┌─────────────────────────────────────────┘
-                              ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Cognee Central Layer  (:8090)  — Python                                │
-│                                                                         │
-│  ┌──────────────────────────────────────────────────┐                  │
-│  │  Ingestion Pipelines                             │                  │
-│  │  RepoWiseCogneeIngester  ← /api/export/cognee    │                  │
-│  │  SlackIngester           ← Slack API             │◄─── Slack        │
-│  │  ProductNotesIngester    ← Confluence/Notion     │◄─── Prod notes   │
-│  └──────────────────────────┬───────────────────────┘                  │
-│                             ▼                                           │
-│  ┌──────────────────────────────────────────────────┐                  │
-│  │  Knowledge Graph (Neo4j / Kuzu)                  │                  │
-│  │                                                  │                  │
-│  │  CodeFile ──IMPORTS──► CodeFile                  │                  │
-│  │  Symbol   ──CALLS───► Symbol                     │                  │
-│  │  Symbol   ──MENTIONED_IN──► SlackMsg             │                  │
-│  │  Feature  ──IMPLEMENTED_BY──► CodeFile           │                  │
-│  │  Decision ──AFFECTS──► Symbol                    │                  │
-│  │  Engineer ──OWNS──► CodeFile                     │                  │
-│  │  Feature  ──DISCUSSED_IN──► SlackMsg             │                  │
-│  └──────────────────────────┬───────────────────────┘                  │
-│                             │  cognee.search() — semantic + graph      │
-│  Qdrant (embeddings) ───────┘                                           │
-└─────────────────────────────┬───────────────────────────────────────────┘
-                              │
-            ┌─────────────────┼─────────────────┐
-            ▼                 ▼                 ▼
-┌───────────────┐   ┌──────────────────┐   ┌──────────────┐
-│  PM Agent     │   │  Engineer Agent  │   │  EM Agent    │
-│  MCP :8101    │   │  MCP :8102       │   │  MCP :8103   │
-│               │   │                  │   │              │
-│ feature→code  │   │ explain symbol   │   │ knowledge    │
-│ blast radius  │   │ why exists       │   │ risk report  │
-│ ownership     │   │ safe to delete   │   │ tech debt    │
-│ slack context │   │ callers          │   │ cross-repo   │
-│ roadmap link  │   │ health           │   │ audit trail  │
-└───────┬───────┘   └────────┬─────────┘   └──────┬───────┘
-        └───────────────────┬┘                     │
-                            ▼                      │
-              ┌─────────────────────────┐           │
-              │  Claude Code / Desktop  │◄──────────┘
-              │  Slack bot              │
-              │  Web UI (Next.js :3000) │
-              └─────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Argus CLI / Embedded Library                               │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  repowise.Instance                                      │ │
+│  │  ├─ Ingestion: Git walk, Tree-sitter parse, Registry  │ │
+│  │  ├─ Analysis: Graph, Community, Flows, Health         │ │
+│  │  ├─ Providers: LLM router (Anthropic, Gemini, etc.)   │ │
+│  │  └─ Persistence: SQLite + auto-migration              │ │
+│  └────────────────────────────────────────────────────────┘ │
+└──────────────┬──────────────────────┬──────────────────────┘
+               │                      │
+        ┌──────▼────────┐      ┌──────▼───────────┐
+        │ MCP Server    │      │ REST Server      │
+        │ (stdio)       │      │ (gin, :8080)     │
+        │ 20 tools      │      │ SSE, webhooks    │
+        └───────────────┘      └──────────────────┘
+               │                      │
+        ┌──────▼──────┐         ┌─────▼──────────┐
+        │ Claude Code │         │ Web Dashboard  │
+        │ Desktop     │         │ Next.js :3000  │
+        └─────────────┘         └────────────────┘
+                                       │
+                                ┌──────▼──────────┐
+                                │ Cognee Service  │
+                                │ (Neo4j, Qdrant) │
+                                └─────────────────┘
 ```
 
----
+## Package Map
 
-## Data Flow: repowise init
-
-```
-1. SCAN        detect repos in workspace; user selects
-2. PARSE       tree-sitter per file → symbols + imports + calls (12 languages)
-3. GRAPH       assemble gonum DiGraph
-               nodes: CodeFile | Symbol | ExternalImport | Community
-               edges: imports | defines | has_method | calls | type_use
-4. METRICS     parallel (goroutine fan-out):
-               PageRank · betweenness centrality · symbol PageRank
-5. COMMUNITY   pure Go Leiden → gonum Louvain → directory fallback
-               file-level clustering by import topology
-               symbol-level clustering by call topology
-6. FLOWS       BFS from entry points (main/handler/route scoring heuristic)
-               traces call paths depth≤8; classifies intra vs cross-community
-7. ANALYSIS    dead code reachability · health biomarkers · git co-change edges
-8. GEN         optional: LLM doc page generation (text/template + provider)
-9. EXPORT      POST webhook to COGNEE_WEBHOOK_URL with repo_id + stats
-10. HOOK       offer post-commit hook for incremental re-indexing
-```
-
----
-
-## Data Flow: Cognee ingestion
-
-```
-repowise webhook arrives
-        │
-        ▼
-RepoWiseCogneeIngester.on_webhook(event)
-        │
-        ├── GET /api/export/cognee?repo_id=X&since=<last_ts>
-        │        returns: {entities[], relations[]}
-        │
-        ├── cognee.add(entities, dataset_name="code:{repo_id}")
-        │        → chunked, embedded, stored in Qdrant
-        │
-        └── graph.add_edge(from, to, type, props)
-                 → stored in Neo4j / Kuzu
-                 → cross-repo edges resolved post-ingest
-
-SlackIngester (scheduled, every N minutes)
-        ├── pull new messages from configured channels
-        ├── cognee.add(text, dataset_name="slack:{channel}")
-        └── NER pass: detect symbol names → MENTIONED_IN edges
-
-ProductNotesIngester (on-demand or scheduled)
-        ├── pull pages from Confluence / Notion / Linear
-        ├── cognee.add(content, dataset_name="notes:{source}")
-        └── LLM extraction: Feature → IMPLEMENTED_BY → CodeFile edges
-```
-
----
-
-## Data Flow: Persona agent query
-
-```
-User: "What code implements the payments checkout feature?"
-        │
-        ▼
-PM Agent MCP (:8101)
-  tool: feature_to_code("payments checkout")
-        │
-        ├── cognee.search("payments checkout", node_types=["Feature"], graph_hops=2)
-        │        → traverse IMPLEMENTED_BY → CodeFile nodes
-        │
-        ├── GET repowise /api/code-health?files=[...]
-        │        → health scores, biomarkers
-        │
-        └── return: {files, symbols, health, owners, slack_mentions}
-```
-
----
-
-## Internal Go Package Responsibilities
-
-### `internal/ingestion/parser`
-Wraps `smacker/go-tree-sitter`. Loads grammar per language. Executes `.scm`
-query files to extract: function/class/method declarations, import statements,
-call expressions. Returns `ParsedFile` structs consumed by graph builder.
-
-Supported languages: Python · TypeScript · JavaScript · Go · Rust · Java · C++ ·
-Kotlin · Ruby · C# · Swift · Scala · PHP
-
-### `internal/ingestion/graph`
-Builds a `gonum/graph/multi.DirectedGraph`. Two tiers of nodes:
-- File nodes: one per source file + one per unresolvable external import
-- Symbol nodes: keyed `file_path::symbol_name`
-
-Edge types: `imports | defines | has_method | calls | type_use | co_changes | dynamic_*`
-
-Post-build metrics (parallel via goroutines):
-- PageRank (file + symbol)
-- Betweenness centrality (file + symbol)
-- Strongly connected components (circular dep detection)
-
-### `internal/ingestion/resolvers`
-Per-language import resolution: converts raw import strings to canonical file
-paths within the repo. Handles relative imports, module aliases, Go module
-paths, TypeScript path aliases, Python package __init__ conventions.
-
-### `internal/ingestion/git`
-Uses `go-git/go-git`. Walks commit history up to configured limit. Builds
-co-change frequency map: files that appear in the same commit → `co_changes`
-edge weighted by frequency. Also extracts: commit authors per file (ownership),
-blame hunks for knowledge risk scoring.
-
-### `internal/analysis/community`
-Three-tier fallback:
-1. Pure Go Leiden (Traag et al. 2019) — guarantees connected partitions via
-   refinement phase `isWellConnected()` check
-2. `gonum/graph/community.Modularize` (Louvain) — if Leiden diverges
-3. Directory grouping — final fallback for disconnected graphs
-
-Input: undirected projection of dep graph (directed edges made symmetric).
-Output: `map[nodeID]communityID` for both file-level and symbol-level graphs.
-
-### `internal/analysis/flows`
-BFS from scored entry points. Entry point scoring: composite of function name
-patterns (main/handler/route/controller), PageRank, fan-out. Traces call paths
-depth ≤ 8. Classifies each flow as intra-community or cross-community. Dedupes
-overlapping paths.
-
-### `internal/analysis/deadcode`
-Graph reachability from all entry points. Symbols unreachable after full BFS
-are dead code candidates. Filtered by: dynamic dispatch markers, exported
-symbols, reflection-called patterns. Returns scored candidates.
-
-### `internal/analysis/health`
-11 biomarkers ported from Python:
-- `brain_method` — high complexity + many callers
-- `bumpy_road` — many nested conditionals
-- `complex_method` — cyclomatic complexity threshold
-- `coverage_gap` — low test coverage on high-churn file
-- `developer_congestion` — too many authors, high churn
-- `dry_violation` — duplicated code blocks (Rabin-Karp)
-- `knowledge_loss` — single-owner high-complexity file
-- `large_method` — LOC threshold
-- `nested_complexity` — deep nesting depth
-- `primitive_obsession` — overuse of primitives vs types
-- `untested_hotspot` — high-churn file with no tests
-
-Coverage parsers: Clover XML, Cobertura XML, LCOV. Duplication: Rabin-Karp
-rolling hash tokenizer.
-
-### `internal/server/export`
-New package added for Cognee integration (Phase 4).
-
-`GET /api/export/cognee?repo_id=X&since=<unix_ts>`
-Returns full or incremental entity+relation graph in Cognee-compatible JSON.
-Incremental mode: only nodes/edges modified after `since` timestamp.
-
-Fires webhook `POST COGNEE_WEBHOOK_URL` with `ReindexEvent` after each
-successful pipeline run.
-
-### `internal/mcp/tools`
-20 MCP tools via `mark3labs/mcp-go`. Transport: stdio (Claude Code/Desktop).
-Each tool queries SQLite + in-memory graph → returns JSON. Same tool contract
-as Python implementation.
-
-Tools: `health · why · callers · community · search · risk · context ·
-dependency · overview · dead_code · metrics · answer · symbol · diagram ·
-annotate · flows · decision_records`
-
----
-
-## Cognee Node + Edge Schema
-
-```
-Node types
-──────────
-CodeFile    path, repo_id, language, health_score, pagerank,
-            betweenness, community_id, is_entry_point
-Symbol      id (repo:file::name), name, kind (fn|class|method),
-            file, repo_id, betweenness, pagerank, is_dead, is_entry_point
-Community   id, repo_id, label, cohesion_score, size, algorithm
-Feature     id, title, source, status, url
-Decision    id, text, date, source, url
-SlackMsg    id, channel_id, text, author_id, ts, permalink
-Engineer    id, name, email, slack_id, github_login
-
-Edge types
-──────────
-IMPORTS          CodeFile → CodeFile         weight (import count)
-CALLS            Symbol → Symbol             confidence
-CO_CHANGES       CodeFile → CodeFile         count, last_seen
-DEFINES          CodeFile → Symbol
-HAS_METHOD       Symbol → Symbol             (class → method)
-MENTIONED_IN     Symbol → SlackMsg           confidence (NER score)
-IMPLEMENTED_BY   Feature → CodeFile          confidence (LLM)
-AFFECTS          Decision → Symbol           confidence (LLM)
-OWNS             Engineer → CodeFile         commit_count
-WROTE            Engineer → SlackMsg
-DISCUSSED_IN     Feature → SlackMsg          confidence
-```
-
----
-
-## Persona Agent Tools Reference
-
-### PM Agent (:8101)
-
-| Tool | Description |
+| Package | Responsibility |
 |---|---|
-| `feature_to_code(feature)` | Cognee Feature→CodeFile traversal + health enrichment |
-| `blast_radius_of_feature(feature)` | repowise /api/blast-radius on feature's code files |
-| `who_owns_feature(feature)` | Feature→CodeFile→Engineer ownership chain |
-| `slack_context_for_feature(feature)` | Feature→SlackMsg via DISCUSSED_IN edges |
-| `roadmap_to_code(milestone)` | Linear milestone → linked Features → code |
+| `pkg/config` | Environment-based configuration (envconfig), LLM provider selection, compliance patterns |
+| `pkg/logger` | Structured logging via zap, context propagation, metric tags |
+| `pkg/repowise` | Public API: `Instance` lifecycle, job scheduling, resource management |
+| `pkg/ingestion/parser` | Tree-sitter bindings, AST extraction, multi-language support (Go, Python, TypeScript, Java, Dart, Kotlin) |
+| `pkg/ingestion/git` | Git log walks, commit history, author tracking, blame attribution |
+| `pkg/ingestion/registry` | Symbol registry: functions, classes, types, their definitions and references |
+| `pkg/analysis/graph` | Dependency graph (gonum), PageRank, reachability, call chains |
+| `pkg/analysis/community` | Leiden algorithm, package clustering, cohesion metrics |
+| `pkg/analysis/markers` | Biomarker pipeline (concurrency, compliance, efficiency, AppSec) |
+| `pkg/server/mcp` | MCP server (mark3labs/mcp-go), 20 tools for Claude integration |
+| `pkg/server/rest` | REST API (chi), dashboard export, Cognee webhook |
+| `internal/providers` | LLM drivers: Anthropic, OpenAI, Gemini, tiered cost routing |
+| `internal/models` | Domain entities: FileNode, Symbol, Deduction, HealthMarker |
+| `cmd/repowise` | CLI entrypoint (cobra) |
 
-### Engineer Agent (:8102)
+## Analysis Pipeline
 
-| Tool | Description |
-|---|---|
-| `explain_symbol(symbol_id)` | code context + callers + Slack mentions combined |
-| `why_does_this_exist(symbol_id)` | Decision+Feature nodes linked to symbol (graph_hops=3) |
-| `safe_to_delete(symbol_id)` | dead code score + callers + recent Slack activity |
-| `callers_of(symbol_id)` | repowise /api/symbols/{id}/callers |
-| `health_of(module)` | repowise /api/code-health for module community |
+1. **Git Walk** — Extract commits, authors, timestamps, file change frequency
+2. **Tree-Sitter Parse** — Build AST for each source file; extract symbols (functions, classes, types)
+3. **Symbol Registry** — Deduplicate symbols, track definitions and references across files
+4. **Dependency Graph** — Build call graph, import graph; compute PageRank centrality
+5. **Community Detection** — Run Leiden clustering on graph; identify package and subsystem boundaries
+6. **Execution Flows** — Trace entry points (main, handlers, tests) to leaf functions; compute criticality
+7. **Dead Code Detection** — Find unreferenced functions, classes, and type definitions
+8. **Biomarker Analysis** — Run concurrent marker pipeline (concurrency, compliance, efficiency, AppSec) via `errgroup`
+9. **Persistence** — Serialize graph, deductions, metadata to SQLite; auto-migrate schema
+10. **Export** — REST endpoints for dashboard, webhook delivery to Cognee, MCP tool responses
 
-### EM Agent (:8103)
+## Biomarker Matrix
 
-| Tool | Description |
-|---|---|
-| `knowledge_risk_report()` | single-owner files + Slack expert identification |
-| `tech_debt_map()` | health biomarkers across all repos |
-| `cross_repo_impact(repo, change)` | CO_CHANGES edges across repo boundaries |
-| `decision_audit_trail(feature)` | all ADRs, Slack decisions, PRDs linked to code |
-| `team_velocity(since)` | git commit frequency + PR merge rate per engineer |
+All markers run concurrently via `errgroup` using Tree-sitter AST queries:
 
----
+| Category | Markers | Trigger | Example |
+|---|---|---|---|
+| **Concurrency Risk** | Go race detection, Java thread unsync, Python await race, Node closure, Dart post-await | Goroutine without channel/mutex, unsync field write, shared async state | Goroutine reading parent loop var |
+| **Regulatory (DPDP)** | Aadhaar, PAN, UPI_ID, mobile, email | String literal or regex match | `"aadhaar_number"` field |
+| **AI Efficiency** | Token bloat, export count, complexity, zombie code | LOC > threshold, unused export, cyclomatic > 15 | 500-line function with no tests |
+| **AppSec** | SQL injection sink, SSRF, broken crypto, RBAC, hardcoded secret | Pattern match on call args, crypto constant, hardcoded string | `WHERE id=" + id`, `Math.random()` for token |
 
-## Technology Stack Summary
+## Server Modes
 
-### repowise Go binary
-| Layer | Library |
-|---|---|
-| CLI | cobra |
-| HTTP | chi |
-| AST | smacker/go-tree-sitter |
-| Graph | gonum/graph |
-| Community | pure Go Leiden + gonum Modularize |
-| Git | go-git/go-git |
-| SQLite | modernc.org/sqlite (pure Go, zero CGo) |
-| Migrations | golang-migrate |
-| Vector | InMemory (default) / Qdrant Go client (opt-in) |
-| MCP | mark3labs/mcp-go |
-| LLM | anthropics/anthropic-sdk-go · sashabaranov/go-openai · google.golang.org/genai |
-| TUI | charmbracelet/bubbletea + lipgloss |
-| Scheduler | robfig/cron |
-| Logging | log/slog |
-| Config | gopkg.in/yaml.v3 |
+### MCP Server (stdio)
 
-### Cognee layer (Python)
-| Layer | Library |
-|---|---|
-| Knowledge graph | cognee + Neo4j / Kuzu |
-| Embeddings | Qdrant |
-| HTTP client | httpx |
-| MCP servers | FastMCP (mcp SDK) |
-| Validation | pydantic |
-| Slack | slack-sdk |
+Exposes 20 tools for Claude Code and Claude Desktop. Runs in foreground, listening on stdin/stdout. Tools include: graph queries (callers, callees, imports), flow traversal, health marker lookup, community analysis, dead code detection, compliance report.
 
-### Web UI (unchanged)
-| Layer | Library |
-|---|---|
-| Framework | Next.js 15 + React 19 |
-| Graph viz | @sigma/edge-curve · @xyflow/react |
-| Charts | recharts |
-| Components | Radix UI + Tailwind CSS 4 |
-| Data fetch | SWR |
-| Code highlight | shiki |
+```bash
+argus mcp --repo-path /path/to/repo --data-dir ./data
+```
 
----
+### REST Server (Gin, :8080)
 
-## What Does NOT Change
+Serves dashboard, export endpoints, and Cognee webhooks. Supports SSE streaming for long-running queries. Healthcheck: `GET /health`.
 
-- `packages/web` — Next.js 15 dashboard, connects to Go REST :8080
-- `packages/ui` — shared React component library
-- `packages/types` — TypeScript API contract types (shared between UI and Go API)
-- LiteLLM sidecar — proxy for DeepSeek / OpenRouter / exotic providers
+```bash
+argus server --port 8080 --repo-path /path/to/repo --data-dir ./data
+```
 
----
+Key endpoints:
+- `GET /health` — Readiness check
+- `GET /graph/summary` — Graph stats
+- `POST /export/cognee` — Send graph snapshot to Cognee service (webhook)
+- `POST /compliance/report` — DPDP compliance findings
+- `POST /health/markers` — All biomarkers for a file or symbol
+
+## LLM Provider Tiers
+
+| Tier | Providers | Use Case | Example |
+|---|---|---|---|
+| **Cheap** | Gemini Flash, Gemini Flash 8B | Bulk analysis, token counting, pattern detection | "Summarize this function. Is it a test?" |
+| **Premium** | Claude 3.5 Sonnet, GPT-4o | Deep reasoning, code review, architectural decisions | "Design a refactor for this class. Why?" |
+
+Cost router selects based on query type. Environment var `REPOWISE_LLM_PROVIDER` selects default tier.
+
+## Data Flow Diagram
+
+### repowise init
+
+```
+User: argus init --repo-path /target
+
+  1. Validate repo (git dir exists)
+  2. Git walk → commit history, file change freq
+  3. Tree-sitter parse all files → AST
+  4. Extract symbols, calls, imports
+  5. Build dependency graph (gonum)
+  6. Run Leiden clustering
+  7. Detect execution flows
+  8. Run biomarker pipeline (errgroup)
+  9. Persist to SQLite
+ 10. Return summary (files analyzed, symbols found, markers detected)
+```
+
+### MCP Tool: Graph query
+
+```
+Claude: "Who calls 'handlePayment'?"
+
+  1. MCP stdin receives tool invocation
+  2. Query registry for 'handlePayment' definition
+  3. Look up all callers in dependency graph
+  4. Return caller list with file, line, function
+  5. Write to stdout (MCP JSON response)
+```
+
+### REST: Cognee export
+
+```
+POST /export/cognee
+
+  1. Read graph summary from SQLite
+  2. Convert FileNode, Symbol, DeductionNode to Cognee schema
+  3. POST to Cognee service endpoint (webhook_url from env)
+  4. Stream response via SSE if requested
+```
+
+## Technology Stack
+
+| Layer | Technology | Why |
+|---|---|---|
+| Language | Go 1.21+ | Fast compile, zero-overhead concurrency, static binary |
+| Parsing | go-tree-sitter, tree-sitter-go/python/typescript/java/dart/kotlin | AST extraction, symbol resolution |
+| Graph | gonum/graph | Dependency graph, PageRank, traversal |
+| Community Detection | Pure Go Leiden | Zero CGo, clustering without external libs |
+| Persistence | modernc.org/sqlite | Zero CGo, portable, transactions |
+| Logger | uber-go/zap | Structured logging, low overhead |
+| CLI | cobra | Subcommands, flags, help generation |
+| REST | chi | Lightweight router, middleware, streaming |
+| Config | kelseyhightower/envconfig | Type-safe env var mapping |
+| MCP | mark3labs/mcp-go | Protocol server, tool registration |
+| Migrations | golang-migrate/migrate | Schema versioning, rollback |
+| Testing | testify, go test | Native testing, no external deps |
 
 ## Deployment
 
-```
-┌────────────────────────┐
-│  repowise-go  :8080    │  ← single static binary (GOOS cross-compiled)
-│  SQLite file on disk   │
-└────────────┬───────────┘
-             │ webhook + REST export
-┌────────────▼───────────┐
-│  cognee-service :8090  │  ← Python, docker-compose or k8s pod
-│  Neo4j / Kuzu          │
-│  Qdrant                │
-└────────────┬───────────┘
-       ┌─────┼─────┐
-       ▼     ▼     ▼
-    :8101  :8102  :8103     ← persona MCP servers (Python, same docker-compose)
-       └─────┼─────┘
-             ▼
-    Claude Code / Desktop   ← connects via stdio MCP config
-    Web UI :3000            ← Next.js, talks to :8080
+### Local Development
+
+```bash
+cd backend
+go run ./cmd/repowise init --repo-path /path/to/project --data-dir ./data
+go run ./cmd/repowise server --port 8080 --data-dir ./data
 ```
 
-Single-machine dev setup: `docker-compose up` starts cognee + qdrant + neo4j +
-3 MCP servers. repowise Go binary runs natively (or in same compose). Web UI
-runs via `npm run dev`.
+### Docker
 
-Production: repowise Go binary as systemd service or sidecar container.
-Cognee + graph DB + vector DB as separate services with persistent volumes.
+```dockerfile
+FROM golang:1.21 as builder
+WORKDIR /app
+COPY backend .
+RUN go build -o argus ./cmd/repowise
+
+FROM gcr.io/distroless/base-debian12
+COPY --from=builder /app/argus /
+ENTRYPOINT ["/argus"]
+```
+
+### Kubernetes / Systemd
+
+Deploy as sidecar or standalone service. SQLite data dir can be a persistent volume. MCP mode runs as a service for Claude Code integration.
+
+Example systemd unit:
+
+```ini
+[Unit]
+Description=Argus Codebase Intelligence
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/argus server --port 8080 --data-dir /var/lib/argus
+WorkingDirectory=/var/lib/argus
+Restart=on-failure
+Environment="REPOWISE_OPENAI_API_KEY=..."
+
+[Install]
+WantedBy=multi-user.target
+```
