@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -52,6 +53,10 @@ func (s *RESTServer) indexRepo(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(body.Path) == "" {
+		s.error(w, http.StatusBadRequest, "path is required")
 		return
 	}
 	if _, err := s.argus.Analyze(r.Context(), body.Path); err != nil {

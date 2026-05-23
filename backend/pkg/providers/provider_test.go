@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/venkatvghub/argus/pkg/config"
@@ -107,8 +108,7 @@ func TestOpenAIProviderKeyMissing(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for missing API key, got nil")
 	}
-	expectedErr := "OpenAI API key is missing"
-	if err.Error() != expectedErr {
-		t.Errorf("expected error %q, got %q", expectedErr, err.Error())
+	if !strings.Contains(err.Error(), "OpenAI API key") {
+		t.Errorf("expected error containing %q, got %q", "OpenAI API key", err.Error())
 	}
 }

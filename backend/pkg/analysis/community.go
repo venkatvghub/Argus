@@ -94,7 +94,10 @@ func Leiden(g graph.Graph, resolution float64, iterations int) map[int][]int64 {
 			// Calculate the gain of staying in the current community
 			weightToCurrent := commGains[currentComm]
 			currentCommWeightWithoutNode := s.commWeights[currentComm] - nodeWeight
-			stayGain := weightToCurrent - resolution*nodeWeight*currentCommWeightWithoutNode/s.totalWeight
+			stayGain := weightToCurrent
+			if s.totalWeight != 0 {
+				stayGain -= resolution * nodeWeight * currentCommWeightWithoutNode / s.totalWeight
+			}
 
 			maxGain := stayGain
 
@@ -107,7 +110,10 @@ func Leiden(g graph.Graph, resolution float64, iterations int) map[int][]int64 {
 
 				// Modularity gain formula:
 				// deltaQ = w(i, C) - resolution * k_i * Sigma_tot / 2m
-				gain := weightToComm - resolution*nodeWeight*commWeight/s.totalWeight
+				gain := weightToComm
+				if s.totalWeight != 0 {
+					gain -= resolution * nodeWeight * commWeight / s.totalWeight
+				}
 
 				// Use a small epsilon to avoid floating point issues and unnecessary moves
 				if gain > maxGain+1e-9 {

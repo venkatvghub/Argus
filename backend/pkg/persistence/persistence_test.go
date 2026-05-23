@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDB(t *testing.T) {
@@ -11,7 +12,7 @@ func TestDB(t *testing.T) {
 	// New() now takes a full DB path, not just a directory.
 	dbPath := dataDir + "/argus.db"
 	db, err := New(dbPath)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer db.Close()
 
 	// Verify table exists

@@ -55,8 +55,10 @@ func TestParser_Parse(t *testing.T) {
 
 		// Safe version
 		safeContent := []byte("package main\nfunc main() { go func(v int) { }(1) }")
-		tree, _, _ = p.Parse(ctx, safeContent, "main.go")
-		biomarkers, _ = p.ExecuteBiomarkers(tree, langName, safeContent)
+		tree, _, err = p.Parse(ctx, safeContent, "main.go")
+		require.NoError(t, err)
+		biomarkers, err = p.ExecuteBiomarkers(tree, langName, safeContent)
+		require.NoError(t, err)
 		assert.NotContains(t, getMarkerNames(biomarkers), "goroutine_outer_mutation")
 	})
 
@@ -75,8 +77,10 @@ func TestParser_Parse(t *testing.T) {
 
 		// Safe version
 		safeContent := []byte("import hashlib\nhashlib.sha256()\ncursor.execute('SELECT * FROM users WHERE id = %s', (id,))\nsome_func()")
-		tree, _, _ = p.Parse(ctx, safeContent, "app.py")
-		biomarkers, _ = p.ExecuteBiomarkers(tree, langName, safeContent)
+		tree, _, err = p.Parse(ctx, safeContent, "app.py")
+		require.NoError(t, err)
+		biomarkers, err = p.ExecuteBiomarkers(tree, langName, safeContent)
+		require.NoError(t, err)
 		names = getMarkerNames(biomarkers)
 		assert.NotContains(t, names, "broken_crypto")
 		assert.NotContains(t, names, "tainted_sql")
@@ -96,8 +100,10 @@ func TestParser_Parse(t *testing.T) {
 
 		// Safe version
 		safeContent := []byte("class T { void m() { MessageDigest.getInstance(\"SHA-256\"); stmt.executeQuery(\"SELECT * FROM users\"); } }")
-		tree, _, _ = p.Parse(ctx, safeContent, "Test.java")
-		biomarkers, _ = p.ExecuteBiomarkers(tree, langName, safeContent)
+		tree, _, err = p.Parse(ctx, safeContent, "Test.java")
+		require.NoError(t, err)
+		biomarkers, err = p.ExecuteBiomarkers(tree, langName, safeContent)
+		require.NoError(t, err)
 		names = getMarkerNames(biomarkers)
 		assert.NotContains(t, names, "broken_crypto")
 		assert.NotContains(t, names, "tainted_sql")
@@ -117,8 +123,10 @@ func TestParser_Parse(t *testing.T) {
 
 		// Safe version
 		safeContent := []byte("crypto.createHash('sha256'); db.query('SELECT * FROM users');")
-		tree, _, _ = p.Parse(ctx, safeContent, "app.js")
-		biomarkers, _ = p.ExecuteBiomarkers(tree, langName, safeContent)
+		tree, _, err = p.Parse(ctx, safeContent, "app.js")
+		require.NoError(t, err)
+		biomarkers, err = p.ExecuteBiomarkers(tree, langName, safeContent)
+		require.NoError(t, err)
 		names = getMarkerNames(biomarkers)
 		assert.NotContains(t, names, "broken_crypto")
 		assert.NotContains(t, names, "tainted_sql")

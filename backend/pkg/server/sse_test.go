@@ -89,7 +89,11 @@ func TestSSEHandler(t *testing.T) {
 func TestSSEParsing(t *testing.T) {
 	// More detailed parsing test
 	ctx := context.Background()
-	inst, _ := repowise.New(ctx, nil)
+	inst, err := repowise.New(ctx, nil)
+	if err != nil {
+		t.Fatalf("failed to create repowise instance: %v", err)
+	}
+	defer inst.Close()
 	srv := NewRESTServer(inst)
 
 	job := inst.Jobs.CreateJob("parse_test")

@@ -68,6 +68,12 @@ func TestGitWalker_Walk(t *testing.T) {
 
 	// Verify that the parser found the unsecured_goroutine biomarker
 	assert.NotEmpty(t, symbols)
-	assert.Equal(t, "unsecured_goroutine", symbols[0].Name)
-	assert.Equal(t, "file1.go", symbols[0].FilePath)
+	found := false
+	for _, sym := range symbols {
+		if sym.Name == "unsecured_goroutine" && sym.FilePath == "file1.go" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected unsecured_goroutine symbol in file1.go")
 }

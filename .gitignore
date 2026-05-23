@@ -19,6 +19,7 @@ yarn-error.log*
 backend/bin/
 backend/out/
 backend/vendor/
+data/
 backend/*.test
 backend/*.exe
 backend/*.exe~

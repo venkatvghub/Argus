@@ -37,6 +37,7 @@ func New(dbPath string) (*DB, error) {
 	}
 
 	if err := runMigrations(db); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 

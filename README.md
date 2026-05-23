@@ -19,7 +19,7 @@ Where repowise (Python) took 300–800ms to cold-start and consumed 120MB, Argus
 
 ### Prerequisites
 
-- Go 1.21+
+- Go 1.24+
 - Git
 - (Optional) Docker for Cognee integration
 
@@ -71,7 +71,7 @@ Starts a Gin REST server on `:8080`. Health check: `curl http://localhost:8080/h
 ## Documentation
 
 - **[Philosophy & Why Go](docs/PHILOSOPHY.md)** — Problem statement, rewrite rationale, foundational mandates, and biomarker categories
-- **[Architecture](docs/ARCHITECTURE.md)** — System diagram, package responsibilities, analysis pipeline, server modes, LLM tiers
+- **[Architecture](docs/architecture.md)** — System diagram, package responsibilities, analysis pipeline, server modes, LLM tiers
 - **[Implementation Plan](docs/plan.md)** — Phase-wise roadmap (Weeks 1–18), structural design, Cognee integration
 
 ## License

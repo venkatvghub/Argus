@@ -33,11 +33,21 @@ func TestJobManager(t *testing.T) {
 			jm.UpdateStatus(job.ID, models.JobStatusCompleted, "100%", nil)
 		}()
 
-		update1 := <-ch
+		var update1 models.Job
+		select {
+		case update1 = <-ch:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for update1")
+		}
 		assert.Equal(t, models.JobStatusInProgress, update1.Status)
 		assert.Equal(t, "50%", update1.Progress)
 
-		update2 := <-ch
+		var update2 models.Job
+		select {
+		case update2 = <-ch:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for update2")
+		}
 		assert.Equal(t, models.JobStatusCompleted, update2.Status)
 		assert.Equal(t, "100%", update2.Progress)
 	})
