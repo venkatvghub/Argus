@@ -26,8 +26,8 @@ Where repowise (Python) took 300–800ms to cold-start and consumed 120MB, Argus
 ### Clone & Build
 
 ```bash
-git clone https://github.com/sliceit/argus.git
-cd argus/backend
+git clone git@github.com:venkatvghub/Argus.git
+cd Argus/backend
 go build -o argus ./cmd/repowise
 ```
 
