@@ -123,6 +123,45 @@ func TestParser_Parse(t *testing.T) {
 		assert.NotContains(t, names, "broken_crypto")
 		assert.NotContains(t, names, "tainted_sql")
 	})
+
+	t.Run("Kotlin Parsing NoError", func(t *testing.T) {
+		// Kotlin biomarker queries may fail to compile due to grammar differences.
+		// This test ensures parsing doesn't error and gracefully degrades.
+		content := []byte(`
+fun main() {
+    println("Hello, Kotlin!")
+}`)
+		tree, langName, err := p.Parse(ctx, content, "main.kt")
+		require.NoError(t, err)
+		assert.Equal(t, "kotlin", langName)
+		assert.NotNil(t, tree)
+
+		biomarkers, err := p.ExecuteBiomarkers(tree, langName, content)
+		require.NoError(t, err)
+		// No biomarkers expected (safe code, or queries not compiled)
+		names := getMarkerNames(biomarkers)
+		assert.Empty(t, names)
+	})
+
+	t.Run("Terraform Parsing NoError", func(t *testing.T) {
+		// Terraform biomarker queries may fail to compile due to grammar differences.
+		// This test ensures parsing doesn't error and gracefully degrades.
+		content := []byte(`
+resource "aws_instance" "example" {
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t2.micro"
+}`)
+		tree, langName, err := p.Parse(ctx, content, "main.tf")
+		require.NoError(t, err)
+		assert.Equal(t, "terraform", langName)
+		assert.NotNil(t, tree)
+
+		biomarkers, err := p.ExecuteBiomarkers(tree, langName, content)
+		require.NoError(t, err)
+		// No biomarkers expected (safe code, or queries not compiled)
+		names := getMarkerNames(biomarkers)
+		assert.Empty(t, names)
+	})
 }
 
 func getMarkerNames(symbols []models.Symbol) []string {

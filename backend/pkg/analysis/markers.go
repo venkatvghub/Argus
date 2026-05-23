@@ -18,6 +18,20 @@ var (
 	upiRegex     = regexp.MustCompile(`\b[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}\b`)
 )
 
+// Regex patterns for Dart/Flutter biomarkers (package-level, compiled once)
+var (
+	dartSetStateAfterAwait  = regexp.MustCompile(`(?s)await\s+.{1,200}setState\s*\(`)
+	dartContextAfterAwait   = regexp.MustCompile(`(?s)await\s+.{1,200}(?:Navigator|ScaffoldMessenger|Theme|MediaQuery)\s*\.of\s*\(\s*context\s*\)`)
+	dartBrokenCryptoPattern = regexp.MustCompile(`(?i)MD5|SHA1[^2-9]|DES(?:ede)?[^A-Z]`)
+)
+
+// Regex patterns for SQL biomarkers (package-level, compiled once)
+var (
+	sqlConcatPattern = regexp.MustCompile(`(?i)(SELECT|INSERT|UPDATE|DELETE)\s+.{0,100}(\+\s*['"]|['"]\s*\+|CONCAT\s*\()`)
+	sqlSelectStar    = regexp.MustCompile(`(?i)SELECT\s+\*\s+FROM`)
+	sqlCredsPattern  = regexp.MustCompile(`(?i)(PASSWORD|IDENTIFIED BY)\s+['"][^'"]{3,}['"]`)
+)
+
 // MarkerEngine performs regulatory and efficiency analysis.
 type MarkerEngine struct {
 	repoPath string
@@ -53,6 +67,14 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 		// 4.3 AI-Agent Efficiency (Token Bloat part)
 		if tkm != nil {
 			markers = append(markers, me.checkTokenBloat(file.Path, sContent, tkm)...)
+		}
+
+		// Language-specific regex markers
+		if filepath.Ext(file.Path) == ".dart" {
+			markers = append(markers, me.checkDartFlutter(file.Path, sContent)...)
+		}
+		if filepath.Ext(file.Path) == ".sql" {
+			markers = append(markers, me.checkSQL(file.Path, sContent)...)
 		}
 	}
 
@@ -210,6 +232,66 @@ func (me *MarkerEngine) detectZombieExports(graph *GraphEngine) []models.Marker 
 				})
 			}
 		}
+	}
+	return markers
+}
+
+// checkDartFlutter detects Dart/Flutter biomarkers including setState after await, invalid context usage, and weak cryptography.
+func (me *MarkerEngine) checkDartFlutter(filePath, content string) []models.Marker {
+	var markers []models.Marker
+	if dartSetStateAfterAwait.MatchString(content) {
+		markers = append(markers, models.Marker{
+			Type:     "dart_setstate_after_await",
+			Severity: "high",
+			Message:  "setState() called after await — may operate on disposed widget",
+			File:     filePath,
+		})
+	}
+	if dartContextAfterAwait.MatchString(content) {
+		markers = append(markers, models.Marker{
+			Type:     "dart_context_after_await",
+			Severity: "medium",
+			Message:  "BuildContext used after async gap — context may be invalid",
+			File:     filePath,
+		})
+	}
+	if dartBrokenCryptoPattern.MatchString(content) {
+		markers = append(markers, models.Marker{
+			Type:     "dart_broken_crypto",
+			Severity: "high",
+			Message:  "Weak cryptographic algorithm detected (MD5/SHA1/DES)",
+			File:     filePath,
+		})
+	}
+	return markers
+}
+
+// checkSQL detects SQL biomarkers including injection risks, overly broad SELECT queries, and hardcoded credentials.
+func (me *MarkerEngine) checkSQL(filePath, content string) []models.Marker {
+	var markers []models.Marker
+	if sqlConcatPattern.MatchString(content) {
+		markers = append(markers, models.Marker{
+			Type:     "sql_injection_risk",
+			Severity: "high",
+			Message:  "SQL query built with string concatenation — injection risk",
+			File:     filePath,
+		})
+	}
+	if sqlSelectStar.MatchString(content) {
+		markers = append(markers, models.Marker{
+			Type:     "sql_select_star",
+			Severity: "low",
+			Message:  "SELECT * reduces AI context efficiency and risks data over-exposure",
+			File:     filePath,
+		})
+	}
+	if sqlCredsPattern.MatchString(content) {
+		markers = append(markers, models.Marker{
+			Type:     "sql_hardcoded_credential",
+			Severity: "critical",
+			Message:  "Hardcoded credential in SQL file",
+			File:     filePath,
+		})
 	}
 	return markers
 }

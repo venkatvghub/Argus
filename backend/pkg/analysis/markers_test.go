@@ -454,3 +454,502 @@ func TestDetectPhantomCoupling_OwnershipPercentageFormatting(t *testing.T) {
 	assert.Contains(t, markers[0].Message, "25%")
 	assert.NotContains(t, markers[0].Message, "0.25")
 }
+
+// ============ Dart/Flutter Regex Marker Tests ============
+
+func TestCheckDartFlutter_SetStateAfterAwait(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		expect  bool
+	}{
+		{
+			name: "setState after await triggers marker",
+			content: `
+async void loadData() {
+  final data = await fetchData();
+  setState(() {
+    items = data;
+  });
+}`,
+			expect: true,
+		},
+		{
+			name: "setState before await is safe",
+			content: `
+void updateState() {
+  setState(() {
+    items = [];
+  });
+  fetchData();
+}`,
+			expect: false,
+		},
+		{
+			name: "no setState no marker",
+			content: `
+async void loadData() {
+  final data = await fetchData();
+  print(data);
+}`,
+			expect: false,
+		},
+	}
+
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := "test.dart"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(tt.content), 0644))
+
+			files := []models.FileNode{{Path: filePath, IsFile: true}}
+			markers := me.Run(files, nil, nil)
+
+			found := false
+			for _, m := range markers {
+				if m.Type == "dart_setstate_after_await" {
+					found = true
+					break
+				}
+			}
+
+			if tt.expect {
+				assert.True(t, found, "Expected dart_setstate_after_await marker")
+			} else {
+				assert.False(t, found, "Did not expect dart_setstate_after_await marker")
+			}
+		})
+	}
+}
+
+func TestCheckDartFlutter_ContextAfterAwait(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		expect  bool
+	}{
+		{
+			name: "context used after await triggers marker",
+			content: `
+void navigateAfterLoad() async {
+  await loadData();
+  Navigator.of(context).push(...);
+}`,
+			expect: true,
+		},
+		{
+			name: "context before await is safe",
+			content: `
+void navigate() {
+  Navigator.of(context).push(...);
+  loadData();
+}`,
+			expect: false,
+		},
+		{
+			name: "no context usage no marker",
+			content: `
+async void load() {
+  final data = await fetchData();
+  print(data);
+}`,
+			expect: false,
+		},
+	}
+
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := "screen.dart"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(tt.content), 0644))
+
+			files := []models.FileNode{{Path: filePath, IsFile: true}}
+			markers := me.Run(files, nil, nil)
+
+			found := false
+			for _, m := range markers {
+				if m.Type == "dart_context_after_await" {
+					found = true
+					break
+				}
+			}
+
+			if tt.expect {
+				assert.True(t, found, "Expected dart_context_after_await marker")
+			} else {
+				assert.False(t, found, "Did not expect dart_context_after_await marker")
+			}
+		})
+	}
+}
+
+func TestCheckDartFlutter_BrokenCrypto(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		expect  bool
+	}{
+		{
+			name: "weak crypto algorithm triggers marker",
+			content: `
+import 'package:crypto/crypto.dart';
+
+String hashPassword(String pwd) {
+  return md5.convert(pwd.codeUnits).toString();
+}`,
+			expect: true,
+		},
+		{
+			name: "strong crypto is safe",
+			content: `
+import 'package:crypto/crypto.dart';
+
+String hashPassword(String pwd) {
+  return sha256.convert(pwd.codeUnits).toString();
+}`,
+			expect: false,
+		},
+		{
+			name: "no crypto usage no marker",
+			content: `
+void printData(String data) {
+  print(data);
+}`,
+			expect: false,
+		},
+	}
+
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := "crypto_util.dart"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(tt.content), 0644))
+
+			files := []models.FileNode{{Path: filePath, IsFile: true}}
+			markers := me.Run(files, nil, nil)
+
+			found := false
+			for _, m := range markers {
+				if m.Type == "dart_broken_crypto" {
+					found = true
+					break
+				}
+			}
+
+			if tt.expect {
+				assert.True(t, found, "Expected dart_broken_crypto marker")
+			} else {
+				assert.False(t, found, "Did not expect dart_broken_crypto marker")
+			}
+		})
+	}
+}
+
+func TestCheckDartFlutter_NoMarkerSafeCode(t *testing.T) {
+	content := `
+void safeFunction(String input) {
+  final result = input.toUpperCase();
+  print(result);
+}
+
+class SafeWidget extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container();
+  }
+}
+`
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	filePath := "safe.dart"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
+
+	files := []models.FileNode{{Path: filePath, IsFile: true}}
+	markers := me.Run(files, nil, nil)
+
+	for _, m := range markers {
+		if m.Type == "dart_setstate_after_await" || m.Type == "dart_context_after_await" || m.Type == "dart_broken_crypto" {
+			t.Fatalf("Unexpected Dart marker found: %s", m.Type)
+		}
+	}
+}
+
+func TestMarkerEngineRun_DartFileGated(t *testing.T) {
+	content := `
+async void load() {
+  await fetchData();
+  setState(() {});
+}
+`
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	// Write to non-Dart file
+	filePath := "wrong.txt"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
+
+	files := []models.FileNode{{Path: filePath, IsFile: true}}
+	markers := me.Run(files, nil, nil)
+
+	for _, m := range markers {
+		if strings.HasPrefix(m.Type, "dart_") {
+			t.Fatalf("Dart marker should not trigger for non-.dart file")
+		}
+	}
+
+	// Now write to actual .dart file
+	dartPath := "screen.dart"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, dartPath), []byte(content), 0644))
+
+	files = []models.FileNode{{Path: dartPath, IsFile: true}}
+	markers = me.Run(files, nil, nil)
+
+	// Should find setState marker in Dart file
+	found := false
+	for _, m := range markers {
+		if m.Type == "dart_setstate_after_await" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Should detect Dart marker in .dart file")
+}
+
+// ============ SQL Regex Marker Tests ============
+
+func TestCheckSQL_InjectionRisk(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		expect  bool
+	}{
+		{
+			name: "SQL concatenation triggers marker",
+			content: `
+SELECT * FROM users WHERE id = ' + userId + '
+SELECT * FROM orders WHERE status = " || status || "
+`,
+			expect: true,
+		},
+		{
+			name: "parameterized query is safe",
+			content: `
+SELECT * FROM users WHERE id = ?
+SELECT * FROM orders WHERE status = $1
+SELECT * FROM products WHERE name = :name
+`,
+			expect: false,
+		},
+		{
+			name: "literal strings only are safe",
+			content: `
+SELECT * FROM users WHERE status = 'active'
+SELECT * FROM accounts WHERE type = 'premium'
+`,
+			expect: false,
+		},
+	}
+
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := "query.sql"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(tt.content), 0644))
+
+			files := []models.FileNode{{Path: filePath, IsFile: true}}
+			markers := me.Run(files, nil, nil)
+
+			found := false
+			for _, m := range markers {
+				if m.Type == "sql_injection_risk" {
+					found = true
+					break
+				}
+			}
+
+			if tt.expect {
+				assert.True(t, found, "Expected sql_injection_risk marker")
+			} else {
+				assert.False(t, found, "Did not expect sql_injection_risk marker")
+			}
+		})
+	}
+}
+
+func TestCheckSQL_SelectStar(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		expect  bool
+	}{
+		{
+			name: "SELECT * triggers marker",
+			content: `
+SELECT * FROM users
+SELECT col1, col2 FROM orders
+SELECT * FROM products WHERE active = true
+`,
+			expect: true,
+		},
+		{
+			name: "explicit columns are safe",
+			content: `
+SELECT id, name, email FROM users
+SELECT order_id, total, date FROM orders
+SELECT product_id, name, price FROM products
+`,
+			expect: false,
+		},
+	}
+
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := "schema.sql"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(tt.content), 0644))
+
+			files := []models.FileNode{{Path: filePath, IsFile: true}}
+			markers := me.Run(files, nil, nil)
+
+			found := false
+			for _, m := range markers {
+				if m.Type == "sql_select_star" {
+					found = true
+					break
+				}
+			}
+
+			if tt.expect {
+				assert.True(t, found, "Expected sql_select_star marker")
+			} else {
+				assert.False(t, found, "Did not expect sql_select_star marker")
+			}
+		})
+	}
+}
+
+func TestCheckSQL_HardcodedCredential(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		expect  bool
+	}{
+		{
+			name: "hardcoded credentials trigger marker",
+			content: `
+CREATE USER 'admin'@'localhost' IDENTIFIED BY 'MySecurePass123';
+ALTER USER 'user1' PASSWORD 'VerySecretPassword456';
+`,
+			expect: true,
+		},
+		{
+			name: "generic strings are safe",
+			content: `
+SELECT * FROM users WHERE username = 'testuser'
+INSERT INTO audit_log VALUES ('action_performed', 'timestamp')
+`,
+			expect: false,
+		},
+	}
+
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := "migration.sql"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(tt.content), 0644))
+
+			files := []models.FileNode{{Path: filePath, IsFile: true}}
+			markers := me.Run(files, nil, nil)
+
+			found := false
+			for _, m := range markers {
+				if m.Type == "sql_hardcoded_credential" {
+					found = true
+					break
+				}
+			}
+
+			if tt.expect {
+				assert.True(t, found, "Expected sql_hardcoded_credential marker")
+			} else {
+				assert.False(t, found, "Did not expect sql_hardcoded_credential marker")
+			}
+		})
+	}
+}
+
+func TestCheckSQL_NoMarkerParameterized(t *testing.T) {
+	content := `
+-- Parameterized queries are safe
+SELECT * FROM users WHERE id = $1 AND status = $2
+SELECT email FROM accounts WHERE username = ?
+INSERT INTO transactions (user_id, amount) VALUES (?, ?)
+DELETE FROM logs WHERE timestamp < :cutoff_date
+UPDATE settings SET value = @newValue WHERE key = @key
+`
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	filePath := "safe_queries.sql"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
+
+	files := []models.FileNode{{Path: filePath, IsFile: true}}
+	markers := me.Run(files, nil, nil)
+
+	for _, m := range markers {
+		if m.Type == "sql_injection_risk" || m.Type == "sql_hardcoded_credential" {
+			t.Fatalf("Unexpected SQL security marker for parameterized query: %s", m.Type)
+		}
+	}
+}
+
+func TestMarkerEngineRun_SQLFileGated(t *testing.T) {
+	content := `
+SELECT * FROM users WHERE id = ' + userId
+`
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	// Write to non-SQL file
+	filePath := "readme.md"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
+
+	files := []models.FileNode{{Path: filePath, IsFile: true}}
+	markers := me.Run(files, nil, nil)
+
+	for _, m := range markers {
+		if strings.HasPrefix(m.Type, "sql_") {
+			t.Fatalf("SQL marker should not trigger for non-.sql file")
+		}
+	}
+
+	// Now write to actual .sql file
+	sqlPath := "query.sql"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, sqlPath), []byte(content), 0644))
+
+	files = []models.FileNode{{Path: sqlPath, IsFile: true}}
+	markers = me.Run(files, nil, nil)
+
+	// Should find injection risk marker in SQL file
+	found := false
+	for _, m := range markers {
+		if m.Type == "sql_injection_risk" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Should detect SQL marker in .sql file")
+}
