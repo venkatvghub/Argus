@@ -16,6 +16,13 @@ var (
 	aadhaarRegex = regexp.MustCompile(`\b\d{12}\b`)
 	panRegex     = regexp.MustCompile(`\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b`)
 	upiRegex     = regexp.MustCompile(`\b[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}\b`)
+
+	// indianMobileRegex matches Indian 10-digit mobile numbers with optional +91/0091/91 prefix.
+	indianMobileRegex = regexp.MustCompile(`(?:(?:\+91|0091|91)[-.\s]?)?[6-9]\d{9}\b`)
+	// intlMobileRegex matches international mobile numbers in E.164 format (+<country><number>, 8-15 digits total).
+	intlMobileRegex = regexp.MustCompile(`\+[1-9]\d{7,14}\b`)
+	// emailRegex matches standard RFC-5321 simplified email addresses, including placeholder domains.
+	emailRegex = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
 )
 
 // Regex patterns for Dart/Flutter biomarkers (package-level, compiled once)
@@ -116,7 +123,72 @@ func (me *MarkerEngine) checkPII(filePath, content string) []models.Marker {
 			File:     filePath,
 		})
 	}
+
+	// Indian mobile numbers (DPDP regulated)
+	if indianMobileRegex.MatchString(content) {
+		markers = append(markers, models.Marker{
+			Type:     "dpdp_mobile_exposure",
+			Severity: "high",
+			Message:  "Potential Indian mobile number exposure detected",
+			File:     filePath,
+		})
+	}
+
+	// International mobile (E.164) — exclude Indian numbers (+91 prefix)
+	intlMobiles := intlMobileRegex.FindAllString(content, -1)
+	nonIndianIntl := 0
+	for _, mobile := range intlMobiles {
+		// Exclude +91 which are Indian
+		if !strings.HasPrefix(mobile, "+91") {
+			nonIndianIntl++
+		}
+	}
+	if nonIndianIntl > 0 {
+		markers = append(markers, models.Marker{
+			Type:     "pii_mobile_exposure",
+			Severity: "medium",
+			Message:  "Potential international mobile number (E.164) exposure detected",
+			File:     filePath,
+		})
+	}
+
+	// Email addresses — filter out test/placeholder domains
+	emails := emailRegex.FindAllString(content, -1)
+	realEmails := filterTestEmails(emails)
+	if len(realEmails) > 0 {
+		markers = append(markers, models.Marker{
+			Type:     "pii_email_exposure",
+			Severity: "medium",
+			Message:  fmt.Sprintf("Potential email address exposure detected (%d occurrence(s))", len(realEmails)),
+			File:     filePath,
+		})
+	}
+
 	return markers
+}
+
+// filterTestEmails removes known test and placeholder email domains from a list.
+func filterTestEmails(emails []string) []string {
+	testDomains := []string{
+		"example.com", "example.org", "example.net",
+		"test.com", "test.org", "foo.com", "bar.com",
+		"placeholder.com", "noreply.com", "localhost",
+	}
+	var real []string
+	for _, e := range emails {
+		isTest := false
+		lower := strings.ToLower(e)
+		for _, d := range testDomains {
+			if strings.HasSuffix(lower, "@"+d) {
+				isTest = true
+				break
+			}
+		}
+		if !isTest {
+			real = append(real, e)
+		}
+	}
+	return real
 }
 
 func (me *MarkerEngine) checkUntrackedConsent(filePath, content string) []models.Marker {

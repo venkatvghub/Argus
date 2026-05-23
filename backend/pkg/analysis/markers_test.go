@@ -953,3 +953,504 @@ SELECT * FROM users WHERE id = ' + userId
 	}
 	assert.True(t, found, "Should detect SQL marker in .sql file")
 }
+
+// ============ PII Mobile & Email Tests ============
+
+// TestCheckPII_IndianMobile tests Indian mobile number detection (DPDP-regulated)
+// with various formats: bare 10-digit, +91 prefix, 91 prefix, 0091 prefix with single separator.
+func TestCheckPII_IndianMobile(t *testing.T) {
+	tests := []struct {
+		name      string
+		content   string
+		expectPII bool // Should marker be present?
+	}{
+		{
+			name:      "bare 10-digit Indian mobile",
+			content:   "User phone: 9876543210",
+			expectPII: true,
+		},
+		{
+			name:      "Indian mobile with +91 prefix no separator",
+			content:   "Contact: +919876543210",
+			expectPII: true,
+		},
+		{
+			name:      "Indian mobile with 91 prefix no separator",
+			content:   "Mobile: 919876543210",
+			expectPII: true,
+		},
+		{
+			name:      "Indian mobile with +91 and dash separator",
+			content:   "Phone: +91-9876543210",
+			expectPII: true,
+		},
+		{
+			name:      "non-Indian mobile starting with 1",
+			content:   "Phone: 1234567890",
+			expectPII: false,
+		},
+		{
+			name:      "too short, not valid mobile",
+			content:   "Short: 98765",
+			expectPII: false,
+		},
+		{
+			name:      "starts with 5, not valid Indian mobile",
+			content:   "Invalid: 5876543210",
+			expectPII: false,
+		},
+		{
+			name:      "multiple Indian mobiles",
+			content:   "Phones: 9876543210, +919876543210, and 919876543210",
+			expectPII: true,
+		},
+	}
+
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := "test.txt"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(tt.content), 0644))
+
+			files := []models.FileNode{{Path: filePath, IsFile: true}}
+			markers := me.Run(files, nil, nil)
+
+			found := false
+			for _, m := range markers {
+				if m.Type == "dpdp_mobile_exposure" {
+					found = true
+					break
+				}
+			}
+
+			if tt.expectPII {
+				assert.True(t, found, "Expected dpdp_mobile_exposure marker for: "+tt.name)
+			} else {
+				assert.False(t, found, "Did not expect dpdp_mobile_exposure marker for: "+tt.name)
+			}
+		})
+	}
+}
+
+// TestCheckPII_InternationalMobile tests E.164 international mobile detection
+// excluding Indian numbers which are caught separately.
+func TestCheckPII_InternationalMobile(t *testing.T) {
+	tests := []struct {
+		name      string
+		content   string
+		expectPII bool
+	}{
+		{
+			name:      "US phone number E.164",
+			content:   "Contact: +14155552671.",
+			expectPII: true,
+		},
+		{
+			name:      "UK phone number E.164",
+			content:   "Phone: +447700900123.",
+			expectPII: true,
+		},
+		{
+			name:      "Indian +91 not counted as international",
+			content:   "India: +919876543210",
+			expectPII: false,
+		},
+		{
+			name:      "E.164 prefix only, too short",
+			content:   "Invalid: +1",
+			expectPII: false,
+		},
+		{
+			name:      "Germany phone",
+			content:   "Contact: +491234567890.",
+			expectPII: true,
+		},
+		{
+			name:      "Australia phone",
+			content:   "Aus: +61412345678.",
+			expectPII: true,
+		},
+		{
+			name:      "multiple international numbers",
+			content:   "Contacts: +14155552671. +447700900123. +491234567890.",
+			expectPII: true,
+		},
+	}
+
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := "test.txt"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(tt.content), 0644))
+
+			files := []models.FileNode{{Path: filePath, IsFile: true}}
+			markers := me.Run(files, nil, nil)
+
+			found := false
+			for _, m := range markers {
+				if m.Type == "pii_mobile_exposure" {
+					found = true
+					break
+				}
+			}
+
+			if tt.expectPII {
+				assert.True(t, found, "Expected pii_mobile_exposure marker for: "+tt.name)
+			} else {
+				assert.False(t, found, "Did not expect pii_mobile_exposure marker for: "+tt.name)
+			}
+		})
+	}
+}
+
+// TestCheckPII_Email tests email address detection with filtering of test domains.
+func TestCheckPII_Email(t *testing.T) {
+	tests := []struct {
+		name      string
+		content   string
+		expectPII bool
+	}{
+		{
+			name:      "real company email",
+			content:   "Contact: user@company.com",
+			expectPII: true,
+		},
+		{
+			name:      "real bank email",
+			content:   "Email: john.doe@bank.co.in",
+			expectPII: true,
+		},
+		{
+			name:      "test domain example.com filtered",
+			content:   "Test: test@example.com",
+			expectPII: false,
+		},
+		{
+			name:      "test domain noreply filtered",
+			content:   "Email: noreply@example.org",
+			expectPII: false,
+		},
+		{
+			name:      "test domain foo.com filtered",
+			content:   "Email: admin@foo.com",
+			expectPII: false,
+		},
+		{
+			name:      "real startup domain",
+			content:   "Contact: user@real-company.io",
+			expectPII: true,
+		},
+		{
+			name:      "bar.com test domain filtered",
+			content:   "Email: test@bar.com",
+			expectPII: false,
+		},
+		{
+			name:      "multiple real emails",
+			content:   "Emails: alice@company.com, bob@startup.io, charlie@bank.co.in",
+			expectPII: true,
+		},
+		{
+			name:      "mixed real and test emails, should detect real",
+			content:   "Emails: admin@foo.com, real@company.com",
+			expectPII: true,
+		},
+	}
+
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := "test.txt"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(tt.content), 0644))
+
+			files := []models.FileNode{{Path: filePath, IsFile: true}}
+			markers := me.Run(files, nil, nil)
+
+			found := false
+			for _, m := range markers {
+				if m.Type == "pii_email_exposure" {
+					found = true
+					break
+				}
+			}
+
+			if tt.expectPII {
+				assert.True(t, found, "Expected pii_email_exposure marker for: "+tt.name)
+			} else {
+				assert.False(t, found, "Did not expect pii_email_exposure marker for: "+tt.name)
+			}
+		})
+	}
+}
+
+// TestCheckPII_EmailCount verifies that the marker message includes occurrence count.
+func TestCheckPII_EmailCount(t *testing.T) {
+	content := "Emails: alice@company.com, bob@startup.io, charlie@bank.co.in"
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	filePath := "test.txt"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
+
+	files := []models.FileNode{{Path: filePath, IsFile: true}}
+	markers := me.Run(files, nil, nil)
+
+	var emailMarker *models.Marker
+	for i, m := range markers {
+		if m.Type == "pii_email_exposure" {
+			emailMarker = &markers[i]
+			break
+		}
+	}
+
+	require.NotNil(t, emailMarker, "Should find email marker")
+	assert.Contains(t, emailMarker.Message, "3", "Message should contain count of 3")
+	assert.Contains(t, emailMarker.Message, "occurrence", "Message should contain 'occurrence'")
+}
+
+// TestCheckPII_NoFalsePositives tests that standard code patterns don't trigger false positives.
+func TestCheckPII_NoFalsePositives(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "port number 8080 not flagged as mobile",
+			content: "server_port: 8080",
+		},
+		{
+			name:    "port number 3000 not flagged as mobile",
+			content: "listen_port: 3000",
+		},
+		{
+			name:    "version string 1.2.3.4 not flagged as mobile",
+			content: "version: 1.2.3.4",
+		},
+		{
+			name:    "IPv4 address not flagged as mobile",
+			content: "server_ip: 192.168.1.1",
+		},
+		{
+			name:    "IPv4 address not flagged as mobile variant",
+			content: "gateway: 10.0.0.1",
+		},
+		{
+			name:    "code example with phone comment",
+			content: "// Config for: 8080, 3000, or any port",
+		},
+	}
+
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := "test.txt"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(tt.content), 0644))
+
+			files := []models.FileNode{{Path: filePath, IsFile: true}}
+			markers := me.Run(files, nil, nil)
+
+			for _, m := range markers {
+				if m.Type == "dpdp_mobile_exposure" || m.Type == "pii_mobile_exposure" {
+					t.Fatalf("Unexpected mobile marker for: %s", tt.name)
+				}
+			}
+		})
+	}
+}
+
+// TestFilterTestEmails_KnownTestDomains tests the filterTestEmails helper function
+// directly to verify test domain filtering behavior.
+func TestFilterTestEmails_KnownTestDomains(t *testing.T) {
+	tests := []struct {
+		name     string
+		emails   []string
+		expected int // Expected number of emails after filtering
+	}{
+		{
+			name: "example.com filtered",
+			emails: []string{
+				"test@example.com",
+				"admin@example.org",
+				"user@example.net",
+			},
+			expected: 0,
+		},
+		{
+			name: "test.com and derivatives filtered",
+			emails: []string{
+				"test@test.com",
+				"admin@test.org",
+			},
+			expected: 0,
+		},
+		{
+			name: "foo.com and bar.com filtered",
+			emails: []string{
+				"user@foo.com",
+				"admin@bar.com",
+			},
+			expected: 0,
+		},
+		{
+			name: "real domains kept",
+			emails: []string{
+				"user@company.com",
+				"alice@startup.io",
+				"bob@bank.co.in",
+			},
+			expected: 3,
+		},
+		{
+			name: "mixed real and test",
+			emails: []string{
+				"admin@foo.com",
+				"real@company.com",
+				"test@example.com",
+				"alice@startup.io",
+			},
+			expected: 2,
+		},
+		{
+			name: "case insensitive filtering",
+			emails: []string{
+				"user@Example.COM",
+				"test@TEST.COM",
+				"admin@Foo.Com",
+				"real@Company.Com",
+			},
+			expected: 1,
+		},
+		{
+			name: "placeholder.com and noreply.com filtered",
+			emails: []string{
+				"noreply@placeholder.com",
+				"no-reply@noreply.com",
+			},
+			expected: 0,
+		},
+		{
+			name: "empty list",
+			emails: []string{},
+			expected: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := filterTestEmails(tt.emails)
+			assert.Equal(t, tt.expected, len(result),
+				"Expected %d real emails after filtering, got %d: %v",
+				tt.expected, len(result), result)
+		})
+	}
+}
+
+// TestCheckPII_MobileEmailCombined tests that mobile and email markers
+// can both be present in the same content without interference.
+func TestCheckPII_MobileEmailCombined(t *testing.T) {
+	content := `
+	Customer Phone: 9876543210.
+	Email: john@company.com
+	International: +14155552671.
+	Landline: 04423456789
+	Contact: alice@startup.io
+	`
+
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	filePath := "customer_data.txt"
+	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
+
+	files := []models.FileNode{{Path: filePath, IsFile: true}}
+	markers := me.Run(files, nil, nil)
+
+	typeMap := make(map[string]int)
+	for _, m := range markers {
+		typeMap[m.Type]++
+	}
+
+	assert.Greater(t, typeMap["dpdp_mobile_exposure"], 0, "Should detect Indian mobile")
+	assert.Greater(t, typeMap["pii_mobile_exposure"], 0, "Should detect international mobile")
+	assert.Greater(t, typeMap["pii_email_exposure"], 0, "Should detect real emails")
+}
+
+// TestCheckPII_IndianMobileVariations tests various valid formatting of Indian mobiles.
+func TestCheckPII_IndianMobileVariations(t *testing.T) {
+	tests := []struct {
+		name      string
+		content   string
+		expectPII bool
+	}{
+		{
+			name:      "with single space before number",
+			content:   "Phone: +91 9876543210",
+			expectPII: true,
+		},
+		{
+			name:      "with single dash and +91",
+			content:   "Contact: +91-9876543210",
+			expectPII: true,
+		},
+		{
+			name:      "with dot separator and 91 prefix",
+			content:   "Mobile: 91.9876543210",
+			expectPII: true,
+		},
+		{
+			name:      "starts with 6, valid Indian mobile",
+			content:   "Phone: 6876543210",
+			expectPII: true,
+		},
+		{
+			name:      "starts with 7, valid Indian mobile",
+			content:   "Phone: 7876543210",
+			expectPII: true,
+		},
+		{
+			name:      "starts with 8, valid Indian mobile",
+			content:   "Phone: 8876543210",
+			expectPII: true,
+		},
+		{
+			name:      "starts with 9, valid Indian mobile",
+			content:   "Phone: 9876543210",
+			expectPII: true,
+		},
+	}
+
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filePath := "test.txt"
+			require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(tt.content), 0644))
+
+			files := []models.FileNode{{Path: filePath, IsFile: true}}
+			markers := me.Run(files, nil, nil)
+
+			found := false
+			for _, m := range markers {
+				if m.Type == "dpdp_mobile_exposure" {
+					found = true
+					break
+				}
+			}
+
+			if tt.expectPII {
+				assert.True(t, found, "Expected dpdp_mobile_exposure marker for: "+tt.name)
+			} else {
+				assert.False(t, found, "Did not expect dpdp_mobile_exposure marker for: "+tt.name)
+			}
+		})
+	}
+}
