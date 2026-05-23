@@ -26,7 +26,7 @@ func (m *MockProvider) Name() string {
 	return m.name
 }
 
-func (m *MockProvider) ChatStream(ctx context.Context, prompt string) (<-chan string, <-chan error, error) {
+func (m *MockProvider) ChatStream(ctx context.Context, repoID string, prompt string) (<-chan string, <-chan error, error) {
 	ch := make(chan string)
 	errCh := make(chan error)
 	close(ch)

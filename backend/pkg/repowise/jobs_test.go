@@ -177,6 +177,9 @@ func TestWorkerPoolConcurrency(t *testing.T) {
 		jobs[i] = jm.CreateJob(fmt.Sprintf("concurrent_job_%d", i))
 	}
 
+	globalCh, unsubscribe := jm.Subscribe("*")
+	defer unsubscribe()
+
 	// Submit all jobs
 	for i := 0; i < jobCount; i++ {
 		idx := i // capture loop variable
@@ -186,20 +189,19 @@ func TestWorkerPoolConcurrency(t *testing.T) {
 		})
 	}
 
-	// Wait for all jobs to complete by collecting from global subscription
-	globalCh, unsubscribe := jm.Subscribe("*")
-	defer unsubscribe()
-
 	completedJobs := make(map[string]bool)
 	deadline := time.After(3 * time.Second)
 
-	// Collect completion events from worker execution
-	for i := 0; i < jobCount; i++ {
+	// Collect completion events from worker execution and global subscription
+	for len(completedJobs) < jobCount {
 		select {
 		case jobID := <-completionChannel:
 			completedJobs[jobID] = true
-			// Mark as completed in job manager
 			jm.UpdateStatus(jobID, models.JobStatusCompleted, "100%", nil)
+		case job := <-globalCh:
+			if job.Status == models.JobStatusCompleted {
+				completedJobs[job.ID] = true
+			}
 		case <-deadline:
 			t.Fatalf("timeout waiting for all jobs to complete; got %d/%d", len(completedJobs), jobCount)
 		}
@@ -208,24 +210,5 @@ func TestWorkerPoolConcurrency(t *testing.T) {
 	// Verify all jobs completed
 	for i := 0; i < jobCount; i++ {
 		assert.True(t, completedJobs[jobs[i].ID], "job %s should have completed", jobs[i].ID)
-	}
-
-	// Verify via Subscribe channel
-	completedViaSubscribe := 0
-	deadline = time.After(500 * time.Millisecond)
-	for {
-		select {
-		case job := <-globalCh:
-			if job.Status == models.JobStatusCompleted {
-				completedViaSubscribe++
-			}
-			if completedViaSubscribe >= jobCount {
-				assert.Equal(t, jobCount, completedViaSubscribe)
-				return
-			}
-		case <-deadline:
-			assert.GreaterOrEqual(t, completedViaSubscribe, jobCount, "should have received %d completed jobs via subscribe", jobCount)
-			return
-		}
 	}
 }

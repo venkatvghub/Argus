@@ -3,10 +3,13 @@ package server
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -201,13 +204,15 @@ func TestChatStreamHandler_StreamsTokens(t *testing.T) {
 	require.NoError(t, err)
 	defer inst.Close()
 
+	repoID := seedChatStreamRepo(t, inst)
+
 	srv := NewRESTServer(inst)
 
 	// Create a router with mock provider that streams 3 tokens
 	router := createRouterWithMockProvider([]string{"token1", "token2", "token3"}, nil)
 	srv.SetProvider(router)
 
-	req := httptest.NewRequest("GET", "/api/chat/stream?repoId=abc&q=test", nil)
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoId="+repoID+"&q=test", nil)
 	rr := httptest.NewRecorder()
 
 	srv.chatStreamHandler(rr, req)
@@ -225,13 +230,15 @@ func TestChatStreamHandler_StreamingError(t *testing.T) {
 	require.NoError(t, err)
 	defer inst.Close()
 
+	repoID := seedChatStreamRepo(t, inst)
+
 	srv := NewRESTServer(inst)
 
 	// Create a router with mock provider that errors
 	router := createRouterWithMockProvider([]string{}, errors.New("streaming error"))
 	srv.SetProvider(router)
 
-	req := httptest.NewRequest("GET", "/api/chat/stream?repoId=abc&q=test", nil)
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoId="+repoID+"&q=test", nil)
 	rr := httptest.NewRecorder()
 
 	srv.chatStreamHandler(rr, req)
@@ -247,6 +254,8 @@ func TestSetProvider(t *testing.T) {
 	require.NoError(t, err)
 	defer inst.Close()
 
+	repoID := seedChatStreamRepo(t, inst)
+
 	srv := NewRESTServer(inst)
 
 	// Before SetProvider, provider should be nil
@@ -260,7 +269,7 @@ func TestSetProvider(t *testing.T) {
 	assert.NotNil(t, srv.provider)
 
 	// Verify it works by making a request
-	req := httptest.NewRequest("GET", "/api/chat/stream?repoId=abc&q=hello", nil)
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoId="+repoID+"&q=hello", nil)
 	rr := httptest.NewRecorder()
 
 	srv.chatStreamHandler(rr, req)
@@ -284,7 +293,7 @@ func (m *TestMockProvider) Chat(ctx context.Context, prompt string) (string, err
 	return strings.Join(m.tokens, " "), nil
 }
 
-func (m *TestMockProvider) ChatStream(ctx context.Context, prompt string) (<-chan string, <-chan error, error) {
+func (m *TestMockProvider) ChatStream(ctx context.Context, repoID string, prompt string) (<-chan string, <-chan error, error) {
 	tokenCh := make(chan string, len(m.tokens))
 	errCh := make(chan error)
 
@@ -329,4 +338,28 @@ func createRouterWithMockProvider(tokens []string, err error) *providers.Router 
 	router.Register(mock)
 
 	return router
+}
+
+func seedChatStreamRepo(t *testing.T, inst *repowise.Instance) string {
+	t.Helper()
+
+	tmpRepo, repoCleanup := setupTestRepo(t)
+	t.Cleanup(repoCleanup)
+
+	_, err := inst.Analyze(context.Background(), tmpRepo)
+	require.NoError(t, err)
+
+	absPath, err := filepath.Abs(tmpRepo)
+	require.NoError(t, err)
+	repoID := fmt.Sprintf("%x", sha256.Sum256([]byte(absPath)))[:12]
+
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := inst.GetRepoSymbols(context.Background(), repoID); err == nil {
+			return repoID
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for repo to be indexed")
+	return ""
 }

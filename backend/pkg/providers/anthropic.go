@@ -33,7 +33,7 @@ func (p *AnthropicProvider) Chat(ctx context.Context, prompt string) (string, er
 }
 
 // ChatStream sends a prompt to Anthropic and returns a stream of tokens.
-func (p *AnthropicProvider) ChatStream(ctx context.Context, prompt string) (<-chan string, <-chan error, error) {
+func (p *AnthropicProvider) ChatStream(ctx context.Context, repoID string, prompt string) (<-chan string, <-chan error, error) {
 	if p.apiKey == "" {
 		return nil, nil, fmt.Errorf("Anthropic API key is missing")
 	}
@@ -44,7 +44,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, prompt string) (<-ch
 		defer close(out)
 		defer close(errCh)
 
-		response := fmt.Sprintf("[Anthropic %s] Response to: %s", p.model, prompt)
+		response := fmt.Sprintf("[Anthropic %s repo:%s] Response to: %s", p.model, repoID, prompt)
 		words := strings.Fields(response)
 		for _, word := range words {
 			select {

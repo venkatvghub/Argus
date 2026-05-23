@@ -34,7 +34,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, prompt string) (string, error
 }
 
 // ChatStream sends a prompt to OpenAI and returns a stream of tokens.
-func (p *OpenAIProvider) ChatStream(ctx context.Context, prompt string) (<-chan string, <-chan error, error) {
+func (p *OpenAIProvider) ChatStream(ctx context.Context, repoID string, prompt string) (<-chan string, <-chan error, error) {
 	if p.apiKey == "" {
 		return nil, nil, fmt.Errorf("OpenAI API key is missing")
 	}
@@ -45,7 +45,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, prompt string) (<-chan 
 		defer close(out)
 		defer close(errCh)
 
-		response := fmt.Sprintf("[OpenAI %s] Response to: %s", p.model, prompt)
+		response := fmt.Sprintf("[OpenAI %s repo:%s] Response to: %s", p.model, repoID, prompt)
 		words := strings.Fields(response)
 		for _, word := range words {
 			select {

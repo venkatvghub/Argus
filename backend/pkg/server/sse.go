@@ -24,6 +24,10 @@ func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "LLM provider not configured", http.StatusServiceUnavailable)
 		return
 	}
+	if _, err := s.argus.GetRepoSymbols(r.Context(), repoID); err != nil {
+		http.Error(w, "repo not found", http.StatusNotFound)
+		return
+	}
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -36,7 +40,7 @@ func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	tokens, errs, err := s.provider.ChatStream(r.Context(), query)
+	tokens, errs, err := s.provider.ChatStream(r.Context(), repoID, query)
 	if err != nil {
 		fmt.Fprintf(w, "data: [ERROR] %s\n\n", err.Error())
 		flusher.Flush()
