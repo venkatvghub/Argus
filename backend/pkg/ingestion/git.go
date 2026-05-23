@@ -3,6 +3,7 @@ package ingestion
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
@@ -55,13 +56,15 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 			Size:   f.Size,
 		}
 
-		// Calculate churn and ownership
-		churn, ownership, err := calculateMetrics(repo, f.Name)
+		// Calculate churn, ownership, and git org metrics
+		churn, ownership, authorCount, primaryLastCommit, err := calculateMetrics(repo, f.Name)
 		if err != nil {
 			return fmt.Errorf("metrics for %s: %w", f.Name, err)
 		}
 		node.Churn = churn
 		node.Ownership = ownership
+		node.AuthorCount = authorCount
+		node.PrimaryAuthorLastCommit = primaryLastCommit
 		nodes = append(nodes, node)
 
 		// AST Analysis if parser is available
@@ -107,38 +110,68 @@ func (w *GitWalker) analyzeFile(ctx context.Context, f *object.File) ([]models.S
 	return symbols, nil
 }
 
-// calculateMetrics computes the churn count and top-author ownership for a file.
-func calculateMetrics(repo *git.Repository, filePath string) (int, float64, error) {
+// calculateMetrics computes churn, top-author ownership, distinct author count (last 90 days),
+// and the last commit time of the primary author (highest total commit count).
+func calculateMetrics(repo *git.Repository, filePath string) (churn int, ownership float64, authorCount int, primaryAuthorLastCommit time.Time, err error) {
 	cIter, err := repo.Log(&git.LogOptions{
 		FileName: &filePath,
 	})
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, time.Time{}, err
 	}
 
-	authorCommits := make(map[string]int)
+	type authorStats struct {
+		totalCommits int
+		lastCommit   time.Time
+	}
+
+	allAuthorStats := make(map[string]*authorStats)
+	recentAuthors := make(map[string]bool)
+	cutoff := time.Now().AddDate(0, 0, -90)
 	totalCommits := 0
 
 	err = cIter.ForEach(func(c *object.Commit) error {
-		authorCommits[c.Author.Email]++
+		email := c.Author.Email
 		totalCommits++
+
+		if _, ok := allAuthorStats[email]; !ok {
+			allAuthorStats[email] = &authorStats{}
+		}
+		st := allAuthorStats[email]
+		st.totalCommits++
+		if c.Author.When.After(st.lastCommit) {
+			st.lastCommit = c.Author.When
+		}
+
+		if c.Author.When.After(cutoff) {
+			recentAuthors[email] = true
+		}
 		return nil
 	})
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, time.Time{}, err
 	}
 
 	if totalCommits == 0 {
-		return 0, 0, nil
+		return 0, 0, 0, time.Time{}, nil
 	}
 
+	// Find primary author (highest total commit count)
 	maxCommits := 0
-	for _, count := range authorCommits {
-		if count > maxCommits {
-			maxCommits = count
+	var primaryEmail string
+	for email, st := range allAuthorStats {
+		if st.totalCommits > maxCommits {
+			maxCommits = st.totalCommits
+			primaryEmail = email
 		}
 	}
 
-	ownership := float64(maxCommits) / float64(totalCommits)
-	return totalCommits, ownership, nil
+	ownership = float64(maxCommits) / float64(totalCommits)
+	authorCount = len(recentAuthors)
+
+	if primaryEmail != "" {
+		primaryAuthorLastCommit = allAuthorStats[primaryEmail].lastCommit
+	}
+
+	return totalCommits, ownership, authorCount, primaryAuthorLastCommit, nil
 }

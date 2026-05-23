@@ -23,6 +23,10 @@ type FileNode struct {
 	Language  string    `json:"language,omitempty"`
 	Churn     int       `json:"churn"`     // Number of commits touching this file
 	Ownership float64   `json:"ownership"` // Percentage of commits by the top author
+
+	AuthorCount             int       `json:"author_count"`
+	PrimaryAuthorLastCommit time.Time `json:"primary_author_last_commit,omitempty"`
+	LineCoverage            float64   `json:"line_coverage"` // 0.0–100.0; -1 = unknown
 }
 
 // CommitInfo captures metadata about a specific Git commit.
