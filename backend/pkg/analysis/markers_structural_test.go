@@ -330,7 +330,7 @@ func TestCountCyclomatic(t *testing.T) {
 				"  x := 1",
 				"}",
 			},
-			expected: 2, // if, && (but || on same line combines)
+			expected: 3, // if, &&, ||
 		},
 		{
 			name: "comments ignored",
@@ -484,7 +484,21 @@ func TestHasBumpyRoad(t *testing.T) {
 			expected: true, // 3 cases at same indent (0)
 		},
 		{
-			name: "nested ifs don't count as sequential",
+			name: "switch cases with bodies between labels",
+			input: []string{
+				"switch x {",
+				"case 1:",
+				"  y := 1",
+				"case 2:",
+				"  y := 2",
+				"case 3:",
+				"  y := 3",
+				"}",
+			},
+			expected: true,
+		},
+		{
+			name: "sibling nested ifs at same indent",
 			input: []string{
 				"if x > 0 {",
 				"  if y > 0 {",
@@ -495,7 +509,7 @@ func TestHasBumpyRoad(t *testing.T) {
 				"  }",
 				"}",
 			},
-			expected: false, // only 1 top-level if
+			expected: true, // 3 sequential ifs at indent 2
 		},
 		{
 			name: "mixed indents reset counter",

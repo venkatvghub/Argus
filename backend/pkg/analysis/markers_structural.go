@@ -693,7 +693,7 @@ func stripCodeLiterals(line string) string {
 }
 
 // branchRe matches branch/loop keywords that add cyclomatic complexity.
-var branchRe = regexp.MustCompile(`\belse if\b|\bif\b|\bfor\b|\bwhile\b|\bcase\b|\bcatch\b|\bdefault\b|\?[^:]*:|\b&&\b|\|\|`)
+var branchRe = regexp.MustCompile(`\belse if\b|\bif\b|\bfor\b|\bwhile\b|\bcase\b|\bcatch\b|\bdefault\b|\?[^:]*:|&&|\|\|`)
 
 // countCyclomatic counts additional branch points in function body lines.
 func countCyclomatic(lines []string) int {
@@ -738,12 +738,30 @@ func hasBumpyRoad(lines []string) bool {
 			if seq > maxSeq {
 				maxSeq = seq
 			}
-		} else if t := strings.TrimSpace(line); t != "" && !strings.HasPrefix(t, "//") {
-			seq = 0
-			lastIndent = -1
+			continue
 		}
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "//") {
+			continue
+		}
+		indent := lineIndent(line)
+		if lastIndent < 0 || indent > lastIndent {
+			continue
+		}
+		if isClosingBraceOnly(t) {
+			continue
+		}
+		seq = 0
+		lastIndent = -1
 	}
 	return maxSeq >= bumpyRoadBranchMin
+}
+
+func isClosingBraceOnly(trimmed string) bool {
+	if trimmed == "}" || trimmed == "});" || trimmed == "};" || trimmed == ")," {
+		return true
+	}
+	return strings.HasPrefix(trimmed, "}") && !strings.Contains(trimmed, "{") && !strings.Contains(trimmed, "else")
 }
 
 // computePageRankThreshold returns the PageRank value at the (1-topPct) percentile
@@ -872,23 +890,25 @@ func (me *MarkerEngine) checkStructuralAndSizeMarkers(
 			})
 		}
 
-		// Phase 5.2: primitive_obsession
-		primCount := 0
-		for _, p := range fn.params {
-			if primTypes[p] {
-				primCount++
+		// Phase 5.2: primitive_obsession (Go only — reliable param type extraction)
+		if ext == ".go" {
+			primCount := 0
+			for _, p := range fn.params {
+				if primTypes[p] {
+					primCount++
+				}
 			}
-		}
-		if primCount >= primitiveObsessionParamMin {
-			markers = append(markers, models.Marker{
-				Type:      "primitive_obsession",
-				Severity:  "low",
-				Message:   fmt.Sprintf("Primitive obsession in '%s': %d primitive params", fn.name, primCount),
-				File:      filePath,
-				Line:      fn.startLine,
-				Deduction: 0.6,
-				Category:  models.ScoreCatSize,
-			})
+			if primCount >= primitiveObsessionParamMin {
+				markers = append(markers, models.Marker{
+					Type:      "primitive_obsession",
+					Severity:  "low",
+					Message:   fmt.Sprintf("Primitive obsession in '%s': %d primitive params", fn.name, primCount),
+					File:      filePath,
+					Line:      fn.startLine,
+					Deduction: 0.6,
+					Category:  models.ScoreCatSize,
+				})
+			}
 		}
 	}
 	return markers
