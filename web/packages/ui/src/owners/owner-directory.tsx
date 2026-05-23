@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { Users, Search } from "lucide-react";
-import type { OwnerListEntry } from "@repowise-dev/types/owners";
+import type { OwnerListEntry } from "@argus-dev/types/owners";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Skeleton } from "../ui/skeleton";

@@ -6,7 +6,7 @@ import type {
   DecisionRecord,
   DecisionStatus,
   DecisionSource,
-} from "@repowise-dev/types/decisions";
+} from "@argus-dev/types/decisions";
 
 const STATUS_VARIANT: Record<string, "default" | "fresh" | "stale" | "outdated" | "outline" | "accent"> = {
   active: "fresh",

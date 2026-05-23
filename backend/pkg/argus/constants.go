@@ -1,4 +1,4 @@
-package repowise
+package argus
 
 const (
 	jobTypeAnalysis    = "analysis"

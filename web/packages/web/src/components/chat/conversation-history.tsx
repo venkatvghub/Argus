@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { ConversationHistory as ConversationHistoryShell } from "@repowise-dev/ui/chat/conversation-history";
+import { ConversationHistory as ConversationHistoryShell } from "@argus-dev/ui/chat/conversation-history";
 import { listConversations, deleteConversation } from "@/lib/api/chat";
 import type { ConversationResponse } from "@/lib/api/types";
 

@@ -6,8 +6,8 @@ import { getCoordinatorHealth } from "@/lib/api/health";
 import { RepoSettingsFormWrapper as RepoSettingsForm } from "@/components/repos/repo-settings-form-wrapper";
 import { CoordinatorHealthPanel } from "@/components/repos/coordinator-health-panel";
 import { DeleteRepoButton } from "@/components/repos/delete-repo-button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@repowise-dev/ui/ui/card";
-import { Separator } from "@repowise-dev/ui/ui/separator";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@argus-dev/ui/ui/card";
+import { Separator } from "@argus-dev/ui/ui/separator";
 import { OperationsPanel } from "@/components/repos/operations-panel";
 
 interface Props {

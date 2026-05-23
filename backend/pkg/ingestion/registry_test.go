@@ -19,8 +19,8 @@ func TestGetLanguageByExtension(t *testing.T) {
 	r := NewLanguageRegistry()
 
 	tests := []struct {
-		name          string
-		ext           string
+		name           string
+		ext            string
 		expectLangName string
 		expectLangNil  bool // true if language object may be nil (not yet implemented)
 	}{
@@ -78,9 +78,9 @@ func TestGetLanguageByName(t *testing.T) {
 	r := NewLanguageRegistry()
 
 	tests := []struct {
-		name          string
-		langName      string
-		expectNonNil  bool // false if language implementation may not exist
+		name         string
+		langName     string
+		expectNonNil bool // false if language implementation may not exist
 	}{
 		// Implemented languages
 		{name: "go language", langName: "go", expectNonNil: true},
@@ -149,8 +149,8 @@ func TestGetLanguageForPath(t *testing.T) {
 	r := NewLanguageRegistry()
 
 	tests := []struct {
-		name          string
-		path          string
+		name           string
+		path           string
 		expectLangName string
 		expectLangNil  bool
 	}{

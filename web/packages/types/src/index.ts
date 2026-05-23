@@ -1,9 +1,9 @@
 /**
- * @repowise-dev/types — canonical TypeScript data contracts for the Repowise
+ * @argus-dev/types — canonical TypeScript data contracts for the Argus
  * dashboard (`packages/web`) and any downstream consumer that renders the
  * same engine artifacts.
  *
- * Re-exports per-domain modules. Subpath imports (`@repowise-dev/types/graph`)
+ * Re-exports per-domain modules. Subpath imports (`@argus-dev/types/graph`)
  * are also supported via the `exports` map in package.json.
  */
 

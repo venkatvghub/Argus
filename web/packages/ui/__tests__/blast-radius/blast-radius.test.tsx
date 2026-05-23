@@ -9,7 +9,7 @@ import { ReviewersTable } from "../../src/blast-radius/reviewers-table";
 import { TestGapsList } from "../../src/blast-radius/test-gaps-list";
 import { BlastRadiusSummary } from "../../src/blast-radius/blast-radius-summary";
 import { BlastRadiusResults } from "../../src/blast-radius/blast-radius-results";
-import type { BlastRadiusResponse } from "@repowise-dev/types/blast-radius";
+import type { BlastRadiusResponse } from "@argus-dev/types/blast-radius";
 
 const fixture: BlastRadiusResponse = {
   direct_risks: [

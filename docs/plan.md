@@ -1,13 +1,13 @@
-# repowise Go Rewrite: Implementation Plan
+# Argus Go Rewrite: Implementation Plan
 
 ---
 
 ## 1. Vision & Core Principles
 
-repowise is being re-engineered from the ground up as a high-performance, purely static Go binary. It serves as both a standalone CLI tool and a programmatic engine for deep codebase intelligence.
+Argus is being developed as a high-performance, purely static Go binary. It serves as both a standalone CLI tool and a programmatic engine for deep codebase intelligence.
 
 ### Foundational Mandates
-- **Programmatic-First Architecture:** Core logic is decoupled from CLI/HTTP layers and exported in `pkg/`. It can be embedded in any Go application via `repowise.New(config)`.
+- **Programmatic-First Architecture:** Core logic is decoupled from CLI/HTTP layers and exported in `pkg/`. It can be embedded in any Go application via `argus.New(config)`.
 - **Zero-CGo Portability:** Use `modernc.org/sqlite` and pure Go implementations (e.g., Leiden) to ensure seamless cross-compilation to single static binaries.
 - **Decoupled Execution:** No requirement to run from within a target repo. Use `--repo-path` to target any directory.
 - **Externalized State:** Storage (`--data-dir`) and Documentation (`--docs-dir`) are configurable and kept outside the target source tree.
@@ -21,9 +21,9 @@ repowise is being re-engineered from the ground up as a high-performance, purely
 ```text
 Argus/
 ├── backend/               # High-performance Go implementation
-│   ├── cmd/repowise/      # CLI entrypoint (cobra)
+│   ├── cmd/argus/      # CLI entrypoint (cobra)
 │   ├── pkg/               # EXPORTED: Core Library
-│   │   ├── repowise/      # Public API: Instance management
+│   │   ├── argus/      # Public API: Instance management
 │   │   ├── config/        # envconfig models
 │   │   ├── logger/        # zap logger (Argonaut port)
 │   │   └── ...
@@ -90,7 +90,7 @@ All markers are executed concurrently via `errgroup` and Tree-sitter AST queries
 ### Phase 1: Foundation & Programmatic Core (Weeks 1-4)
 - [x] **1.1 Logger & Config:** Port Argonaut logger; define `envconfig` structs.
 - [x] **1.2 Persistence:** Setup configurable SQLite and `golang-migrate`.
-- [x] **1.3 Programmatic API:** Define `repowise.Instance` and resource lifecycle.
+- [x] **1.3 Programmatic API:** Define `argus.Instance` and resource lifecycle.
 - [x] **1.4 Basic Ingestion:** Tree-sitter wrapper and initial Git walk.
 
 ### Phase 2: Advanced Analysis & Biomarkers (Weeks 5-9)
@@ -112,19 +112,19 @@ All markers are executed concurrently via `errgroup` and Tree-sitter AST queries
 
 ### Phase 5: Structural Quality Engine — 12 Original Biomarkers (Weeks 19-26)
 
-Implements the **12 repowise structural biomarkers** that form the deterministic, zero-LLM scoring layer. Each file receives a 10.0 base score; these markers deduct points subject to category caps (see PHILOSOPHY.md). Engine lives in `pkg/analysis/scorer.go`.
+Implements the **12 foundational structural biomarkers** that form the deterministic, zero-LLM scoring layer. Each file receives a 10.0 base score; these markers deduct points subject to category caps (see PHILOSOPHY.md). Engine lives in `pkg/analysis/scorer.go`.
 
-#### 5.1 Cyclomatic Complexity & Control-Flow (Structural Complexity, cap −3.5)
+#### [x] 5.1 Cyclomatic Complexity & Control-Flow (Structural Complexity, cap −3.5)
 - **brain_method**: Composite flag — NLOC > 50 AND cyclomatic ≥ 15 AND nesting ≥ 4 AND PageRank centrality in top 10%. Computed from Tree-sitter AST traversal + graph engine output. Deduction: up to −1.5.
 - **nested_complexity**: Walk AST `if/for/switch/select` nodes; flag functions with max nesting depth ≥ 4. Deduction: up to −1.0.
 - **bumpy_road**: Detect ≥ 3 sequential `if` or `case` blocks at the same nesting level within a single function body. Deduction: up to −1.0.
 
-#### 5.2 Size & Signature Metrics (Size & API Complexity, cap −2.0)
+#### [x] 5.2 Size & Signature Metrics (Size & API Complexity, cap −2.0)
 - **complex_method**: Cyclomatic complexity (McCabe) ≥ 9. Count `if/else/for/case/catch/&&/||` nodes per function in AST. Deduction: up to −0.8.
 - **large_method**: NLOC > language threshold (Go: 60, Java/Python: 80, TS/JS: 60). Excludes blank lines and comment lines using Tree-sitter comment node filtering. Deduction: up to −0.6.
 - **primitive_obsession**: Function parameter list with ≥ 6 primitive-typed params (int, string, bool, float). Extracted from AST `parameter_list` nodes. Deduction: up to −0.6.
 
-#### 5.3 Duplication (cap −1.5)
+#### [x] 5.3 Duplication (cap −1.5)
 - **dry_violation**: Rabin–Karp rolling hash over Tree-sitter token sequences (window: 6 tokens, stride: 3). Clone pairs with similarity ≥ 80% across different files are flagged. Active clones (both files modified in last 90 days via git log) receive 1.5× deduction weight. Deduction: up to −1.5.
 
 #### 5.4 Test Coverage Intelligence (cap −2.0)
@@ -132,7 +132,7 @@ Coverage data loaded from standard artifact formats; if no coverage file is pres
 - **untested_hotspot**: File with churn ≥ 10 commits AND PageRank centrality top 20% AND line coverage < 20%. Deduction: up to −1.5.
 - **coverage_gap**: File with line coverage < 60% (business logic files; test files excluded). Deduction scaled by (60 − coverage) / 60 × 0.5. Max deduction: −0.5.
 
-Coverage artifact loading priority: `lcov.info` → `coverage.xml` (Cobertura) → `clover.xml`. Path configurable via `REPOWISE_COVERAGE_FILE`.
+Coverage artifact loading priority: `lcov.info` → `coverage.xml` (Cobertura) → `clover.xml`. Path configurable via `ARGUS_COVERAGE_FILE`.
 
 #### 5.5 Organizational Risk via Git Analytics (cap −1.0)
 Computed from git log during ingestion; stored in `FileNode.AuthorCount` and `FileNode.PrimaryAuthorLastCommit`.
@@ -195,7 +195,7 @@ for _, marker := range registeredMarkers {
 
 ## 9. Cognee Integration
 
-repowise acts as a headless graph provider for the Cognee Python central layer.
+Argus acts as a headless graph provider for the Cognee Python central layer.
 - **Webhook:** POSTs to `COGNEE_WEBHOOK_URL` on re-index completion.
 - **Export:** `GET /api/export/cognee` provides incremental graph diffs (Entities & Relations).
-- **Fusion:** Cognee merges repowise code-graph with Slack and product documentation.
+- **Fusion:** Cognee merges argus code-graph with Slack and product documentation.

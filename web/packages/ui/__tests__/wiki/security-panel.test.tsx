@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { SecurityFinding } from "@repowise-dev/types";
+import type { SecurityFinding } from "@argus-dev/types";
 import { SecurityPanel } from "../../src/wiki/security-panel.js";
 
 const finding: SecurityFinding = {

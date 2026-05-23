@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import { GitCommitHorizontal } from "lucide-react";
 import { EmptyState } from "../shared/empty-state";
-import type { Hotspot } from "@repowise-dev/types/git";
+import type { Hotspot } from "@argus-dev/types/git";
 
 interface ChurnHistogramProps {
   hotspots: Hotspot[];

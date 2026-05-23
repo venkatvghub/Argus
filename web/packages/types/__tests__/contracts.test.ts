@@ -1,5 +1,5 @@
 /**
- * Type-level tests for non-trivial contracts in @repowise-dev/types. These run
+ * Type-level tests for non-trivial contracts in @argus-dev/types. These run
  * via `vitest --typecheck` and fail at tsc time if a canonical type drifts
  * from what consumers depend on.
  *

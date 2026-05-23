@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ConversationHistory } from "../../src/chat/conversation-history.js";
-import type { Conversation } from "@repowise-dev/types/chat";
+import type { Conversation } from "@argus-dev/types/chat";
 
 const CONVERSATIONS: Conversation[] = [
   {

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 /**
  * Debounce a rapidly-changing value. Presentational hook — safe to use
- * inside `@repowise-dev/ui` shells (no data fetching, no framework
+ * inside `@argus-dev/ui` shells (no data fetching, no framework
  * coupling).
  */
 export function useDebounce<T>(value: T, delay: number): T {

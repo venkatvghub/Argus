@@ -1,6 +1,6 @@
 "use client";
 
-import { SymbolGraphPanel } from "@repowise-dev/ui/symbols/symbol-graph-panel";
+import { SymbolGraphPanel } from "@argus-dev/ui/symbols/symbol-graph-panel";
 import { useGraphMetrics, useCallersCallees } from "@/lib/hooks/use-graph";
 import type { SymbolResponse } from "@/lib/api/types";
 

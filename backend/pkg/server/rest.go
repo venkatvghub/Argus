@@ -7,19 +7,19 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/venkatvghub/argus/pkg/argus"
 	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/providers"
-	"github.com/venkatvghub/argus/pkg/repowise"
 )
 
 // RESTServer handles HTTP requests for Argus.
 type RESTServer struct {
-	argus    *repowise.Instance
+	argus    *argus.Instance
 	provider *providers.Router
 }
 
 // NewRESTServer creates a new RESTServer instance.
-func NewRESTServer(argus *repowise.Instance) *RESTServer {
+func NewRESTServer(argus *argus.Instance) *RESTServer {
 	return &RESTServer{argus: argus}
 }
 

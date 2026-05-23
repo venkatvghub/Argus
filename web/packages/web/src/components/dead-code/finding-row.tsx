@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { GitBranch, Code2 } from "lucide-react";
-import { Button } from "@repowise-dev/ui/ui/button";
-import { Badge } from "@repowise-dev/ui/ui/badge";
-import { ConfirmDialog } from "@repowise-dev/ui/ui/confirm-dialog";
-import { RowActions } from "@repowise-dev/ui/shared/row-actions";
-import { formatConfidence } from "@repowise-dev/ui/lib/format";
+import { Button } from "@argus-dev/ui/ui/button";
+import { Badge } from "@argus-dev/ui/ui/badge";
+import { ConfirmDialog } from "@argus-dev/ui/ui/confirm-dialog";
+import { RowActions } from "@argus-dev/ui/shared/row-actions";
+import { formatConfidence } from "@argus-dev/ui/lib/format";
 import { patchDeadCodeFinding } from "@/lib/api/dead-code";
 import { cn } from "@/lib/utils/cn";
 import type { DeadCodeFindingResponse } from "@/lib/api/types";

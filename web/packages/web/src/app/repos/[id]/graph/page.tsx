@@ -6,7 +6,7 @@ import { useQueryState } from "nuqs";
 import { useSearchParams } from "next/navigation";
 import { GraphFlow } from "@/components/graph/graph-flow";
 import { GraphDocPanel } from "@/components/graph/graph-doc-panel";
-import { GraphTruncationBanner } from "@repowise-dev/ui/graph/graph-truncation-banner";
+import { GraphTruncationBanner } from "@argus-dev/ui/graph/graph-truncation-banner";
 import { getGraph } from "@/lib/api/graph";
 import type { GraphExportResponse } from "@/lib/api/types";
 import { HealthRisksPanel } from "@/components/health/health-risks-panel";

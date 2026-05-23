@@ -1,9 +1,9 @@
 "use client";
 
 import useSWR from "swr";
-import { ActiveJobBanner as ActiveJobBannerShell } from "@repowise-dev/ui/dashboard/active-job-banner";
+import { ActiveJobBanner as ActiveJobBannerShell } from "@argus-dev/ui/dashboard/active-job-banner";
 import { listJobs } from "@/lib/api/jobs";
-import type { Job } from "@repowise-dev/types/jobs";
+import type { Job } from "@argus-dev/types/jobs";
 
 interface Props {
   repoId: string;

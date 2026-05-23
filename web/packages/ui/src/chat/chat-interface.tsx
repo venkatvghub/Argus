@@ -26,7 +26,7 @@ import { ScrollArea } from "../ui/scroll-area";
 import { cn } from "../lib/cn";
 import { ChatMessage } from "./chat-message";
 import { ArtifactPanel, type Artifact } from "./artifact-panel";
-import type { ChatUIMessage } from "@repowise-dev/types/chat";
+import type { ChatUIMessage } from "@argus-dev/types/chat";
 import type { SourceReference } from "./source-citations";
 
 const DEFAULT_SUGGESTIONS = [
@@ -94,7 +94,7 @@ export function ChatInterface({
   assistantAvatarSrc,
   buildCitationHref,
   linkPrefix,
-  emptyStateLogoSrc = "/repowise-logo.png",
+  emptyStateLogoSrc = "/argus-logo.png",
   suggestions = DEFAULT_SUGGESTIONS,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
@@ -185,7 +185,7 @@ export function ChatInterface({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={emptyStateLogoSrc}
-                  alt="repowise"
+                  alt="argus"
                   width={48}
                   height={48}
                   className="drop-shadow-[0_0_12px_rgba(245,149,32,0.35)]"

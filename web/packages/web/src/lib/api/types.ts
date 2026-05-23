@@ -1,11 +1,11 @@
 /**
  * TypeScript types mirroring the backend Pydantic schemas.
- * Source of truth: packages/server/src/repowise/server/schemas.py
+ * Source of truth: packages/server/src/argus/server/schemas.py
  */
 
 /**
  * Pagination envelope returned by list endpoints. Mirrors
- * ``repowise.server.schemas.Paginated[T]``.
+ * ``argus.server.schemas.Paginated[T]``.
  */
 export interface Paginated<T> {
   items: T[];

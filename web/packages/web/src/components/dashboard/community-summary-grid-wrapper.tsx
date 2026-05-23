@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { CommunitySummaryGrid as CommunitySummaryGridShell } from "@repowise-dev/ui/dashboard/community-summary-grid";
+import { CommunitySummaryGrid as CommunitySummaryGridShell } from "@argus-dev/ui/dashboard/community-summary-grid";
 import { useCommunityDetail } from "@/lib/hooks/use-graph";
-import type { CommunityDetail, CommunitySummaryItem } from "@repowise-dev/types/graph";
+import type { CommunityDetail, CommunitySummaryItem } from "@argus-dev/types/graph";
 
 interface Props {
   communities: CommunitySummaryItem[];

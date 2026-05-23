@@ -1,4 +1,4 @@
-import type { CochangeWarning } from "@repowise-dev/types/blast-radius";
+import type { CochangeWarning } from "@argus-dev/types/blast-radius";
 import { Th, Td } from "./cells";
 
 interface CochangeTableProps {

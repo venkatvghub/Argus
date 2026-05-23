@@ -9,11 +9,11 @@ paths: backend/**/*.go
 
 | Kind | Where |
 |---|---|
-| Deploy/runtime tuning | `pkg/config.Config` + `REPOWISE_*` → [docs/configuration.md](../../docs/configuration.md) |
+| Deploy/runtime tuning | `pkg/config.Config` + `ARGUS_*` → [docs/configuration.md](../../docs/configuration.md) |
 | Internal algorithm defaults | `pkg/analysis/defaults.go` |
 | Cross-package identifiers | `pkg/constants` (e.g. `RepoIDLength`, `APIVersion`) |
 | Domain enums | `pkg/models` (job statuses, etc.) |
-| Package-local constants | `constants.go` in `repowise`, `persistence`, `providers` |
+| Package-local constants | `constants.go` in `argus`, `persistence`, `providers` |
 
 New tunable: add to `pkg/config/config.go`, wire callers, update `docs/configuration.md` and `backend/.env.example`. Tests may use inline fixture literals.
 
@@ -21,7 +21,7 @@ New tunable: add to `pkg/config/config.go`, wire callers, update `docs/configura
 
 | Area | Package / type |
 |---|---|
-| Orchestration | `pkg/repowise` — `Instance`, `JobManager` |
+| Orchestration | `pkg/argus` — `Instance`, `JobManager` |
 | Ingestion | `pkg/ingestion` — `GitWalker`, `TreeSitterParser`, `LanguageRegistry` |
 | Analysis | `pkg/analysis` — `GraphEngine`, `MarkerEngine` |
 | HTTP / SSE | `pkg/server` — `RESTServer`, `chatStreamHandler`, CORS allowlist |
@@ -35,5 +35,5 @@ Pipeline: git walk → tree-sitter parse → graph + communities → markers →
 
 - **Repo ID**: `sha256(absPath)[:constants.RepoIDLength]` — not a UUID; keys `Instance.engines` / `markers` and API `repo_id`.
 - **Jobs**: use `JobManager.Submit`; bounded worker pool from config — no unbounded `go func()` for analysis.
-- **SSE chat**: requires `repoID` query param; CORS from `REPOWISE_CORS_ALLOWED_ORIGINS` only (never `*`).
+- **SSE chat**: requires `repoID` query param; CORS from `ARGUS_CORS_ALLOWED_ORIGINS` only (never `*`).
 - **Servers are library types** — wired by caller; no single blessed `main` in this repo.

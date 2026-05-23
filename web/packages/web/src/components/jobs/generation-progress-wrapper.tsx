@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { GenerationProgress } from "@repowise-dev/ui/jobs/generation-progress";
+import { GenerationProgress } from "@argus-dev/ui/jobs/generation-progress";
 import { useJob } from "@/lib/hooks/use-job";
 import { cancelJob } from "@/lib/api/jobs";
-import { formatNumber } from "@repowise-dev/ui/lib/format";
+import { formatNumber } from "@argus-dev/ui/lib/format";
 import type { JobProgressEvent } from "@/lib/api/types";
 
 interface Props {

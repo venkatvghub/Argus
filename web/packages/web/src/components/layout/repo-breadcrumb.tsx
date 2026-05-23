@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Breadcrumb } from "@repowise-dev/ui/shared/breadcrumb";
-import type { BreadcrumbSegment } from "@repowise-dev/ui/shared/breadcrumb";
+import { Breadcrumb } from "@argus-dev/ui/shared/breadcrumb";
+import type { BreadcrumbSegment } from "@argus-dev/ui/shared/breadcrumb";
 
 const SEGMENT_LABELS: Record<string, string> = {
   overview: "Overview",

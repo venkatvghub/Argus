@@ -10,7 +10,7 @@ import {
   Server,
   Compass,
 } from "lucide-react";
-import type { DocPage } from "@repowise-dev/types/docs";
+import type { DocPage } from "@argus-dev/types/docs";
 
 export interface PageTypeConfig {
   label: string;
@@ -44,7 +44,7 @@ export function getPageTypeLabel(pageType: string): string {
 // ---------------------------------------------------------------------------
 //
 // Keep this list in lockstep with the Python side
-// (`packages/core/src/repowise/core/generation/onboarding/slots.py`).
+// (`packages/core/src/argus/core/generation/onboarding/slots.py`).
 // Two slots — project_overview and architecture_guide — are *promoted*: their
 // content lives in the existing repo_overview / architecture_diagram pages,
 // tagged via `metadata.onboarding_slot`. The other six are dedicated

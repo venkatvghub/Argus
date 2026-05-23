@@ -3,7 +3,7 @@
 import { Loader2, CheckCircle, XCircle, ExternalLink } from "lucide-react";
 import { Progress } from "../ui/progress";
 import { formatNumber, formatRelativeTime } from "../lib/format";
-import type { Job } from "@repowise-dev/types/jobs";
+import type { Job } from "@argus-dev/types/jobs";
 
 export interface ActiveJobBannerProps {
   /**

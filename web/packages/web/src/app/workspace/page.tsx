@@ -11,13 +11,13 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { getWorkspace, getWorkspaceCoChanges } from "@/lib/api/workspace";
-import { StatCard } from "@repowise-dev/ui/shared/stat-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@repowise-dev/ui/ui/card";
-import { RepoCard } from "@repowise-dev/ui/workspace/repo-card";
-import { CrossRepoSummary } from "@repowise-dev/ui/workspace/cross-repo-summary";
-import { CoChangeTable } from "@repowise-dev/ui/workspace/co-change-table";
-import { ContractTypeBadge } from "@repowise-dev/ui/workspace/contract-type-badge";
-import { formatNumber } from "@repowise-dev/ui/lib/format";
+import { StatCard } from "@argus-dev/ui/shared/stat-card";
+import { Card, CardContent, CardHeader, CardTitle } from "@argus-dev/ui/ui/card";
+import { RepoCard } from "@argus-dev/ui/workspace/repo-card";
+import { CrossRepoSummary } from "@argus-dev/ui/workspace/cross-repo-summary";
+import { CoChangeTable } from "@argus-dev/ui/workspace/co-change-table";
+import { ContractTypeBadge } from "@argus-dev/ui/workspace/contract-type-badge";
+import { formatNumber } from "@argus-dev/ui/lib/format";
 import { WorkspaceGraphSection } from "./workspace-graph-section";
 import { SyncButton } from "./sync-buttons";
 

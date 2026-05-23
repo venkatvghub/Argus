@@ -9,22 +9,22 @@ import { getGraph, getModuleGraph, getCommunities, getExecutionFlows } from "@/l
 import { getProviders } from "@/lib/api/providers";
 import { listJobs } from "@/lib/api/jobs";
 import { getKnowledgeMap } from "@/lib/api/knowledge-map";
-import { Badge } from "@repowise-dev/ui/ui/badge";
-import { StatCard } from "@repowise-dev/ui/shared/stat-card";
-import { HealthScoreRing } from "@repowise-dev/ui/dashboard/health-score-ring";
-import { AttentionPanel } from "@repowise-dev/ui/dashboard/attention-panel";
+import { Badge } from "@argus-dev/ui/ui/badge";
+import { StatCard } from "@argus-dev/ui/shared/stat-card";
+import { HealthScoreRing } from "@argus-dev/ui/dashboard/health-score-ring";
+import { AttentionPanel } from "@argus-dev/ui/dashboard/attention-panel";
 import { QuickActionsWrapper as QuickActions } from "@/components/dashboard/quick-actions-wrapper";
-import { LanguageDonut } from "@repowise-dev/ui/dashboard/language-donut";
+import { LanguageDonut } from "@argus-dev/ui/dashboard/language-donut";
 import { computeHealthScore, buildAttentionItems, aggregateLanguages } from "@/lib/utils/health-score";
-import { HotspotsMini } from "@repowise-dev/ui/dashboard/hotspots-mini";
-import { DecisionsTimeline } from "@repowise-dev/ui/dashboard/decisions-timeline";
-import { ModuleOverviewGrid } from "@repowise-dev/ui/dashboard/module-overview-grid";
+import { HotspotsMini } from "@argus-dev/ui/dashboard/hotspots-mini";
+import { DecisionsTimeline } from "@argus-dev/ui/dashboard/decisions-timeline";
+import { ModuleOverviewGrid } from "@argus-dev/ui/dashboard/module-overview-grid";
 import { CommunitySummaryGridWrapper as CommunitySummaryGrid } from "@/components/dashboard/community-summary-grid-wrapper";
-import { ExecutionFlowsPanel } from "@repowise-dev/ui/dashboard/execution-flows-panel";
-import { BusFactorPanel } from "@repowise-dev/ui/git/bus-factor-panel";
-import { CommitCategorySparkline } from "@repowise-dev/ui/git/commit-category-sparkline";
-import { Card, CardContent, CardHeader, CardTitle } from "@repowise-dev/ui/ui/card";
-import { formatNumber } from "@repowise-dev/ui/lib/format";
+import { ExecutionFlowsPanel } from "@argus-dev/ui/dashboard/execution-flows-panel";
+import { BusFactorPanel } from "@argus-dev/ui/git/bus-factor-panel";
+import { CommitCategorySparkline } from "@argus-dev/ui/git/commit-category-sparkline";
+import { Card, CardContent, CardHeader, CardTitle } from "@argus-dev/ui/ui/card";
+import { formatNumber } from "@argus-dev/ui/lib/format";
 import type {
   RepoStatsResponse,
   GitSummaryResponse,

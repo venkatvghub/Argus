@@ -1,4 +1,4 @@
-import type { ReviewerEntry } from "@repowise-dev/types/blast-radius";
+import type { ReviewerEntry } from "@argus-dev/types/blast-radius";
 import { Th, Td } from "./cells";
 
 interface ReviewersTableProps {

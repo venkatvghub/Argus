@@ -2,8 +2,8 @@
 
 import useSWR from "swr";
 import { Flame, Users, Trash2, Lightbulb, ShieldAlert } from "lucide-react";
-import { StatCard } from "@repowise-dev/ui/shared/stat-card";
-import { formatNumber } from "@repowise-dev/ui/lib/format";
+import { StatCard } from "@argus-dev/ui/shared/stat-card";
+import { formatNumber } from "@argus-dev/ui/lib/format";
 import { getGitSummary, getOwnership } from "@/lib/api/git";
 import { getDeadCodeSummary } from "@/lib/api/dead-code";
 import { getDecisionHealth } from "@/lib/api/decisions";

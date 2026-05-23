@@ -1,4 +1,4 @@
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
 
 export default function SearchLoading() {
   return (

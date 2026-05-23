@@ -12,7 +12,7 @@ import type {
   GraphLink as GraphEdgeResponse,
   ModuleNode as ModuleNodeResponse,
   ModuleEdge as ModuleEdgeResponse,
-} from "@repowise-dev/types/graph";
+} from "@argus-dev/types/graph";
 
 // ---- Constants ----
 

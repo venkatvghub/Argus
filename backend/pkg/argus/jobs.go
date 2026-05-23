@@ -1,4 +1,4 @@
-package repowise
+package argus
 
 import (
 	"context"
@@ -18,17 +18,17 @@ type workItem struct {
 }
 
 type JobManager struct {
-	mu               sync.RWMutex
-	jobs             map[string]*models.Job
-	listeners        map[string][]chan models.Job
-	cancels          map[string]context.CancelFunc
-	workQueue        chan workItem
-	listenerBuffer   int
-	wg               sync.WaitGroup
-	stopMu           sync.RWMutex
-	stopped          bool
-	stopOnce         sync.Once
-	closeCh          chan struct{}
+	mu             sync.RWMutex
+	jobs           map[string]*models.Job
+	listeners      map[string][]chan models.Job
+	cancels        map[string]context.CancelFunc
+	workQueue      chan workItem
+	listenerBuffer int
+	wg             sync.WaitGroup
+	stopMu         sync.RWMutex
+	stopped        bool
+	stopOnce       sync.Once
+	closeCh        chan struct{}
 }
 
 const (

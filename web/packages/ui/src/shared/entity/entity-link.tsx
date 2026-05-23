@@ -25,7 +25,7 @@ interface EntityLinkProps extends EntityRef {
 }
 
 /**
- * Single entry point for rendering any addressable Repowise entity.
+ * Single entry point for rendering any addressable Argus entity.
  *
  * - resolves a canonical href via {@link resolveEntityHref}
  * - wraps in an {@link EntityHoverCard} when `meta` is provided

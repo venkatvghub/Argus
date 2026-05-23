@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { ActiveJobBanner } from "../../src/dashboard/active-job-banner.js";
-import type { Job } from "@repowise-dev/types/jobs";
+import type { Job } from "@argus-dev/types/jobs";
 
 function makeJob(overrides: Partial<Job> = {}): Job {
   return {

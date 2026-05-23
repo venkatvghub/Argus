@@ -109,11 +109,11 @@ type Marker struct {
 // FileScore holds the computed health score for a single file.
 // Base is always 10.0; Final is clamped to [1.0, 10.0].
 type FileScore struct {
-	File        string                   `json:"file"`
-	Base        float64                  `json:"base"`         // always 10.0
-	Final       float64                  `json:"final"`        // clamped [1.0, 10.0]
+	File        string                    `json:"file"`
+	Base        float64                   `json:"base"`       // always 10.0
+	Final       float64                   `json:"final"`      // clamped [1.0, 10.0]
 	Deductions  map[ScoreCategory]float64 `json:"deductions"` // per-category totals after cap
-	MarkerCount int                      `json:"marker_count"`
+	MarkerCount int                       `json:"marker_count"`
 }
 
 type JobStatus string

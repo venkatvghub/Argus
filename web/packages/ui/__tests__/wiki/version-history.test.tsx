@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import type { DocPageVersion } from "@repowise-dev/types";
+import type { DocPageVersion } from "@argus-dev/types";
 import { VersionHistory } from "../../src/wiki/version-history.js";
 
 const version: DocPageVersion = {

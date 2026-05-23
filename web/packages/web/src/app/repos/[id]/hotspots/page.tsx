@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import { Flame, Shield } from "lucide-react";
-import { StatCard } from "@repowise-dev/ui/shared/stat-card";
+import { StatCard } from "@argus-dev/ui/shared/stat-card";
 import { RoutedToRiskBanner } from "@/components/risk/routed-to-risk-banner";
-import { HotspotTable } from "@repowise-dev/ui/git/hotspot-table";
-import { ContributorBar } from "@repowise-dev/ui/git/contributor-bar";
-import { ChurnHistogram } from "@repowise-dev/ui/git/churn-histogram";
-import { CommitCategoryDonut } from "@repowise-dev/ui/git/commit-category-donut";
-import { RiskDistributionChart } from "@repowise-dev/ui/git/risk-distribution-chart";
-import { Card, CardContent, CardHeader, CardTitle } from "@repowise-dev/ui/ui/card";
+import { HotspotTable } from "@argus-dev/ui/git/hotspot-table";
+import { ContributorBar } from "@argus-dev/ui/git/contributor-bar";
+import { ChurnHistogram } from "@argus-dev/ui/git/churn-histogram";
+import { CommitCategoryDonut } from "@argus-dev/ui/git/commit-category-donut";
+import { RiskDistributionChart } from "@argus-dev/ui/git/risk-distribution-chart";
+import { Card, CardContent, CardHeader, CardTitle } from "@argus-dev/ui/ui/card";
 import { getHotspots, getGitSummary } from "@/lib/api/git";
 import { HealthRisksPanel } from "@/components/health/health-risks-panel";
-import { formatNumber } from "@repowise-dev/ui/lib/format";
+import { formatNumber } from "@argus-dev/ui/lib/format";
 
 export const metadata: Metadata = { title: "Hotspots" };
 

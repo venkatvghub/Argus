@@ -149,8 +149,8 @@ func TestDetectPhantomCoupling_HighChurnLowOwnershipNoEdges(t *testing.T) {
 	file := models.FileNode{
 		Path:      "src/service/handler.go",
 		IsFile:    true,
-		Churn:     10,        // >= 5
-		Ownership: 0.3,       // < 0.5
+		Churn:     10,  // >= 5
+		Ownership: 0.3, // < 0.5
 	}
 
 	// Build graph with no file-to-file edges
@@ -177,8 +177,8 @@ func TestDetectPhantomCoupling_LowChurnNoMarker(t *testing.T) {
 	file := models.FileNode{
 		Path:      "src/util/helpers.go",
 		IsFile:    true,
-		Churn:     4,         // < 5
-		Ownership: 0.2,       // < 0.5
+		Churn:     4,   // < 5
+		Ownership: 0.2, // < 0.5
 	}
 
 	require.NoError(t, ge.BuildGraph([]models.FileNode{file}, nil, nil))
@@ -197,8 +197,8 @@ func TestDetectPhantomCoupling_HighOwnershipNoMarker(t *testing.T) {
 	file := models.FileNode{
 		Path:      "src/core/engine.go",
 		IsFile:    true,
-		Churn:     15,        // >= 5
-		Ownership: 0.8,       // >= 0.5
+		Churn:     15,  // >= 5
+		Ownership: 0.8, // >= 0.5
 	}
 
 	require.NoError(t, ge.BuildGraph([]models.FileNode{file}, nil, nil))
@@ -218,8 +218,8 @@ func TestDetectPhantomCoupling_HasStructuralEdgesNoMarker(t *testing.T) {
 	file1 := models.FileNode{
 		Path:      "src/api/auth.go",
 		IsFile:    true,
-		Churn:     8,         // >= 5
-		Ownership: 0.3,       // < 0.5
+		Churn:     8,   // >= 5
+		Ownership: 0.3, // < 0.5
 	}
 	file2 := models.FileNode{
 		Path:      "src/db/models.go",
@@ -246,9 +246,9 @@ func TestDetectPhantomCoupling_DirectoryNodeSkipped(t *testing.T) {
 
 	dir := models.FileNode{
 		Path:      "src/util",
-		IsFile:    false,      // Directory, not a file
-		Churn:     10,         // >= 5
-		Ownership: 0.2,        // < 0.5
+		IsFile:    false, // Directory, not a file
+		Churn:     10,    // >= 5
+		Ownership: 0.2,   // < 0.5
 	}
 
 	require.NoError(t, ge.BuildGraph([]models.FileNode{dir}, nil, nil))
@@ -346,8 +346,8 @@ func TestDetectPhantomCoupling_BoundaryChurn5(t *testing.T) {
 	file := models.FileNode{
 		Path:      "src/boundary.go",
 		IsFile:    true,
-		Churn:     5,         // Exactly at boundary
-		Ownership: 0.4,       // < 0.5
+		Churn:     5,   // Exactly at boundary
+		Ownership: 0.4, // < 0.5
 	}
 
 	require.NoError(t, ge.BuildGraph([]models.FileNode{file}, nil, nil))
@@ -367,7 +367,7 @@ func TestDetectPhantomCoupling_BoundaryOwnership0_5(t *testing.T) {
 		Path:      "src/boundary_own.go",
 		IsFile:    true,
 		Churn:     8,
-		Ownership: 0.5,       // Exactly at boundary (should NOT match: < 0.5)
+		Ownership: 0.5, // Exactly at boundary (should NOT match: < 0.5)
 	}
 
 	require.NoError(t, ge.BuildGraph([]models.FileNode{file}, nil, nil))
@@ -1392,8 +1392,8 @@ func TestFilterTestEmails_KnownTestDomains(t *testing.T) {
 			expected: 0,
 		},
 		{
-			name: "empty list",
-			emails: []string{},
+			name:     "empty list",
+			emails:   []string{},
 			expected: 0,
 		},
 	}

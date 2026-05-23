@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/venkatvghub/argus/pkg/argus"
 	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/logger"
 	"github.com/venkatvghub/argus/pkg/models"
-	"github.com/venkatvghub/argus/pkg/repowise"
 )
 
 func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +29,7 @@ func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := s.argus.GetRepoSymbols(r.Context(), repoID); err != nil {
-		if errors.Is(err, repowise.ErrRepoNotFound) {
+		if errors.Is(err, argus.ErrRepoNotFound) {
 			http.Error(w, "repo not found", http.StatusNotFound)
 			return
 		}

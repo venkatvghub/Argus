@@ -1,7 +1,7 @@
 /**
  * Sigma-specific attribute types for Graphology graph instances.
  *
- * These extend the base Repowise types (GraphNode, ModuleNode) with
+ * These extend the base Argus types (GraphNode, ModuleNode) with
  * rendering attributes that Sigma.js needs: position, size, color,
  * and interaction state.
  */

@@ -4,11 +4,11 @@ import { useState } from "react";
 import { Link2, Filter } from "lucide-react";
 import { useWorkspaceContracts } from "@/lib/hooks/use-workspace";
 import { useWorkspace } from "@/lib/hooks/use-workspace";
-import { ContractLinksTable } from "@repowise-dev/ui/workspace/contract-links-table";
-import { ContractTypeBadge, RoleBadge } from "@repowise-dev/ui/workspace/contract-type-badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@repowise-dev/ui/ui/card";
-import { StatCard } from "@repowise-dev/ui/shared/stat-card";
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
+import { ContractLinksTable } from "@argus-dev/ui/workspace/contract-links-table";
+import { ContractTypeBadge, RoleBadge } from "@argus-dev/ui/workspace/contract-type-badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@argus-dev/ui/ui/card";
+import { StatCard } from "@argus-dev/ui/shared/stat-card";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
 
 const TYPE_OPTIONS = [
   { value: "", label: "All Types" },

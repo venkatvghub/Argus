@@ -1,5 +1,5 @@
 import { Badge } from "../ui/badge";
-import type { WorkspacePackageDepEntry } from "@repowise-dev/types/workspace";
+import type { WorkspacePackageDepEntry } from "@argus-dev/types/workspace";
 
 interface PackageDepsTableProps {
   deps: WorkspacePackageDepEntry[];

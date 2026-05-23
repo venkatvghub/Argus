@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Hash } from "lucide-react";
 import { getRepo } from "@/lib/api/repos";
-import { Badge } from "@repowise-dev/ui/ui/badge";
+import { Badge } from "@argus-dev/ui/ui/badge";
 import { ChatInterface } from "@/components/chat/chat-interface";
 
 interface Props {

@@ -2,17 +2,17 @@
 
 import { useEffect } from "react";
 import { config } from "@/lib/config";
-import { Label } from "@repowise-dev/ui/ui/label";
-import { Input } from "@repowise-dev/ui/ui/input";
-import { Switch } from "@repowise-dev/ui/ui/switch";
-import { Slider } from "@repowise-dev/ui/ui/slider";
+import { Label } from "@argus-dev/ui/ui/label";
+import { Input } from "@argus-dev/ui/ui/input";
+import { Switch } from "@argus-dev/ui/ui/switch";
+import { Slider } from "@argus-dev/ui/ui/slider";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@repowise-dev/ui/ui/select";
+} from "@argus-dev/ui/ui/select";
 
 export interface RunConfig {
   provider: string;

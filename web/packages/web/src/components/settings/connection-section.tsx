@@ -5,10 +5,10 @@ import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { config } from "@/lib/config";
 import { getHealth } from "@/lib/api/health";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@repowise-dev/ui/ui/card";
-import { Label } from "@repowise-dev/ui/ui/label";
-import { Input } from "@repowise-dev/ui/ui/input";
-import { Button } from "@repowise-dev/ui/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@argus-dev/ui/ui/card";
+import { Label } from "@argus-dev/ui/ui/label";
+import { Input } from "@argus-dev/ui/ui/input";
+import { Button } from "@argus-dev/ui/ui/button";
 import type { HealthResponse } from "@/lib/api/types";
 
 export function ConnectionSection() {
@@ -63,7 +63,7 @@ export function ConnectionSection() {
       <CardHeader>
         <CardTitle className="text-base">API Connection</CardTitle>
         <CardDescription>
-          Configure how the UI connects to your repowise server.
+          Configure how the UI connects to your argus server.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -87,7 +87,7 @@ export function ConnectionSection() {
           <Input
             id="api-key"
             type="password"
-            placeholder="Optional — only required if REPOWISE_API_KEY is set on the server"
+            placeholder="Optional — only required if ARGUS_API_KEY is set on the server"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             onBlur={save}

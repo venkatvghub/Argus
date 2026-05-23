@@ -13,9 +13,9 @@ func TestLoad(t *testing.T) {
 	cfg = nil
 	initErr = nil
 
-	t.Setenv("REPOWISE_APP_NAME", "test-argus")
-	t.Setenv("REPOWISE_DATA_DIR", "/tmp/argus-data")
-	t.Setenv("REPOWISE_PII_PATTERNS", "AADHAAR,PAN")
+	t.Setenv("ARGUS_APP_NAME", "test-argus")
+	t.Setenv("ARGUS_DATA_DIR", "/tmp/argus-data")
+	t.Setenv("ARGUS_PII_PATTERNS", "AADHAAR,PAN")
 
 	c, err := Load()
 	assert.NoError(t, err)

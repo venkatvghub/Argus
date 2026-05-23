@@ -1,8 +1,8 @@
 "use client";
 
-import { GraphDocPanel as GraphDocPanelShell } from "@repowise-dev/ui/graph/graph-doc-panel";
+import { GraphDocPanel as GraphDocPanelShell } from "@argus-dev/ui/graph/graph-doc-panel";
 import { usePage } from "@/lib/hooks/use-page";
-import type { DocPage } from "@repowise-dev/types/docs";
+import type { DocPage } from "@argus-dev/types/docs";
 
 interface GraphDocPanelWrapperProps {
   repoId: string;

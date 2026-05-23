@@ -10,7 +10,7 @@ import type {
   CallerCalleeEntry,
   CallersCallees,
   GraphMetrics,
-} from "@repowise-dev/types/graph";
+} from "@argus-dev/types/graph";
 
 interface SymbolGraphPanelProps {
   metrics: GraphMetrics | undefined;

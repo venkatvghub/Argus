@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { TopSymbolsRow } from "@repowise-dev/ui/symbols/top-symbols-row";
+import { TopSymbolsRow } from "@argus-dev/ui/symbols/top-symbols-row";
 import { listSymbolsPage } from "@/lib/api/symbols";
 import type { SymbolResponse } from "@/lib/api/types";
 

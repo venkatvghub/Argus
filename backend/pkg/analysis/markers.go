@@ -102,6 +102,11 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 
 	tkm, _ := tiktoken.GetEncoding(tiktokenEncoding)
 
+	// Pre-compute PageRank threshold for brain_method (top 10% of file nodes).
+	prThreshold := computePageRankThreshold(graph, brainMethodPageRankTopPct)
+
+	fileContents := make(map[string]string)
+
 	for _, file := range files {
 		if !file.IsFile {
 			continue
@@ -111,6 +116,7 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 			continue
 		}
 		sContent := string(content)
+		fileContents[file.Path] = sContent
 
 		// 4.2 Indian Regulatory Compliance (DPDP)
 		markers = append(markers, me.checkPII(file.Path, sContent)...)
@@ -130,6 +136,16 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 		if filepath.Ext(file.Path) == ".sql" {
 			markers = append(markers, me.checkSQL(file.Path, sContent)...)
 		}
+
+		// 5.1 / 5.2: Structural complexity and size markers
+		ext := filepath.Ext(file.Path)
+		if supportedStructuralExt(ext) {
+			var fileNode *Node
+			if graph != nil {
+				fileNode, _ = graph.GetNodeByPath(file.Path)
+			}
+			markers = append(markers, me.checkStructuralAndSizeMarkers(file.Path, sContent, ext, prThreshold, fileNode)...)
+		}
 	}
 
 	// 4.3 AI-Agent Efficiency (Structural Graph-based markers)
@@ -140,6 +156,9 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 		markers = append(markers, me.detectZombieExports(graph)...)
 		markers = append(markers, me.detectPhantomCoupling(files, graph)...)
 	}
+
+	// 5.3: DRY violation — cross-file Rabin–Karp rolling hash
+	markers = append(markers, me.checkDRYViolations(files, fileContents)...)
 
 	return markers
 }

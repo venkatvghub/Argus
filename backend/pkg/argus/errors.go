@@ -1,4 +1,4 @@
-package repowise
+package argus
 
 import "errors"
 

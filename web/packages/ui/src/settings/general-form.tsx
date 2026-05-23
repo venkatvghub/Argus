@@ -12,7 +12,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
-import type { RepoSettingsValue } from "@repowise-dev/types/settings";
+import type { RepoSettingsValue } from "@argus-dev/types/settings";
 
 const SUGGESTIONS = [
   "vendor/",
@@ -162,7 +162,7 @@ export function GeneralForm({
 
         {patterns.length === 0 ? (
           <p className="text-xs text-[var(--color-text-tertiary)] italic">
-            No custom patterns — .gitignore and .repowiseIgnore are always respected.
+            No custom patterns — .gitignore and .argusIgnore are always respected.
           </p>
         ) : (
           <div className="flex flex-wrap gap-1.5">

@@ -3,14 +3,14 @@
 /**
  * C4 architecture diagrams — `/repos/[id]/c4`.
  *
- * Thin wrapper around `<C4Diagram>` from @repowise-dev/ui/c4. State (level +
+ * Thin wrapper around `<C4Diagram>` from @argus-dev/ui/c4. State (level +
  * active container) is mirrored into URL params via nuqs so refresh + share
  * preserve the view.
  */
 
 import { use, useCallback } from "react";
 import { useQueryState, parseAsInteger, parseAsString } from "nuqs";
-import { C4Diagram, type C4Level } from "@repowise-dev/ui/c4";
+import { C4Diagram, type C4Level } from "@argus-dev/ui/c4";
 import { useC4L1, useC4L2, useC4L3 } from "@/lib/hooks/use-c4";
 import { useC4DocsPathSet } from "@/lib/hooks/use-c4-context";
 import { useRepo } from "@/lib/hooks/use-repo";

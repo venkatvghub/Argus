@@ -1,8 +1,8 @@
 {
-  "name": "repowise-web",
+  "name": "argus-web",
   "version": "0.3.0",
   "private": true,
-  "description": "repowise Web UI — Next.js 15 dashboard and wiki viewer",
+  "description": "argus Web UI — Next.js 15 dashboard and wiki viewer",
   "scripts": {
     "dev": "next dev --port 3000",
     "build": "next build",
@@ -11,8 +11,8 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@repowise-dev/types": "*",
-    "@repowise-dev/ui": "*",
+    "@argus-dev/types": "workspace:*",
+    "@argus-dev/ui": "workspace:*",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
     "framer-motion": "^11.11.0",

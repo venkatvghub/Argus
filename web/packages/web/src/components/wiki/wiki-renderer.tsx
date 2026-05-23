@@ -1,14 +1,14 @@
 import { MDXRemote } from "next-mdx-remote/rsc";
 import { codeToHtml } from "shiki";
-import { CodeBlock } from "@repowise-dev/ui/wiki/code-block";
-import { MermaidDiagram } from "@repowise-dev/ui/wiki/mermaid-diagram";
-import { wikiMdxComponents } from "@repowise-dev/ui/wiki/wiki-mdx-components";
-import { preprocessWikiCodeBlocks } from "@repowise-dev/ui/wiki/wiki-mdx-preprocess";
-import { WikiLink } from "@repowise-dev/ui/wiki/wiki-link";
+import { CodeBlock } from "@argus-dev/ui/wiki/code-block";
+import { MermaidDiagram } from "@argus-dev/ui/wiki/mermaid-diagram";
+import { wikiMdxComponents } from "@argus-dev/ui/wiki/wiki-mdx-components";
+import { preprocessWikiCodeBlocks } from "@argus-dev/ui/wiki/wiki-mdx-preprocess";
+import { WikiLink } from "@argus-dev/ui/wiki/wiki-link";
 import {
   buildAnchorIndex,
   type WikiLinkRef,
-} from "@repowise-dev/ui/wiki/wiki-links-types";
+} from "@argus-dev/ui/wiki/wiki-links-types";
 
 interface Props {
   content: string;

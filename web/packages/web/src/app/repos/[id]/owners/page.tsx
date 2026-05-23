@@ -7,7 +7,7 @@ import { Users } from "lucide-react";
 import {
   OwnerDirectory,
   type OwnerDirectoryFilters,
-} from "@repowise-dev/ui/owners/owner-directory";
+} from "@argus-dev/ui/owners/owner-directory";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { listOwnersPage } from "@/lib/api/owners";
 import type { OwnerListEntry, Paginated } from "@/lib/api/types";

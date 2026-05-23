@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  transpilePackages: ["@repowise-dev/ui", "@repowise-dev/types"],
+  transpilePackages: ["@argus-dev/ui", "@argus-dev/types"],
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts"],
   },
@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
   async rewrites() {
-    const apiUrl = process.env.REPOWISE_API_URL || "http://localhost:7337";
+    const apiUrl = process.env.ARGUS_API_URL || "http://localhost:7337";
     return [
       {
         source: "/api/:path*",

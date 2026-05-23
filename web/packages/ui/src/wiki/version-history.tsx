@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Clock, Diff, ArrowLeft } from "lucide-react";
-import type { DocPageVersion } from "@repowise-dev/types";
+import type { DocPageVersion } from "@argus-dev/types";
 import { cn } from "../lib/cn";
 import { formatRelativeTime } from "../lib/format";
 import { Badge } from "../ui/badge";

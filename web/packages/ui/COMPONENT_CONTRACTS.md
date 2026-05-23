@@ -1,8 +1,8 @@
-# @repowise-dev/ui â€” Component Contracts
+# @argus-dev/ui â€” Component Contracts
 
 This document is the public-facing prop contract for components in
-`@repowise-dev/ui`. Each section lists the prop interface, with types
-sourced from `@repowise-dev/types` where the prop carries an engine
+`@argus-dev/ui`. Each section lists the prop interface, with types
+sourced from `@argus-dev/types` where the prop carries an engine
 artifact. Components are presentational: they accept canonical data
 via props, manage only UI-local state internally, and emit user
 intent via callbacks. Data fetching, mutation, and routing live in
@@ -93,7 +93,7 @@ Three-card summary tile for active / proposed / stale counts.
 
 | Prop | Type | Required | Notes |
 |------|------|----------|-------|
-| `health` | `DecisionHealth \| undefined` (`@repowise-dev/types/decisions`) | yes | Renders nothing while undefined; useful for the "loading or absent" state. |
+| `health` | `DecisionHealth \| undefined` (`@argus-dev/types/decisions`) | yes | Renders nothing while undefined; useful for the "loading or absent" state. |
 
 ---
 
@@ -103,7 +103,7 @@ Filterable table of `DecisionRecord` rows with status + source dropdowns.
 
 | Prop | Type | Required | Notes |
 |------|------|----------|-------|
-| `decisions` | `DecisionRecord[] \| undefined` (`@repowise-dev/types/decisions`) | yes | Filtered list as resolved by the caller. |
+| `decisions` | `DecisionRecord[] \| undefined` (`@argus-dev/types/decisions`) | yes | Filtered list as resolved by the caller. |
 | `filters` | `DecisionsTableFilters` | yes | Controlled. Caller mirrors these into fetch keys so filter changes drive a re-fetch. |
 | `onFiltersChange` | `(filters: DecisionsTableFilters) => void` | yes | Fires on every dropdown change. |
 | `repoId` | `string` | yes | Used to build the `/repos/{repoId}/decisions/{id}` link target for each row. |
@@ -124,7 +124,7 @@ deletable lines, breakdown by kind, breakdown by confidence band.
 
 | Prop | Type | Required | Notes |
 |------|------|----------|-------|
-| `summary` | `DeadCodeSummary` (`@repowise-dev/types/dead-code`) | yes | Caller fetches the rollup. |
+| `summary` | `DeadCodeSummary` (`@argus-dev/types/dead-code`) | yes | Caller fetches the rollup. |
 
 ---
 
@@ -137,7 +137,7 @@ file pages nest under their parent directory.
 
 | Prop | Type | Required | Notes |
 |------|------|----------|-------|
-| `pages` | `DocPage[]` (`@repowise-dev/types/docs`) | yes | Caller fetches; tree builds the directory hierarchy each render. |
+| `pages` | `DocPage[]` (`@argus-dev/types/docs`) | yes | Caller fetches; tree builds the directory hierarchy each render. |
 | `selectedPageId` | `string \| null` | yes | Currently-active page id; the matching node is highlighted. |
 | `onSelectPage` | `(page: DocPage) => void` | yes | Fires on leaf-page or module-page click. |
 | `className` | `string` | no | Forwarded to the outer container. |
@@ -155,7 +155,7 @@ Filterable table of `DocPage` rows with per-row regenerate action.
 
 | Prop | Type | Required | Notes |
 |------|------|----------|-------|
-| `pages` | `DocPage[]` (`@repowise-dev/types/docs`) | yes | Caller fetches the list. The table does not mutate. |
+| `pages` | `DocPage[]` (`@argus-dev/types/docs`) | yes | Caller fetches the list. The table does not mutate. |
 | `onRegenerate` | `(pageId: string) => Promise<void>` | no | Caller wires to a mutation API. The table tracks per-row pending state internally and disables the row's button while in flight. Omit to hide the regenerate column. |
 
 Behaviour:
@@ -172,7 +172,7 @@ Behaviour:
 ## `git/*` â€” Hotspot, ownership, and contributor visualisations
 
 All twelve components are presentational and accept canonical engine
-artifacts via props (`Hotspot`, `OwnershipEntry` from `@repowise-dev/types/git`,
+artifacts via props (`Hotspot`, `OwnershipEntry` from `@argus-dev/types/git`,
 or anonymous shapes for partner / owner / category records). None reach
 out to data hooks or mutation APIs â€” fetching belongs to the caller.
 
@@ -200,7 +200,7 @@ Recharts bar chart binning hotspots into 10-percentile buckets.
 
 | Prop | Type | Required |
 |------|------|----------|
-| `hotspots` | `Hotspot[]` (`@repowise-dev/types/git`) | yes |
+| `hotspots` | `Hotspot[]` (`@argus-dev/types/git`) | yes |
 
 ### `git/commit-category-donut` â€” `CommitCategoryDonut`
 
@@ -236,7 +236,7 @@ contributors only.
 
 | Prop | Type | Required |
 |------|------|----------|
-| `hotspots` | `Hotspot[]` (`@repowise-dev/types/git`) | yes |
+| `hotspots` | `Hotspot[]` (`@argus-dev/types/git`) | yes |
 
 ### `git/hotspot-table` â€” `HotspotTable`
 
@@ -246,7 +246,7 @@ Searchable, filterable, sortable table of hotspots. Filter chips:
 
 | Prop | Type | Required |
 |------|------|----------|
-| `hotspots` | `Hotspot[]` (`@repowise-dev/types/git`) | yes |
+| `hotspots` | `Hotspot[]` (`@argus-dev/types/git`) | yes |
 
 ### `git/ownership-table` â€” `OwnershipTable`
 
@@ -254,7 +254,7 @@ Search + silo filter over module ownership rows.
 
 | Prop | Type | Required |
 |------|------|----------|
-| `entries` | `OwnershipEntry[]` (`@repowise-dev/types/git`) | yes |
+| `entries` | `OwnershipEntry[]` (`@argus-dev/types/git`) | yes |
 
 ### `git/ownership-treemap` â€” `OwnershipTreemap`
 
@@ -264,7 +264,7 @@ bounding rect.
 
 | Prop | Type | Required |
 |------|------|----------|
-| `entries` | `OwnershipEntry[]` (`@repowise-dev/types/git`) | yes |
+| `entries` | `OwnershipEntry[]` (`@argus-dev/types/git`) | yes |
 
 ### `git/risk-distribution-chart` â€” `RiskDistributionChart`
 
@@ -274,7 +274,7 @@ Score = `0.4Â·churn + 0.35Â·busFactor + 0.25Â·trend`, all normalised to
 
 | Prop | Type | Required |
 |------|------|----------|
-| `hotspots` | `Hotspot[]` (`@repowise-dev/types/git`) | yes |
+| `hotspots` | `Hotspot[]` (`@argus-dev/types/git`) | yes |
 
 ### `git/bus-factor-panel` â€” `BusFactorPanel`
 
@@ -283,7 +283,7 @@ files list.
 
 | Prop | Type | Required |
 |------|------|----------|
-| `hotspots` | `Hotspot[]` (`@repowise-dev/types/git`) | yes |
+| `hotspots` | `Hotspot[]` (`@argus-dev/types/git`) | yes |
 
 ---
 
@@ -324,9 +324,9 @@ Presentational.
 
 | Prop | Type | Required | Notes |
 |------|------|----------|-------|
-| `metrics` | `GraphMetrics \| undefined` (`@repowise-dev/types/graph`) | yes | |
+| `metrics` | `GraphMetrics \| undefined` (`@argus-dev/types/graph`) | yes | |
 | `metricsLoading` | `boolean` | yes | |
-| `callData` | `CallersCallees \| undefined` (`@repowise-dev/types/graph`) | yes | |
+| `callData` | `CallersCallees \| undefined` (`@argus-dev/types/graph`) | yes | |
 | `callsLoading` | `boolean` | yes | |
 | `heritageData` | `CallersCallees \| undefined` | no | When omitted or empty, the heritage section is hidden. |
 
@@ -337,7 +337,7 @@ an optional right-column slot for the graph-intelligence panel.
 
 | Prop | Type | Required | Notes |
 |------|------|----------|-------|
-| `symbol` | `CodeSymbol \| null` (`@repowise-dev/types/symbols`) | yes | `null` closes the dialog. |
+| `symbol` | `CodeSymbol \| null` (`@argus-dev/types/symbols`) | yes | `null` closes the dialog. |
 | `onClose` | `() => void` | yes | |
 | `graphPanel` | `ReactNode` | no | Caller passes a data-coupled `<SymbolGraphPanelWrapper>`; omit to hide the column. |
 
@@ -395,7 +395,7 @@ authors with bars, co-change partners, and recent commits.
 
 | Prop | Type | Required |
 |------|------|----------|
-| `git` | `GitMetadata` (`@repowise-dev/types/git`) | yes |
+| `git` | `GitMetadata` (`@argus-dev/types/git`) | yes |
 
 ## `wiki/mermaid-diagram` â€” `MermaidDiagram`
 
@@ -449,7 +449,7 @@ read selection / hover / highlight state without depending on the
 Pure layout primitives. Functions: `layoutFileGraph`,
 `layoutModuleGraph`, `groupNodesAsModules`. Hooks:
 `useFileElkLayout`, `useModuleElkLayout`. Operate on canonical
-`@repowise-dev/types/graph` shapes (`GraphNode`, `GraphLink`,
+`@argus-dev/types/graph` shapes (`GraphNode`, `GraphLink`,
 `ModuleNode`, `ModuleEdge`) and produce `@xyflow/react` `Node[]` /
 `Edge[]`. No data fetching.
 
@@ -526,7 +526,7 @@ type, which now optionally carries `center_git_meta: GitMetadata`.
 
 | Prop | Type | Required |
 |------|------|----------|
-| `graph` | `EgoGraph` (`@repowise-dev/types/graph`) | yes |
+| `graph` | `EgoGraph` (`@argus-dev/types/graph`) | yes |
 | `onClose` | `() => void` | yes |
 | `onNavigateToNode` | `(nodeId: string) => void` | no |
 
@@ -535,7 +535,7 @@ type, which now optionally carries `center_git_meta: GitMetadata`.
 ## `workspace/*` â€” Multi-repo workspace views
 
 Five presentational components that consume the canonical workspace
-shapes from `@repowise-dev/types/workspace`.
+shapes from `@argus-dev/types/workspace`.
 
 ### `workspace/contract-type-badge` â€” `ContractTypeBadge`, `RoleBadge`
 
@@ -559,8 +559,8 @@ hotspot count, and a primary indicator.
 | `name` | `string` | yes |
 | `path` | `string` | yes |
 | `isPrimary` | `boolean` | yes |
-| `stats` | `RepoStats \| null` (`@repowise-dev/types/workspace`) | yes |
-| `gitSummary` | `GitSummary \| null` (`@repowise-dev/types/git`) | yes |
+| `stats` | `RepoStats \| null` (`@argus-dev/types/workspace`) | yes |
+| `gitSummary` | `GitSummary \| null` (`@argus-dev/types/git`) | yes |
 
 ### `workspace/co-change-table` â€” `CoChangeTable`
 
@@ -615,7 +615,7 @@ Top-6 most recent decisions with status dots and a "view all" link.
 
 | Prop | Type | Required |
 |------|------|----------|
-| `decisions` | `DecisionRecord[]` (`@repowise-dev/types/decisions`) | yes |
+| `decisions` | `DecisionRecord[]` (`@argus-dev/types/decisions`) | yes |
 | `repoId` | `string` | yes |
 
 ### `dashboard/dependency-heatmap` â€” `DependencyHeatmap`
@@ -626,7 +626,7 @@ available.
 
 | Prop | Type | Required |
 |------|------|----------|
-| `moduleGraph` | `ModuleGraph` (`@repowise-dev/types/graph`) | yes |
+| `moduleGraph` | `ModuleGraph` (`@argus-dev/types/graph`) | yes |
 
 ### `dashboard/execution-flows-panel` â€” `ExecutionFlowsPanel`
 
@@ -635,7 +635,7 @@ accepted for parity with other dashboard tiles but currently unused.
 
 | Prop | Type | Required |
 |------|------|----------|
-| `flows` | `ExecutionFlowEntry[]` (`@repowise-dev/types/graph`) | yes |
+| `flows` | `ExecutionFlowEntry[]` (`@argus-dev/types/graph`) | yes |
 | `repoId` | `string` | yes |
 
 ### `dashboard/health-score-ring` â€” `HealthScoreRing`
@@ -653,7 +653,7 @@ Top-5 hotspots tile.
 
 | Prop | Type | Required |
 |------|------|----------|
-| `hotspots` | `Hotspot[]` (`@repowise-dev/types/git`) | yes |
+| `hotspots` | `Hotspot[]` (`@argus-dev/types/git`) | yes |
 | `repoId` | `string` | yes |
 
 ### `dashboard/language-donut` â€” `LanguageDonut`
@@ -672,8 +672,8 @@ ticks) and re-renders once the layout converges.
 
 | Prop | Type | Required |
 |------|------|----------|
-| `nodes` | `ModuleNode[]` (`@repowise-dev/types/graph`) | yes |
-| `edges` | `ModuleEdge[]` (`@repowise-dev/types/graph`) | yes |
+| `nodes` | `ModuleNode[]` (`@argus-dev/types/graph`) | yes |
+| `edges` | `ModuleEdge[]` (`@argus-dev/types/graph`) | yes |
 | `repoId` | `string` | yes |
 
 ### `dashboard/ownership-treemap` â€” `OwnershipTreemap`
@@ -685,13 +685,13 @@ legend below).
 
 | Prop | Type | Required |
 |------|------|----------|
-| `entries` | `OwnershipEntry[]` (`@repowise-dev/types/git`) | yes |
+| `entries` | `OwnershipEntry[]` (`@argus-dev/types/git`) | yes |
 
 ---
 
 ## `chat/*` â€” Conversation rendering primitives
 
-The chat UI types are sourced from `@repowise-dev/types/chat` â€”
+The chat UI types are sourced from `@argus-dev/types/chat` â€”
 `ChatUIMessage` and `ChatUIToolCall` are the post-streaming flattened
 shapes consumed by these components. The wire types (`ChatMessage`,
 `ChatToolCall`) live in the same module; consumers are expected to
@@ -715,7 +715,7 @@ that fires `onViewArtifact` when an artifact is attached.
 
 | Prop | Type | Required |
 |------|------|----------|
-| `toolCall` | `ChatUIToolCall` (`@repowise-dev/types/chat`) | yes |
+| `toolCall` | `ChatUIToolCall` (`@argus-dev/types/chat`) | yes |
 | `onViewArtifact` | `() => void` | no |
 
 ### `chat/source-citations` â€” `SourceCitations`
@@ -742,13 +742,13 @@ indicator shows when `message.isStreaming` and there's no text yet.
 | `message` | `ChatUIMessage` | yes | |
 | `repoId` | `string` | yes | Forwarded to `SourceCitations` for link targets. |
 | `onViewArtifact` | `(artifact: { type; data }) => void` | no | Wired through to `ToolCallBlock` when an artifact is attached. |
-| `assistantAvatarSrc` | `string` | no | Defaults to `/repowise-logo.png`. Override in consumers that don't host that asset. |
+| `assistantAvatarSrc` | `string` | no | Defaults to `/argus-logo.png`. Override in consumers that don't host that asset. |
 
 ### `chat/artifact-panel` â€” `ArtifactPanel`
 
 Right-edge slide-over panel. Switches on `artifact.type` to pick a
 renderer: markdown for `overview` / `wiki_page`, mermaid (via
-`@repowise-dev/ui/wiki/mermaid-diagram`) for `diagram`, list for
+`@argus-dev/ui/wiki/mermaid-diagram`) for `diagram`, list for
 `search_results`, JSON pretty-print fallback otherwise.
 
 | Prop | Type | Required |
@@ -776,7 +776,7 @@ slugged heading anchors, copy-on-hover code blocks, and inline
 Pure presentational shells for the blast-radius view. Data fetching,
 input form, and SWR hotspot suggestions stay in the consumer page;
 these components only render `BlastRadiusResponse` (from
-`@repowise-dev/types/blast-radius`).
+`@argus-dev/types/blast-radius`).
 
 ### `blast-radius/risk-score-card` — `RiskScoreCard`
 
@@ -867,7 +867,7 @@ SWR polling + freshness window; the shell is given a snapshot.
 | `job` | `Job \| null` | yes |
 | `detailsHref` | `string` | no |
 
-`Job` is canonical (`@repowise-dev/types/jobs`). When `job` is `null`
+`Job` is canonical (`@argus-dev/types/jobs`). When `job` is `null`
 or `pending`, the banner renders nothing — the wrapper is responsible
 for filtering out terminal states older than its freshness window.
 
@@ -902,7 +902,7 @@ owns `useCommunityDetail`; the shell receives resolved details keyed by
 | `onExpand` | `(communityId: number) => void` | no |
 
 `CommunitySummaryItem` and `CommunityDetail` are canonical types in
-`@repowise-dev/types/graph`.
+`@argus-dev/types/graph`.
 
 ### `settings/general-form` — `GeneralForm`
 
@@ -918,7 +918,7 @@ multi-tenant settings persistence is deferred to Phase 5 RBAC.
 | `remoteUrl` | `string` | no |
 | `disabledHint` | `string` | no |
 
-`RepoSettingsValue` lives in `@repowise-dev/types/settings`.
+`RepoSettingsValue` lives in `@argus-dev/types/settings`.
 
 ### `chat/conversation-history` — `ConversationHistory`
 
@@ -937,7 +937,7 @@ the popover surface and emits intents.
 | `onNew` | `() => void` | yes | Fires when "New conversation" is clicked. |
 | `className` | `string` | no | Forwarded to the outer container. |
 
-`Conversation` is canonical (`@repowise-dev/types/chat`).
+`Conversation` is canonical (`@argus-dev/types/chat`).
 
 ### `chat/chat-interface` — `ChatInterface`
 
@@ -960,10 +960,10 @@ wired by the wrapper as opaque slots.
 | `historySlot` | `ReactNode` | no | Rendered in the header bar AND empty-state composer. |
 | `assistantAvatarSrc` | `string` | no | Forwarded to `ChatMessage`. |
 | `buildCitationHref` | `(source: SourceReference) => string` | no | Forwarded to `ChatMessage` → `SourceCitations`. |
-| `emptyStateLogoSrc` | `string` | no | Defaults to `/repowise-logo.png`. |
+| `emptyStateLogoSrc` | `string` | no | Defaults to `/argus-logo.png`. |
 | `suggestions` | `string[]` | no | Override default empty-state chip set. |
 
-`ChatUIMessage` is canonical (`@repowise-dev/types/chat`). Downstream
+`ChatUIMessage` is canonical (`@argus-dev/types/chat`). Downstream
 consumers can wire a different transport (e.g. a multi-repo fan-out
 streaming endpoint) into the same shell by substituting the wrapper —
 that swap validates the data/presentation split.
@@ -979,7 +979,7 @@ fetch from `listSecurityFindings`.
 | `findings` | `SecurityFinding[] \| undefined` | yes | Empty / undefined → "No security signals." |
 | `isLoading` | `boolean` | no | While loading the shell renders nothing. |
 
-`SecurityFinding` is canonical (`@repowise-dev/types/security`).
+`SecurityFinding` is canonical (`@argus-dev/types/security`).
 
 ### `wiki/regenerate-button` — `RegenerateButton`
 
@@ -1009,7 +1009,7 @@ helpers.
 | `currentContent` | `string` | yes | Content used as the "new" side of the diff view. |
 | `isLoading` | `boolean` | no | While loading or empty the shell renders nothing. |
 
-`DocPageVersion` is canonical (`@repowise-dev/types/docs`).
+`DocPageVersion` is canonical (`@argus-dev/types/docs`).
 
 ---
 
@@ -1028,7 +1028,7 @@ the consumer fetches the `DocPage` and supplies routing hrefs.
 | `browseDocsHref` | `string` | no | Fallback link inside the empty state. |
 | `onClose` | `() => void` | yes | Close affordance handler. |
 
-`DocPage` is canonical (`@repowise-dev/types/docs`).
+`DocPage` is canonical (`@argus-dev/types/docs`).
 
 ---
 
@@ -1044,7 +1044,7 @@ communities. Presentational — consumer fetches the detail.
 | `isLoading` | `boolean` | yes | Drives the skeleton state. |
 | `onClose` | `() => void` | yes | Close affordance handler. |
 
-`CommunityDetail` is canonical (`@repowise-dev/types/graph`).
+`CommunityDetail` is canonical (`@argus-dev/types/graph`).
 
 ---
 
@@ -1065,7 +1065,7 @@ the `useDebounce` presentational hook for autocomplete.
 | `initialFrom` | `string` | no | Pre-fill from a parent context-menu. |
 | `initialTo` | `string` | no | Pre-fill from a parent context-menu. |
 
-`NodeSearchResult` and `GraphPath` are canonical (`@repowise-dev/types/graph`).
+`NodeSearchResult` and `GraphPath` are canonical (`@argus-dev/types/graph`).
 
 ---
 
@@ -1098,4 +1098,4 @@ panels (path-finder, community-panel) via slot render props.
 | `renderPathFinder` | `(props) => ReactNode` | no | Render slot for the path-finder sub-panel; the shell only owns when to mount it. |
 | `renderCommunityPanel` | `(props) => ReactNode` | no | Render slot for the community detail sub-panel. |
 
-All graph datasets are canonical (`@repowise-dev/types/graph`).
+All graph datasets are canonical (`@argus-dev/types/graph`).

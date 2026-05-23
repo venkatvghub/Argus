@@ -11,7 +11,7 @@ import { RowActions } from "../shared/row-actions";
 import { ChurnBar } from "./churn-bar";
 import { formatLOC } from "../lib/format";
 import { cn } from "../lib/cn";
-import type { Hotspot } from "@repowise-dev/types/git";
+import type { Hotspot } from "@argus-dev/types/git";
 
 interface HotspotTableProps {
   hotspots: Hotspot[];

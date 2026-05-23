@@ -3,7 +3,7 @@
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 import { ShieldAlert } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@repowise-dev/ui/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@argus-dev/ui/ui/tabs";
 import { HeatmapTab } from "@/components/risk/heatmap-tab";
 import { HotspotsTab } from "@/components/risk/hotspots-tab";
 import { DeadCodeTab } from "@/components/risk/dead-code-tab";

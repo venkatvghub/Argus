@@ -1,6 +1,6 @@
 /**
  * Frontend mirror of the backend C4 Pydantic models from
- * `packages/server/src/repowise/server/schemas.py`. Keep field names in
+ * `packages/server/src/argus/server/schemas.py`. Keep field names in
  * lock-step — these are the on-the-wire shapes returned by /api/graph/{id}/c4/*.
  */
 

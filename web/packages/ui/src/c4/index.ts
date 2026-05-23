@@ -1,5 +1,5 @@
 /**
- * @repowise-dev/ui/c4 — shared C4 diagram surface.
+ * @argus-dev/ui/c4 — shared C4 diagram surface.
  *
  * Public entry point. Host pages compose `<C4Diagram>` with data fetched
  * from `/api/graph/{repo_id}/c4/{l1,l2,l3}` and either lift state up via

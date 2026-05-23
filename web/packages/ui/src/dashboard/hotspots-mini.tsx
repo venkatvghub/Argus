@@ -2,7 +2,7 @@ import { Flame } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { EmptyState } from "../shared/empty-state";
 import { truncatePath } from "../lib/format";
-import type { Hotspot } from "@repowise-dev/types/git";
+import type { Hotspot } from "@argus-dev/types/git";
 
 interface HotspotsMiniProps {
   hotspots: Hotspot[];

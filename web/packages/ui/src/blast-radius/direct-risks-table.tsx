@@ -1,4 +1,4 @@
-import type { DirectRiskEntry } from "@repowise-dev/types/blast-radius";
+import type { DirectRiskEntry } from "@argus-dev/types/blast-radius";
 import { Th, Td } from "./cells";
 
 interface DirectRisksTableProps {

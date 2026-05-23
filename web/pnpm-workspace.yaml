@@ -1,0 +1,9 @@
+packages:
+  - packages/types
+  - packages/ui
+  - packages/web
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - unrs-resolver

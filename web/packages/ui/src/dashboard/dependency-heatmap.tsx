@@ -3,7 +3,7 @@
 import { useMemo, useState, useCallback, Fragment } from "react";
 import { Grid3X3 } from "lucide-react";
 import { EmptyState } from "../shared/empty-state";
-import type { ModuleGraph } from "@repowise-dev/types/graph";
+import type { ModuleGraph } from "@argus-dev/types/graph";
 
 interface DependencyHeatmapProps {
   moduleGraph: ModuleGraph;

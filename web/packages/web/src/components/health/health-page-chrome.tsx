@@ -4,7 +4,7 @@ import Link from "next/link";
 import {
   HealthPageChrome as BaseHealthPageChrome,
   type HealthPageChromeProps as BaseHealthPageChromeProps,
-} from "@repowise-dev/ui/health";
+} from "@argus-dev/ui/health";
 
 export type HealthPageChromeProps = Omit<BaseHealthPageChromeProps, "renderLink">;
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { ChatInterface } from "../../src/chat/chat-interface.js";
-import type { ChatUIMessage } from "@repowise-dev/types/chat";
+import type { ChatUIMessage } from "@argus-dev/types/chat";
 
 const ASSISTANT_MSG: ChatUIMessage = {
   id: "asst-1",

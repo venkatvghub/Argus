@@ -6,10 +6,10 @@ import { useParams } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { RoutedToRiskBanner } from "@/components/risk/routed-to-risk-banner";
 import { toast } from "sonner";
-import { Button } from "@repowise-dev/ui/ui/button";
-import { SummaryBar } from "@repowise-dev/ui/dead-code/summary-bar";
+import { Button } from "@argus-dev/ui/ui/button";
+import { SummaryBar } from "@argus-dev/ui/dead-code/summary-bar";
 import { FindingsTable } from "@/components/dead-code/findings-table";
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
 import { getDeadCodeSummary, analyzeDeadCode } from "@/lib/api/dead-code";
 import type { DeadCodeSummaryResponse } from "@/lib/api/types";
 

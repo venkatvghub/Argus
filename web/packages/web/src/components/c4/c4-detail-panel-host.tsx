@@ -4,13 +4,13 @@
  * Web-side wrapper around <C4DetailPanel> that fetches per-selection
  * docs + module health and feeds them into the shared UI panel.
  *
- * The shared panel lives in @repowise-dev/ui/c4 — no fetch logic. This
+ * The shared panel lives in @argus-dev/ui/c4 — no fetch logic. This
  * host knits SWR data into the panel's prop shape.
  */
 
 import { useRouter } from "next/navigation";
-import { C4DetailPanel, type C4NodeData } from "@repowise-dev/ui/c4";
-import { ChatMarkdown } from "@repowise-dev/ui/chat/chat-markdown";
+import { C4DetailPanel, type C4NodeData } from "@argus-dev/ui/c4";
+import { ChatMarkdown } from "@argus-dev/ui/chat/chat-markdown";
 import {
   useC4SelectionContext,
 } from "@/lib/hooks/use-c4-context";

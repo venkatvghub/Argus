@@ -6,21 +6,21 @@ import { getRepo } from "@/lib/api/repos";
 import { getPageById, getPageVersions } from "@/lib/api/pages";
 import { getGitMetadata } from "@/lib/api/git";
 import { getGraphMetrics } from "@/lib/api/graph";
-import { ConfidenceBadge } from "@repowise-dev/ui/wiki/confidence-badge";
+import { ConfidenceBadge } from "@argus-dev/ui/wiki/confidence-badge";
 import { WikiRenderer } from "@/components/wiki/wiki-renderer";
-import { TableOfContents } from "@repowise-dev/ui/wiki/table-of-contents";
+import { TableOfContents } from "@argus-dev/ui/wiki/table-of-contents";
 import { RegenerateButtonWrapper } from "@/components/wiki/regenerate-button";
-import { GitHistoryPanel } from "@repowise-dev/ui/wiki/git-history-panel";
+import { GitHistoryPanel } from "@argus-dev/ui/wiki/git-history-panel";
 import { SecurityPanelWrapper } from "@/components/wiki/security-panel";
-import { BacklinksPanel } from "@repowise-dev/ui/wiki/backlinks-panel";
+import { BacklinksPanel } from "@argus-dev/ui/wiki/backlinks-panel";
 import {
   getBacklinks,
   getWikiLinks,
-} from "@repowise-dev/ui/wiki/wiki-links-types";
-import { Badge } from "@repowise-dev/ui/ui/badge";
-import { Separator } from "@repowise-dev/ui/ui/separator";
-import { formatRelativeTime, formatTokens } from "@repowise-dev/ui/lib/format";
-import { CoChangeList } from "@repowise-dev/ui/git/co-change-list";
+} from "@argus-dev/ui/wiki/wiki-links-types";
+import { Badge } from "@argus-dev/ui/ui/badge";
+import { Separator } from "@argus-dev/ui/ui/separator";
+import { formatRelativeTime, formatTokens } from "@argus-dev/ui/lib/format";
+import { CoChangeList } from "@argus-dev/ui/git/co-change-list";
 import { Hash, Cpu, StickyNote, Network } from "lucide-react";
 import type { GraphMetricsResponse } from "@/lib/api/types";
 

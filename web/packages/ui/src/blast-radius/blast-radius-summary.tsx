@@ -1,4 +1,4 @@
-import type { BlastRadiusResponse } from "@repowise-dev/types/blast-radius";
+import type { BlastRadiusResponse } from "@argus-dev/types/blast-radius";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 
 interface BlastRadiusSummaryProps {

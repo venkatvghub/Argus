@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   GraphFlow as GraphFlowShell,
   type GraphFlowProps as GraphFlowShellProps,
-} from "@repowise-dev/ui/graph/graph-flow";
+} from "@argus-dev/ui/graph/graph-flow";
 import {
   useModuleGraph,
   useGraph,
@@ -21,7 +21,7 @@ import type {
   ModuleGraph,
   ExecutionFlows,
   CommunitySummaryItem,
-} from "@repowise-dev/types/graph";
+} from "@argus-dev/types/graph";
 
 type ViewMode = "module" | "full" | "architecture" | "dead" | "hotfiles" | "unified";
 

@@ -5,13 +5,13 @@ import { cn } from "../lib/cn";
 import { ToolCallBlock } from "./tool-call-block";
 import { ChatMarkdown } from "./chat-markdown";
 import { SourceCitations, type SourceReference } from "./source-citations";
-import type { ChatUIMessage } from "@repowise-dev/types/chat";
+import type { ChatUIMessage } from "@argus-dev/types/chat";
 
 interface ChatMessageProps {
   message: ChatUIMessage;
   repoId: string;
   onViewArtifact?: (artifact: { type: string; data: Record<string, unknown> }) => void;
-  /** Optional avatar src for the assistant. Defaults to `/repowise-logo.png`. */
+  /** Optional avatar src for the assistant. Defaults to `/argus-logo.png`. */
   assistantAvatarSrc?: string;
   /** Forwarded to `SourceCitations` so consumers can customise the link path. */
   buildCitationHref?: (source: SourceReference) => string;
@@ -23,7 +23,7 @@ export function ChatMessage({
   message,
   repoId,
   onViewArtifact,
-  assistantAvatarSrc = "/repowise-logo.png",
+  assistantAvatarSrc = "/argus-logo.png",
   buildCitationHref,
   linkPrefix,
 }: ChatMessageProps) {
@@ -45,7 +45,7 @@ export function ChatMessage({
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
             src={assistantAvatarSrc}
-            alt="repowise"
+            alt="argus"
             width={22}
             height={22}
             className="drop-shadow-[0_0_4px_rgba(245,149,32,0.25)]"

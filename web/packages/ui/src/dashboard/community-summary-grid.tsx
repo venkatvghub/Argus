@@ -11,7 +11,7 @@ import { cn } from "../lib/cn";
 import type {
   CommunityDetail,
   CommunitySummaryItem,
-} from "@repowise-dev/types/graph";
+} from "@argus-dev/types/graph";
 
 const COMMUNITY_COLORS = [
   "bg-indigo-400", "bg-pink-400", "bg-emerald-400", "bg-amber-400",

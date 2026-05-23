@@ -11,7 +11,7 @@ import {
 import { Badge } from "../ui/badge";
 import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
-import type { CodeSymbol } from "@repowise-dev/types/symbols";
+import type { CodeSymbol } from "@argus-dev/types/symbols";
 
 interface SymbolDrawerProps {
   symbol: CodeSymbol | null;

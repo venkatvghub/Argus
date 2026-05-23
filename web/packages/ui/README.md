@@ -1,6 +1,6 @@
-# @repowise-dev/ui
+# @argus-dev/ui
 
-Shared visualization components for the Repowise dashboard
+Shared visualization components for the Argus dashboard
 (`packages/web`) and any downstream consumer that wants to render the
 same engine artifacts.
 
@@ -33,11 +33,11 @@ Components are exposed via subpath exports â€” import the slice you need
 rather than the barrel:
 
 ```ts
-import { HotspotTable } from "@repowise-dev/ui/git";
-import { GraphFlow } from "@repowise-dev/ui/graph";
+import { HotspotTable } from "@argus-dev/ui/git";
+import { GraphFlow } from "@argus-dev/ui/graph";
 ```
 
-Consumers must add `transpilePackages: ["@repowise-dev/ui", "@repowise-dev/types"]`
+Consumers must add `transpilePackages: ["@argus-dev/ui", "@argus-dev/types"]`
 to their `next.config.ts` (Tailwind v4 + TS source ship as-is, no
 pre-build step).
 
@@ -45,7 +45,7 @@ To inherit the canonical design tokens, import the stylesheet once at
 the root of the app:
 
 ```css
-@import "@repowise-dev/ui/styles.css";
+@import "@argus-dev/ui/styles.css";
 ```
 
 ## Peer deps

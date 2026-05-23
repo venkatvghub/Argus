@@ -6,8 +6,8 @@ import {
   ContextDrawer,
   ContextDrawerProvider,
   type ContextDrawerTab,
-} from "@repowise-dev/ui/shared/context-drawer";
-import type { EntityKind, EntityRef } from "@repowise-dev/ui/shared/entity";
+} from "@argus-dev/ui/shared/context-drawer";
+import type { EntityKind, EntityRef } from "@argus-dev/ui/shared/entity";
 
 const ENTITY_KINDS: EntityKind[] = ["file", "symbol", "decision", "owner", "commit"];
 

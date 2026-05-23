@@ -13,7 +13,7 @@ import {
 import type {
   ModuleHealthDetail as ModuleHealthDetailModel,
   ModuleHealthOwner,
-} from "@repowise-dev/types/modules";
+} from "@argus-dev/types/modules";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { cn } from "../lib/cn";

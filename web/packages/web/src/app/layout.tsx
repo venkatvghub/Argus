@@ -4,7 +4,7 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Toaster } from "sonner";
-import { TooltipProvider } from "@repowise-dev/ui/ui/tooltip";
+import { TooltipProvider } from "@argus-dev/ui/ui/tooltip";
 import { Sidebar } from "@/components/layout/sidebar";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { CommandPalette } from "@/components/search/command-palette";
@@ -16,8 +16,8 @@ import "@/styles/globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "repowise",
-    template: "%s — repowise",
+    default: "argus",
+    template: "%s — argus",
   },
   description: "Open-source codebase documentation engine",
 };

@@ -20,14 +20,14 @@ import {
   GitBranch,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
-import { WikiMarkdown } from "@repowise-dev/ui/wiki/wiki-markdown";
+import { WikiMarkdown } from "@argus-dev/ui/wiki/wiki-markdown";
 import { VersionHistoryWrapper } from "@/components/wiki/version-history";
-import { ConfidenceBadge } from "@repowise-dev/ui/wiki/confidence-badge";
-import { Button } from "@repowise-dev/ui/ui/button";
-import { Badge } from "@repowise-dev/ui/ui/badge";
-import { ScrollArea } from "@repowise-dev/ui/ui/scroll-area";
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
-import { formatRelativeTime, formatTokens } from "@repowise-dev/ui/lib/format";
+import { ConfidenceBadge } from "@argus-dev/ui/wiki/confidence-badge";
+import { Button } from "@argus-dev/ui/ui/button";
+import { Badge } from "@argus-dev/ui/ui/badge";
+import { ScrollArea } from "@argus-dev/ui/ui/scroll-area";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
+import { formatRelativeTime, formatTokens } from "@argus-dev/ui/lib/format";
 import { downloadTextFile } from "@/lib/utils/download";
 import { useGraphMetrics, useCallersCallees } from "@/lib/hooks/use-graph";
 import type { PageResponse } from "@/lib/api/types";

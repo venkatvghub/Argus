@@ -1,8 +1,8 @@
 # Argus — Codebase Intelligence for AI Agents
 
-Argus is a high-performance Go rewrite of repowise, a structural intelligence engine that extracts deep codebase semantics for AI coding agents. It parses source repositories into dependency graphs, detects architectural patterns, identifies health risks, and enforces compliance markers—delivering 27× fewer tokens per query and 36% lower LLM costs than baseline approaches.
+Argus is a high-performance Go structural intelligence engine for AI coding agents. It parses source repositories into dependency graphs, detects architectural patterns, identifies health risks, and enforces compliance markers—delivering 27× fewer tokens per query and 36% lower LLM costs than baseline approaches.
 
-Where repowise (Python) took 300–800ms to cold-start and consumed 120MB, Argus achieves 5–15ms startup and 15–25MB memory footprint as a single static binary. It serves as both a standalone CLI and an embedded programmatic engine for Go applications.
+Inspired from repowise, Argus achieves 5–15ms startup and a 15–25MB memory footprint as a single static binary. It serves as both a standalone CLI and an embedded programmatic engine for Go applications.
 
 ## What Argus Adds
 
@@ -28,7 +28,7 @@ Where repowise (Python) took 300–800ms to cold-start and consumed 120MB, Argus
 ```bash
 git clone git@github.com:venkatvghub/Argus.git
 cd Argus/backend
-go build -o argus ./cmd/repowise
+go build -o argus ./cmd/argus
 ```
 
 ### Configure
@@ -39,7 +39,7 @@ Copy `.env.example` to `.env`:
 cp .env.example .env
 ```
 
-Edit `.env` and set your API keys and preferences. See **[Configuration](docs/configuration.md)** for the full list of `REPOWISE_*` variables and defaults.
+Edit `.env` and set your API keys and preferences. See **[Configuration](docs/configuration.md)** for the full list of `ARGUS_*` variables and defaults.
 
 ### Run (MCP Mode)
 
@@ -63,7 +63,7 @@ Starts a Gin REST server on `:8080`. Health check: `curl http://localhost:8080/h
 
 ## Documentation
 
-- **[Configuration](docs/configuration.md)** — `REPOWISE_*` environment variables, defaults, and path resolution
+- **[Configuration](docs/configuration.md)** — `ARGUS_*` environment variables, defaults, and path resolution
 - **[Philosophy & Why Go](docs/PHILOSOPHY.md)** — Problem statement, rewrite rationale, foundational mandates, and biomarker categories
 - **[Architecture](docs/architecture.md)** — System diagram, package responsibilities, analysis pipeline, server modes, LLM tiers
 - **[Implementation Plan](docs/plan.md)** — Phase-wise roadmap (Weeks 1–18), structural design, Cognee integration
