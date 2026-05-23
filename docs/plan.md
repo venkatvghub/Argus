@@ -110,6 +110,47 @@ All markers are executed concurrently via `errgroup` and Tree-sitter AST queries
 - [ ] **4.2 Frontend Integration:** Connect Next.js `web/` to the Go REST server.
 - [ ] **4.3 Hardening:** Cross-repo analysis and single-binary CI/CD pipelines.
 
+### Phase 5: Structural Quality Engine — 12 Original Biomarkers (Weeks 19-26)
+
+Implements the **12 repowise structural biomarkers** that form the deterministic, zero-LLM scoring layer. Each file receives a 10.0 base score; these markers deduct points subject to category caps (see PHILOSOPHY.md). Engine lives in `pkg/analysis/scorer.go`.
+
+#### 5.1 Cyclomatic Complexity & Control-Flow (Structural Complexity, cap −3.5)
+- **brain_method**: Composite flag — NLOC > 50 AND cyclomatic ≥ 15 AND nesting ≥ 4 AND PageRank centrality in top 10%. Computed from Tree-sitter AST traversal + graph engine output. Deduction: up to −1.5.
+- **nested_complexity**: Walk AST `if/for/switch/select` nodes; flag functions with max nesting depth ≥ 4. Deduction: up to −1.0.
+- **bumpy_road**: Detect ≥ 3 sequential `if` or `case` blocks at the same nesting level within a single function body. Deduction: up to −1.0.
+
+#### 5.2 Size & Signature Metrics (Size & API Complexity, cap −2.0)
+- **complex_method**: Cyclomatic complexity (McCabe) ≥ 9. Count `if/else/for/case/catch/&&/||` nodes per function in AST. Deduction: up to −0.8.
+- **large_method**: NLOC > language threshold (Go: 60, Java/Python: 80, TS/JS: 60). Excludes blank lines and comment lines using Tree-sitter comment node filtering. Deduction: up to −0.6.
+- **primitive_obsession**: Function parameter list with ≥ 6 primitive-typed params (int, string, bool, float). Extracted from AST `parameter_list` nodes. Deduction: up to −0.6.
+
+#### 5.3 Duplication (cap −1.5)
+- **dry_violation**: Rabin–Karp rolling hash over Tree-sitter token sequences (window: 6 tokens, stride: 3). Clone pairs with similarity ≥ 80% across different files are flagged. Active clones (both files modified in last 90 days via git log) receive 1.5× deduction weight. Deduction: up to −1.5.
+
+#### 5.4 Test Coverage Intelligence (cap −2.0)
+Coverage data loaded from standard artifact formats; if no coverage file is present, markers are skipped (not penalized).
+- **untested_hotspot**: File with churn ≥ 10 commits AND PageRank centrality top 20% AND line coverage < 20%. Deduction: up to −1.5.
+- **coverage_gap**: File with line coverage < 60% (business logic files; test files excluded). Deduction scaled by (60 − coverage) / 60 × 0.5. Max deduction: −0.5.
+
+Coverage artifact loading priority: `lcov.info` → `coverage.xml` (Cobertura) → `clover.xml`. Path configurable via `REPOWISE_COVERAGE_FILE`.
+
+#### 5.5 Organizational Risk via Git Analytics (cap −1.0)
+Computed from git log during ingestion; stored in `FileNode.AuthorCount` and `FileNode.PrimaryAuthorLastCommit`.
+- **developer_congestion**: ≥ 5 distinct authors touching the file in the last 90 days. Deduction: −0.5.
+- **knowledge_loss**: Primary author (highest commit count) has not committed in ≥ 180 days AND file has churn ≥ 5. Deduction: −0.5.
+
+**Model extension required:** Add `AuthorCount int`, `PrimaryAuthorLastCommit time.Time`, `LineCoverage float64` to `models.FileNode`.
+
+#### 5.6 Dead Code Completion (cap −1.0)
+Extends the existing `zombie_exports` marker to cover internal (unexported) symbols.
+- **dead_code / unreferenced_symbols**: Walk all symbols in the graph; flag any function, type, or variable with zero incoming edges regardless of export visibility. Replaces `zombie_exports` which only covers exported names. Deduction: per unreferenced symbol, capped at −1.0 total.
+
+#### 5.7 Scorer Engine (`pkg/analysis/scorer.go`)
+- `ComputeFileScore(file string, markers []models.Marker) models.FileScore` — group markers by category, apply caps, clamp to [1.0, 10.0].
+- `ComputeRepoScore(scores []models.FileScore) float64` — weighted average (weight = file centrality from PageRank; fallback: uniform).
+- REST endpoint: `GET /api/score/file?path=<file>`, `GET /api/score/repo`.
+- MCP tool: `get_file_score(path)`, `get_repo_score()`.
+
 ---
 
 ## 7. Frontend Evolution (Next.js 15)
