@@ -23,12 +23,9 @@ func (c *Config) ResolveDBPath() string {
 
 // ResolveDocsPath joins path segments under DocsDir.
 func (c *Config) ResolveDocsPath(parts ...string) string {
-	if c == nil {
-		return filepath.Join(append([]string{"docs"}, parts...)...)
+	dir := "docs"
+	if c != nil && c.DocsDir != "" {
+		dir = c.DocsDir
 	}
-	p := c.DocsDir
-	for _, part := range parts {
-		p = filepath.Join(p, part)
-	}
-	return p
+	return filepath.Join(append([]string{dir}, parts...)...)
 }

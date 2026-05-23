@@ -1,3 +1,10 @@
+// test_query is a local dev utility for testing tree-sitter query patterns
+// against Go source snippets. Build and run with:
+//
+//	cd backend && go run ./cmd/test_query
+//
+// It prints the S-expression of the parsed AST for the hardcoded snippet.
+// Not intended for CI; the ingestion package tests cover production parsing.
 package main
 
 import (
@@ -35,10 +42,6 @@ func main() {
 		log.Fatal("parse returned nil tree")
 	}
 	defer tree.Close()
-
-	// Test queries (uncomment when ready to run against the tree):
-	// queryStr := `(go_statement (call_expression function: (parenthesized_expression (func_literal parameters: (parameter_list))))) @match`
-	// queryStr2 := `(go_statement (call_expression function: (func_literal parameters: (parameter_list) @params (#eq? @params "()")))) @match`
 
 	fmt.Println(tree.RootNode().ToSexp())
 }

@@ -48,7 +48,7 @@ func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
 
 	tokens, errs, err := s.provider.ChatStream(r.Context(), repoID, query)
 	if err != nil {
-		fmt.Fprintf(w, "data: [ERROR] %s\n\n", err.Error())
+		writeSSEEvent(w, "[ERROR] "+err.Error())
 		flusher.Flush()
 		return
 	}
@@ -63,20 +63,29 @@ func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if e != nil {
-				fmt.Fprintf(w, "data: [ERROR] %s\n\n", e.Error())
+				writeSSEEvent(w, "[ERROR] "+e.Error())
 				flusher.Flush()
 				return
 			}
 		case token, ok := <-tokens:
 			if !ok {
-				fmt.Fprintf(w, "data: [DONE]\n\n")
+				writeSSEEvent(w, "[DONE]")
 				flusher.Flush()
 				return
 			}
-			fmt.Fprintf(w, "data: %s\n\n", token)
+			writeSSEEvent(w, token)
 			flusher.Flush()
 		}
 	}
+}
+
+// writeSSEEvent writes a single SSE event, splitting payload on newlines so
+// each line is emitted as a separate "data:" field per the EventSource spec.
+func writeSSEEvent(w http.ResponseWriter, payload string) {
+	for _, line := range strings.Split(payload, "\n") {
+		fmt.Fprintf(w, "data: %s\n", line)
+	}
+	fmt.Fprint(w, "\n")
 }
 
 func (s *RESTServer) sseHandler(w http.ResponseWriter, r *http.Request) {
