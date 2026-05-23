@@ -35,6 +35,7 @@ cover.out
 coverage.txt
 coverage/
 htmlcov/
+backend/www/
 
 # Node / workspace deps
 **/node_modules/

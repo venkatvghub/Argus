@@ -105,10 +105,9 @@ func TestCheckCoverageMarkers_CoverageGap(t *testing.T) {
 	// File with coverage 10% < 60% threshold
 	files := []models.FileNode{
 		{
-			Path:         "app.go",
-			IsFile:       true,
-			Churn:        15,
-			LineCoverage: 10.0,
+			Path:   "app.go",
+			IsFile: true,
+			Churn:  15,
 		},
 	}
 
@@ -150,6 +149,36 @@ func TestCheckCoverageMarkers_SkipNilCoverage(t *testing.T) {
 	assert.Nil(t, markers)
 }
 
+func TestIsTestFilename(t *testing.T) {
+	tests := []struct {
+		name  string
+		base  string
+		isTest bool
+	}{
+		{name: "go", base: "app_test.go", isTest: true},
+		{name: "go source", base: "app.go", isTest: false},
+		{name: "java", base: "UserServiceTest.java", isTest: true},
+		{name: "java tests plural", base: "UserServiceTests.java", isTest: true},
+		{name: "python prefix", base: "test_utils.py", isTest: true},
+		{name: "python suffix", base: "utils_test.py", isTest: true},
+		{name: "js test", base: "config.test.js", isTest: true},
+		{name: "js spec", base: "config.spec.js", isTest: true},
+		{name: "ts test", base: "config.test.ts", isTest: true},
+		{name: "tsx spec", base: "Button.spec.tsx", isTest: true},
+		{name: "kotlin test", base: "UserRepositoryTest.kt", isTest: true},
+		{name: "dart test", base: "widget_test.dart", isTest: true},
+		{name: "terraform test tf", base: "main_test.tf", isTest: true},
+		{name: "terraform test hcl", base: "network.tftest.hcl", isTest: true},
+		{name: "terraform source", base: "main.tf", isTest: false},
+		{name: "non test", base: "handler.go", isTest: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.isTest, isTestFilename(tt.base))
+		})
+	}
+}
+
 // TestCheckCoverageMarkers_SkipTestFiles verifies test files are skipped.
 func TestCheckCoverageMarkers_SkipTestFiles(t *testing.T) {
 	dir := t.TempDir()
@@ -157,10 +186,9 @@ func TestCheckCoverageMarkers_SkipTestFiles(t *testing.T) {
 
 	files := []models.FileNode{
 		{
-			Path:         "app_test.go",
-			IsFile:       true,
-			Churn:        15,
-			LineCoverage: 10.0,
+			Path:   "app_test.go",
+			IsFile: true,
+			Churn:  15,
 		},
 	}
 
@@ -171,8 +199,82 @@ func TestCheckCoverageMarkers_SkipTestFiles(t *testing.T) {
 	markers := me.checkCoverageMarkers(files, coverage, nil, 0.9)
 
 	for _, m := range markers {
-		// No coverage_gap markers for test files
-		assert.NotEqual(t, m.Type, "coverage_gap")
+		assert.NotEqual(t, "coverage_gap", m.Type)
+		assert.NotEqual(t, "untested_hotspot", m.Type)
+	}
+}
+
+func TestCheckCoverageMarkers_SkipUntestedHotspotForTestFiles(t *testing.T) {
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir, nil)
+
+	files := []models.FileNode{
+		{Path: "app_test.go", IsFile: true, Churn: coverageUntestedChurnThreshold},
+	}
+	ge := NewGraphEngine()
+	require.NoError(t, ge.BuildGraph(files, nil, nil))
+	node, ok := ge.GetNodeByPath("app_test.go")
+	require.True(t, ok)
+	node.PageRank = 1.0
+
+	coverage := map[string]float64{"app_test.go": 5.0}
+	markers := me.checkCoverageMarkers(files, coverage, ge, 0.5)
+
+	for _, m := range markers {
+		assert.NotEqual(t, "untested_hotspot", m.Type)
+	}
+}
+
+func TestCheckCoverageMarkers_UntestedHotspotOnSourceFile(t *testing.T) {
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir, nil)
+
+	files := []models.FileNode{
+		{Path: "app.go", IsFile: true, Churn: coverageUntestedChurnThreshold},
+	}
+	ge := NewGraphEngine()
+	require.NoError(t, ge.BuildGraph(files, nil, nil))
+	node, ok := ge.GetNodeByPath("app.go")
+	require.True(t, ok)
+	node.PageRank = 1.0
+
+	coverage := map[string]float64{"app.go": 5.0}
+	markers := me.checkCoverageMarkers(files, coverage, ge, 0.5)
+
+	found := false
+	for _, m := range markers {
+		if m.Type == "untested_hotspot" && m.File == "app.go" {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "source file with high churn and low coverage should get untested_hotspot")
+}
+
+func TestCheckCoverageMarkers_SkipNonGoTestFiles(t *testing.T) {
+	dir := t.TempDir()
+	me := NewMarkerEngine(dir, nil)
+
+	testFiles := []string{
+		"UserServiceTest.java",
+		"test_utils.py",
+		"config.test.ts",
+		"Button.spec.tsx",
+		"widget_test.dart",
+		"main_test.tf",
+		"network.tftest.hcl",
+	}
+
+	for _, path := range testFiles {
+		t.Run(path, func(t *testing.T) {
+			files := []models.FileNode{{Path: path, IsFile: true, Churn: 15}}
+			coverage := map[string]float64{path: 10.0}
+			markers := me.checkCoverageMarkers(files, coverage, nil, 0.9)
+			for _, m := range markers {
+				assert.NotEqual(t, "coverage_gap", m.Type, "test file %q should not get coverage_gap", path)
+				assert.NotEqual(t, "untested_hotspot", m.Type, "test file %q should not get untested_hotspot", path)
+			}
+		})
 	}
 }
 
@@ -207,10 +309,9 @@ func TestCheckCoverageMarkers_AboveThreshold(t *testing.T) {
 
 	files := []models.FileNode{
 		{
-			Path:         "app.go",
-			IsFile:       true,
-			Churn:        15,
-			LineCoverage: 85.0,
+			Path:   "app.go",
+			IsFile: true,
+			Churn:  15,
 		},
 	}
 
@@ -232,10 +333,9 @@ func TestCheckCoverageMarkers_LowChurnNoMarker(t *testing.T) {
 
 	files := []models.FileNode{
 		{
-			Path:         "init.go",
-			IsFile:       true,
-			Churn:        2, // low churn
-			LineCoverage: 10.0,
+			Path:   "init.go",
+			IsFile: true,
+			Churn:  2, // low churn
 		},
 	}
 
@@ -254,4 +354,28 @@ func TestCheckCoverageMarkers_LowChurnNoMarker(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "coverage_gap should still fire for low coverage")
+}
+
+func TestLookupCoverage(t *testing.T) {
+	t.Run("exact match", func(t *testing.T) {
+		cov, ok := lookupCoverage(map[string]float64{"app.go": 75.0}, "app.go")
+		assert.True(t, ok)
+		assert.InDelta(t, 75.0, cov, 0.01)
+	})
+
+	t.Run("longest suffix match", func(t *testing.T) {
+		coverage := map[string]float64{
+			"pkg/app.go":                 20.0,
+			"/repo/backend/pkg/app.go":   30.0,
+		}
+		cov, ok := lookupCoverage(coverage, "backend/pkg/app.go")
+		assert.True(t, ok)
+		assert.InDelta(t, 30.0, cov, 0.01)
+	})
+
+	t.Run("no match", func(t *testing.T) {
+		cov, ok := lookupCoverage(map[string]float64{"other.go": 50.0}, "missing.go")
+		assert.False(t, ok)
+		assert.Zero(t, cov)
+	})
 }

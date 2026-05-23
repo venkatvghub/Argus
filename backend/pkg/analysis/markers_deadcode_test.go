@@ -1,7 +1,6 @@
 package analysis
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,18 +12,7 @@ import (
 func TestDetectDeadCode_UnexportedSymbol(t *testing.T) {
 	graph := NewGraphEngine()
 
-	// Create a file node
-	files := []models.FileNode{
-		{
-			Path:   "helper.go",
-			IsFile: true,
-		},
-	}
-
-	// Create an unexported symbol - BuildGraph adds file->symbol "contains" edge,
-	// so symbol will have one incoming edge. For dead_code, we need zero incoming edges,
-	// which requires NOT building the graph via BuildGraph (to skip the contains edge).
-	// Instead, manually add nodes without contains edges.
+	// Create an unexported symbol without file "contains" edges so it has zero incoming edges.
 	symbols := []models.Symbol{
 		{
 			Name:     "myHelper",
@@ -34,26 +22,20 @@ func TestDetectDeadCode_UnexportedSymbol(t *testing.T) {
 		},
 	}
 
-	// Use BuildGraph which adds contains edges automatically
-	require.NoError(t, graph.BuildGraph(files, symbols, nil))
-
-	// Now manually remove the "contains" edge by creating a new graph
-	// that only has symbol nodes with no edges at all
-	graph2 := NewGraphEngine()
 	for i := range symbols {
 		s := symbols[i]
 		node := &Node{
-			id:       graph2.g.NewNode().ID(),
+			id:       graph.g.NewNode().ID(),
 			Name:     s.Name,
 			Type:     string(s.Type),
 			nodeType: NodeTypeSymbol,
 			symbol:   &s,
 		}
-		graph2.nodes[symbolKey(s.FilePath, s.Name)] = node
-		graph2.g.AddNode(node)
+		graph.nodes[symbolKey(s.FilePath, s.Name)] = node
+		graph.g.AddNode(node)
 	}
 
-	markers := NewMarkerEngine("", nil).detectZombieExports(graph2)
+	markers := NewMarkerEngine("", nil).detectZombieExports(graph)
 
 	require.NotEmpty(t, markers)
 	found := false
@@ -151,10 +133,20 @@ func TestDetectDeadCode_UsedSymbol(t *testing.T) {
 
 	// Handler should NOT have a dead_code marker (it's called by Run)
 	for _, m := range markers {
-		if m.Type == "dead_code" && m.File == "handler.go" {
+		if m.Type == "dead_code" && m.File == "handler.go" && m.Line == 10 {
 			t.Fatalf("dead_code marker should not be emitted for used symbol Handler")
 		}
 	}
+
+	// Run should NOT have a dead_code marker (BuildGraph adds an incoming file "contains" edge)
+	foundRun := false
+	for _, m := range markers {
+		if m.Type == "dead_code" && m.File == "main.go" && m.Line == 20 {
+			foundRun = true
+			break
+		}
+	}
+	assert.False(t, foundRun, "dead_code marker should not be emitted for Run with incoming contains edge")
 }
 
 // TestDetectDeadCode_MultipleUnused verifies markers for multiple unused symbols.
@@ -285,7 +277,7 @@ func TestDetectDeadCode_SymbolWithIncomingCall(t *testing.T) {
 
 	// Callee has incoming edge and should NOT be marked dead
 	for _, m := range markers {
-		if m.Type == "dead_code" && m.File == "recursive.go" && strings.Contains(m.Message, "Callee") {
+		if m.Type == "dead_code" && m.File == "recursive.go" && m.Line == 10 {
 			t.Fatalf("dead_code marker should not be emitted for symbol with incoming call")
 		}
 	}
@@ -293,7 +285,7 @@ func TestDetectDeadCode_SymbolWithIncomingCall(t *testing.T) {
 	// Caller has no incoming edge and SHOULD be marked dead
 	found := false
 	for _, m := range markers {
-		if m.Type == "dead_code" && strings.Contains(m.Message, "Caller") {
+		if m.Type == "dead_code" && m.File == "recursive.go" && m.Line == 5 {
 			found = true
 			break
 		}

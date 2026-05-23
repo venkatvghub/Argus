@@ -185,7 +185,9 @@ func (me *MarkerEngine) checkCoverageMarkers(files []models.FileNode, coverage m
 		}
 
 		base := filepath.Base(file.Path)
-		isTestFile := strings.HasSuffix(base, "_test.go")
+		if isTestFilename(base) {
+			continue
+		}
 
 		// untested_hotspot: high churn + high PageRank + very low coverage
 		if file.Churn >= coverageUntestedChurnThreshold && cov < coverageUntestedThreshold {
@@ -208,8 +210,8 @@ func (me *MarkerEngine) checkCoverageMarkers(files []models.FileNode, coverage m
 			}
 		}
 
-		// coverage_gap: < 60% coverage, skip test files
-		if !isTestFile && cov < coverageGapThreshold {
+		// coverage_gap: < 60% coverage
+		if cov < coverageGapThreshold {
 			deduction := (coverageGapThreshold - cov) / coverageGapThreshold * coverageDeductionGapMax
 			markers = append(markers, models.Marker{
 				Type:      "coverage_gap",
@@ -223,6 +225,34 @@ func (me *MarkerEngine) checkCoverageMarkers(files []models.FileNode, coverage m
 	}
 
 	return markers
+}
+
+// isTestFilename reports whether a basename looks like a test file across common languages.
+func isTestFilename(base string) bool {
+	ext := filepath.Ext(base)
+	if ext == "" {
+		return false
+	}
+	name := strings.TrimSuffix(base, ext)
+
+	switch strings.ToLower(ext) {
+	case ".go":
+		return strings.HasSuffix(name, "_test")
+	case ".java":
+		return strings.HasSuffix(name, "Test") || strings.HasSuffix(name, "Tests")
+	case ".py":
+		return strings.HasPrefix(name, "test_") || strings.HasSuffix(name, "_test")
+	case ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx":
+		return strings.HasSuffix(name, ".test") || strings.HasSuffix(name, ".spec")
+	case ".kt", ".kts":
+		return strings.HasSuffix(name, "Test") || strings.HasSuffix(name, "Tests") || strings.HasSuffix(name, "Spec")
+	case ".dart":
+		return strings.HasSuffix(name, "_test")
+	case ".tf", ".hcl":
+		return strings.HasSuffix(name, "_test") || strings.HasSuffix(name, ".tftest")
+	default:
+		return strings.HasPrefix(name, "test_") || strings.HasSuffix(name, "_test")
+	}
 }
 
 // lookupCoverage finds coverage for a file path, trying exact match then suffix match.
