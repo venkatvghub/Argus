@@ -114,17 +114,17 @@ All markers are executed concurrently via `errgroup` and Tree-sitter AST queries
 
 Implements the **12 repowise structural biomarkers** that form the deterministic, zero-LLM scoring layer. Each file receives a 10.0 base score; these markers deduct points subject to category caps (see PHILOSOPHY.md). Engine lives in `pkg/analysis/scorer.go`.
 
-#### 5.1 Cyclomatic Complexity & Control-Flow (Structural Complexity, cap −3.5)
+#### [x] 5.1 Cyclomatic Complexity & Control-Flow (Structural Complexity, cap −3.5)
 - **brain_method**: Composite flag — NLOC > 50 AND cyclomatic ≥ 15 AND nesting ≥ 4 AND PageRank centrality in top 10%. Computed from Tree-sitter AST traversal + graph engine output. Deduction: up to −1.5.
 - **nested_complexity**: Walk AST `if/for/switch/select` nodes; flag functions with max nesting depth ≥ 4. Deduction: up to −1.0.
 - **bumpy_road**: Detect ≥ 3 sequential `if` or `case` blocks at the same nesting level within a single function body. Deduction: up to −1.0.
 
-#### 5.2 Size & Signature Metrics (Size & API Complexity, cap −2.0)
+#### [x] 5.2 Size & Signature Metrics (Size & API Complexity, cap −2.0)
 - **complex_method**: Cyclomatic complexity (McCabe) ≥ 9. Count `if/else/for/case/catch/&&/||` nodes per function in AST. Deduction: up to −0.8.
 - **large_method**: NLOC > language threshold (Go: 60, Java/Python: 80, TS/JS: 60). Excludes blank lines and comment lines using Tree-sitter comment node filtering. Deduction: up to −0.6.
 - **primitive_obsession**: Function parameter list with ≥ 6 primitive-typed params (int, string, bool, float). Extracted from AST `parameter_list` nodes. Deduction: up to −0.6.
 
-#### 5.3 Duplication (cap −1.5)
+#### [x] 5.3 Duplication (cap −1.5)
 - **dry_violation**: Rabin–Karp rolling hash over Tree-sitter token sequences (window: 6 tokens, stride: 3). Clone pairs with similarity ≥ 80% across different files are flagged. Active clones (both files modified in last 90 days via git log) receive 1.5× deduction weight. Deduction: up to −1.5.
 
 #### 5.4 Test Coverage Intelligence (cap −2.0)

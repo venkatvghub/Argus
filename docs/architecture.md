@@ -114,6 +114,36 @@ The `chatStreamHandler` in `pkg/server/sse.go` exposes `GET /api/chat/stream?rep
 
 `RESTServer.SetProvider(p *providers.Router)` post-construction injects the active LLM router (Anthropic, Gemini, OpenAI) after the server is instantiated. This defers provider initialization until runtime and supports cost-based tier selection.
 
+## Structural Quality Biomarkers (Phase 5.1–5.3)
+
+### Two-Pass Structural Analysis
+
+The `MarkerEngine.Run()` executes a two-pass structural analysis over the ingested codebase:
+
+1. **Per-File Pass** — `checkStructuralAndSizeMarkers()` extracts function-level metrics from Tree-sitter AST using language-specific function extractors (`extractGoFunctions` for Go, `extractGenericFunctions` for Java/TypeScript/JavaScript/Python). Metrics include NLOC (non-comment lines of code), cyclomatic complexity, nesting depth, and parameter count.
+
+2. **Cross-File Pass** — `checkDRYViolations()` applies Rabin–Karp rolling hash (window: 6 tokens, stride: 3) across all supported files to detect clone pairs. Similarity scoring uses Jaccard index; pairs with ≥ 80% match are flagged as DRY violations.
+
+### Phase 5.1: Cyclomatic Complexity & Control-Flow (ScoreCatStructural, cap −3.5)
+
+- **brain_method** — NLOC > 50 AND cyclomatic ≥ 15 AND nesting ≥ 4 AND file PageRank in top 10% (90th percentile) across all file nodes. Deduction: −1.5
+- **nested_complexity** — Max nesting depth ≥ 4 in any function. Deduction: −1.0
+- **bumpy_road** — Three or more sequential if/case branches at the same indentation level. Deduction: −1.0
+
+### Phase 5.2: Size & Signature Metrics (ScoreCatSize, cap −2.0)
+
+- **complex_method** — McCabe cyclomatic complexity ≥ 9. Deduction: −0.8
+- **large_method** — NLOC > language threshold (Go: 60, Java/Python/Kotlin: 80, others: 60). Deduction: −0.6
+- **primitive_obsession** — Function signature contains ≥ 6 primitive-typed parameters. Deduction: −0.6
+
+### Phase 5.3: Duplication (ScoreCatDuplication, cap −1.5)
+
+- **dry_violation** — Clone pair detected via rolling hash with Jaccard similarity ≥ 80%. Active clones (both files modified in last 90 days per git log) receive 1.5× weight. Deduction: up to −1.5
+
+### Configuration & Constants
+
+All threshold values are stored as constants in `pkg/analysis/defaults.go`. The PageRank threshold for `brain_method` (90th percentile) is computed at runtime during the biomarker pass, taking into account the centrality distribution of the entire file-dependency graph.
+
 ## Server Modes
 
 ### MCP Server (stdio)
