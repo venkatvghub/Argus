@@ -17,7 +17,7 @@ Argus takes this further by rewriting repowise in Go—gaining speed, portabilit
 | Distribution | pip + venv + overhead | Single static binary | Seamless cross-compile |
 | Cross-compile | Complex (requires host interpreters) | `GOOS=linux GOARCH=arm64 go build` | Native, one command |
 | Concurrency model | GIL-bound threads, multiprocessing overhead | Goroutines with true parallelism | Lock-free graph analysis |
-| Embedding | Via subprocess / REST only | Direct `import "github.com/argus/pkg/repowise"` | Native Go integration |
+| Embedding | Via subprocess / REST only | Direct `import "github.com/venkatvghub/argus/pkg/repowise"` | Native Go integration |
 
 Python's runtime startup, garbage collection pauses, and GIL contention make it unsuitable for both CLI tools (every invocation pays the startup tax) and embedded engines. Go's fast compilation, zero-overhead concurrency, and static binaries align perfectly with repowise's use case: quick, repeated codebase analysis in agents and automation.
 
