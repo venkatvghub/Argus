@@ -1,15 +1,15 @@
 /**
  * Settings persisted in localStorage.
- * Keys are prefixed with "repowise_".
+ * Keys are prefixed with "argus_".
  * All helpers are safe to call in SSR — they return defaults when window is undefined.
  */
 
 const KEYS = {
-  apiKey: "repowise_api_key",
-  apiUrl: "repowise_api_url",
-  provider: "repowise_default_provider",
-  model: "repowise_default_model",
-  embedder: "repowise_embedder",
+  apiKey: "argus_api_key",
+  apiUrl: "argus_api_url",
+  provider: "argus_default_provider",
+  model: "argus_default_model",
+  embedder: "argus_embedder",
 } as const;
 
 function read(key: string): string {

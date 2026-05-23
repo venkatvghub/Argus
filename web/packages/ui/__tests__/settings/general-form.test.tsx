@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { GeneralForm } from "../../src/settings/general-form.js";
-import type { RepoSettingsValue } from "@repowise-dev/types/settings";
+import type { RepoSettingsValue } from "@argus-dev/types/settings";
 
 const baseValue: RepoSettingsValue = {
   name: "demo",

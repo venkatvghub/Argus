@@ -1,5 +1,5 @@
 /**
- * Number, date, token, and other formatters for repowise UI.
+ * Number, date, token, and other formatters for argus UI.
  */
 
 /** Format a number with commas: 1234567 → "1,234,567" */

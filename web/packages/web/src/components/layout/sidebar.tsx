@@ -30,9 +30,9 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
-import { ScrollArea } from "@repowise-dev/ui/ui/scroll-area";
-import { Separator } from "@repowise-dev/ui/ui/separator";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@repowise-dev/ui/ui/tooltip";
+import { ScrollArea } from "@argus-dev/ui/ui/scroll-area";
+import { Separator } from "@argus-dev/ui/ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@argus-dev/ui/ui/tooltip";
 import { AddRepoDialog } from "@/components/repos/add-repo-dialog";
 import type { RepoResponse, WorkspaceResponse } from "@/lib/api/types";
 
@@ -126,15 +126,15 @@ export function Sidebar({ repos = [], activeRepoId, workspace }: SidebarProps) {
       {/* Logo */}
       <div className="flex h-14 items-center gap-3 px-4">
         <Image
-          src="/repowise-logo.png"
-          alt="repowise"
+          src="/argus-logo.png"
+          alt="argus"
           width={28}
           height={28}
           className="shrink-0 drop-shadow-[0_0_8px_rgba(245,149,32,0.3)]"
         />
         {!isIconOnly && (
           <span className="text-base font-semibold text-[var(--color-text-primary)] tracking-tight flex-1 truncate">
-            repowise
+            argus
           </span>
         )}
         <button
@@ -339,7 +339,7 @@ export function Sidebar({ repos = [], activeRepoId, workspace }: SidebarProps) {
       {!isIconOnly && (
         <div className="border-t border-[var(--color-border-default)] px-4 py-3">
           <p className="text-xs text-[var(--color-text-tertiary)]">
-            repowise v0.1.0
+            argus v0.1.0
           </p>
         </div>
       )}

@@ -1,29 +1,29 @@
 /**
- * Base fetch wrapper for the repowise REST API.
+ * Base fetch wrapper for the argus REST API.
  *
- * Reads the API base URL from NEXT_PUBLIC_REPOWISE_API_URL (default: empty string,
+ * Reads the API base URL from NEXT_PUBLIC_ARGUS_API_URL (default: empty string,
  * meaning requests go to the same origin — the Next.js rewrite proxies them).
  *
- * API key is read from NEXT_PUBLIC_REPOWISE_API_KEY. For production use, the key
+ * API key is read from NEXT_PUBLIC_ARGUS_API_KEY. For production use, the key
  * should be stored in an httpOnly cookie set by the settings page.
  */
 
 import type { ApiError } from "./types";
 
 // Client-side: empty string → relative requests proxied via Next.js rewrites.
-// Server-side: use REPOWISE_API_URL (the backend) since server `fetch` bypasses rewrites.
+// Server-side: use ARGUS_API_URL (the backend) since server `fetch` bypasses rewrites.
 const BASE_URL =
   typeof window !== "undefined"
-    ? (process.env.NEXT_PUBLIC_REPOWISE_API_URL ?? "")
-    : (process.env.REPOWISE_API_URL || process.env.NEXT_PUBLIC_REPOWISE_API_URL || "http://localhost:7337");
+    ? (process.env.NEXT_PUBLIC_ARGUS_API_URL ?? "")
+    : (process.env.ARGUS_API_URL || process.env.NEXT_PUBLIC_ARGUS_API_URL || "http://localhost:7337");
 
 function getApiKey(): string | null {
   // In browser: check localStorage (set by settings page)
   if (typeof window !== "undefined") {
-    return localStorage.getItem("repowise_api_key") ?? null;
+    return localStorage.getItem("argus_api_key") ?? null;
   }
   // In server components: use env var
-  return process.env.REPOWISE_API_KEY ?? process.env.NEXT_PUBLIC_REPOWISE_API_KEY ?? null;
+  return process.env.ARGUS_API_KEY ?? process.env.NEXT_PUBLIC_ARGUS_API_KEY ?? null;
 }
 
 function buildHeaders(extra?: Record<string, string>): Headers {

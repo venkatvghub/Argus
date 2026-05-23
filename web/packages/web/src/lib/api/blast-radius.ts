@@ -2,7 +2,7 @@ import { apiPost } from "./client";
 import type {
   BlastRadiusRequest,
   BlastRadiusResponse,
-} from "@repowise-dev/types/blast-radius";
+} from "@argus-dev/types/blast-radius";
 
 export type {
   DirectRiskEntry,
@@ -11,7 +11,7 @@ export type {
   ReviewerEntry,
   BlastRadiusResponse,
   BlastRadiusRequest,
-} from "@repowise-dev/types/blast-radius";
+} from "@argus-dev/types/blast-radius";
 
 export async function analyzeBlastRadius(
   repoId: string,

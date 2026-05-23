@@ -16,7 +16,7 @@ import type {
   OwnerFileEntry,
   OwnerModuleRollup,
   OwnerCoAuthor,
-} from "@repowise-dev/types/owners";
+} from "@argus-dev/types/owners";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { cn } from "../lib/cn";

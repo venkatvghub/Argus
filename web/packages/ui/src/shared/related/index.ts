@@ -1,2 +1,2 @@
-export { RelatedAcrossRepowise } from "./related-across-repowise";
-export type { RelatedAcrossRepowiseProps, RelatedSection } from "./related-across-repowise";
+export { RelatedAcrossArgus } from "./related-across-argus";
+export type { RelatedAcrossArgusProps, RelatedSection } from "./related-across-argus";

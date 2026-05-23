@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import { hierarchy, treemap, treemapSquarify, type HierarchyRectangularNode } from "d3-hierarchy";
-import type { OwnershipEntry } from "@repowise-dev/types/git";
+import type { OwnershipEntry } from "@argus-dev/types/git";
 
 interface OwnershipTreemapProps {
   entries: OwnershipEntry[];

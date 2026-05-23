@@ -64,7 +64,7 @@ var (
 func Load() (*Config, error) {
 	once.Do(func() {
 		cfg = &Config{}
-		initErr = envconfig.Process("REPOWISE", cfg)
+		initErr = envconfig.Process("ARGUS", cfg)
 	})
 	if initErr != nil {
 		return nil, fmt.Errorf("failed to process config: %w", initErr)

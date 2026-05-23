@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import useSWRInfinite from "swr/infinite";
 import { useRouter } from "next/navigation";
 import { Folder } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@repowise-dev/ui/ui/select";
-import { ModuleHealthList } from "@repowise-dev/ui/modules/module-health-list";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@argus-dev/ui/ui/select";
+import { ModuleHealthList } from "@argus-dev/ui/modules/module-health-list";
 import { listModuleHealth, type ModuleHealthSortKey } from "@/lib/api/modules";
 import type { ModuleHealthSummary, Paginated } from "@/lib/api/types";
 

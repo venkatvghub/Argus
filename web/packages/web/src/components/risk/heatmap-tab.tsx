@@ -3,16 +3,16 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { OwnershipTreemap } from "@repowise-dev/ui/git/ownership-treemap";
+import { OwnershipTreemap } from "@argus-dev/ui/git/ownership-treemap";
 import { listModuleHealth } from "@/lib/api/modules";
 import type { ModuleHealthSummary } from "@/lib/api/types";
-import { BusFactorPanel } from "@repowise-dev/ui/git/bus-factor-panel";
-import { ContributorBar } from "@repowise-dev/ui/git/contributor-bar";
-import { HotspotTrendStrip } from "@repowise-dev/ui/git/hotspot-trend-strip";
-import { Card, CardContent, CardHeader, CardTitle } from "@repowise-dev/ui/ui/card";
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
+import { BusFactorPanel } from "@argus-dev/ui/git/bus-factor-panel";
+import { ContributorBar } from "@argus-dev/ui/git/contributor-bar";
+import { HotspotTrendStrip } from "@argus-dev/ui/git/hotspot-trend-strip";
+import { Card, CardContent, CardHeader, CardTitle } from "@argus-dev/ui/ui/card";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
 import { getOwnership, getGitSummary, getHotspots } from "@/lib/api/git";
-import { formatNumber } from "@repowise-dev/ui/lib/format";
+import { formatNumber } from "@argus-dev/ui/lib/format";
 import { cn } from "@/lib/utils/cn";
 import type { OwnershipEntry, GitSummaryResponse, HotspotResponse } from "@/lib/api/types";
 

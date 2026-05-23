@@ -12,9 +12,9 @@ export interface RelatedSection {
   render: () => React.ReactNode;
 }
 
-export interface RelatedAcrossRepowiseProps {
+export interface RelatedAcrossArgusProps {
   sections: RelatedSection[];
-  /** Defaults to "Related across Repowise". */
+  /** Defaults to "Related across Argus". */
   title?: string;
   /** Sections to start expanded. Defaults to none. */
   defaultExpanded?: string[];
@@ -25,11 +25,11 @@ export interface RelatedAcrossRepowiseProps {
  * wiki). Renders only sections that the host actually populates — sections
  * whose `render()` returns null are filtered out before rendering.
  */
-export function RelatedAcrossRepowise({
+export function RelatedAcrossArgus({
   sections,
-  title = "Related across Repowise",
+  title = "Related across Argus",
   defaultExpanded = [],
-}: RelatedAcrossRepowiseProps) {
+}: RelatedAcrossArgusProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set(defaultExpanded));
 
   if (sections.length === 0) return null;

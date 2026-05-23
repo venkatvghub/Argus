@@ -1,7 +1,7 @@
 "use client";
 
 import { GitPullRequest, Sparkles } from "lucide-react";
-import type { ReviewerSuggestion } from "@repowise-dev/types/modules";
+import type { ReviewerSuggestion } from "@argus-dev/types/modules";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Skeleton } from "../ui/skeleton";

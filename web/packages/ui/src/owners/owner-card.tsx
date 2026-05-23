@@ -1,7 +1,7 @@
 "use client";
 
 import { Flame, ShieldAlert, Trash2, GitCommit } from "lucide-react";
-import type { OwnerListEntry } from "@repowise-dev/types/owners";
+import type { OwnerListEntry } from "@argus-dev/types/owners";
 import { Card } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { cn } from "../lib/cn";

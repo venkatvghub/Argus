@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { FileCardDialog } from "@repowise-dev/ui/shared/file-card";
-import type { FileCardData, FileCardLinks } from "@repowise-dev/ui/shared/file-card";
+import { FileCardDialog } from "@argus-dev/ui/shared/file-card";
+import type { FileCardData, FileCardLinks } from "@argus-dev/ui/shared/file-card";
 
 /**
  * Stateful host for FileCardDialog. Pages that have a list of files (hotspots,

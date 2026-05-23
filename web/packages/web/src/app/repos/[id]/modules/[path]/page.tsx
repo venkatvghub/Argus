@@ -4,9 +4,9 @@ import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import Link from "next/link";
 import { ArrowLeft, Folder } from "lucide-react";
-import { ModuleHealthDetailView } from "@repowise-dev/ui/modules/module-health-detail";
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
-import { EmptyState } from "@repowise-dev/ui/shared/empty-state";
+import { ModuleHealthDetailView } from "@argus-dev/ui/modules/module-health-detail";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
+import { EmptyState } from "@argus-dev/ui/shared/empty-state";
 import { getModuleHealth } from "@/lib/api/modules";
 import type { ModuleHealthDetail } from "@/lib/api/types";
 

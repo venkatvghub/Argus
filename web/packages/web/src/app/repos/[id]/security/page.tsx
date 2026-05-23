@@ -4,14 +4,14 @@ import { useMemo } from "react";
 import useSWR from "swr";
 import { useParams } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
-import { SeverityDistribution } from "@repowise-dev/ui/security/severity-distribution";
-import { SecurityFindingsTable } from "@repowise-dev/ui/security/findings-table";
-import { FindingsByDirectory } from "@repowise-dev/ui/security/findings-by-directory";
-import { Card, CardContent, CardHeader, CardTitle } from "@repowise-dev/ui/ui/card";
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
+import { SeverityDistribution } from "@argus-dev/ui/security/severity-distribution";
+import { SecurityFindingsTable } from "@argus-dev/ui/security/findings-table";
+import { FindingsByDirectory } from "@argus-dev/ui/security/findings-by-directory";
+import { Card, CardContent, CardHeader, CardTitle } from "@argus-dev/ui/ui/card";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
 import { listSecurityFindings, type SecurityFinding } from "@/lib/api/security";
 import { useFileCardHost } from "@/components/shared/file-card-host";
-import type { FileCardData } from "@repowise-dev/ui/shared/file-card";
+import type { FileCardData } from "@argus-dev/ui/shared/file-card";
 
 export default function SecurityPage() {
   const params = useParams<{ id: string }>();

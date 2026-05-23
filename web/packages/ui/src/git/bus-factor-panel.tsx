@@ -11,7 +11,7 @@ import {
 import { Users } from "lucide-react";
 import { EmptyState } from "../shared/empty-state";
 import { truncatePath } from "../lib/format";
-import type { Hotspot } from "@repowise-dev/types/git";
+import type { Hotspot } from "@argus-dev/types/git";
 
 interface BusFactorPanelProps {
   hotspots: Hotspot[];

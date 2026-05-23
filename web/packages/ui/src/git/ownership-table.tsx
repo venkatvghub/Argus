@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { EmptyState } from "../shared/empty-state";
 import { RowActions } from "../shared/row-actions";
 import { cn } from "../lib/cn";
-import type { OwnershipEntry } from "@repowise-dev/types/git";
+import type { OwnershipEntry } from "@argus-dev/types/git";
 
 interface OwnershipTableProps {
   entries: OwnershipEntry[];

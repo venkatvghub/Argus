@@ -15,13 +15,13 @@ import { listJobs } from "@/lib/api/jobs";
 import { getGitSummary } from "@/lib/api/git";
 import { getWorkspace } from "@/lib/api/workspace";
 import type { RepoStatsResponse, GitSummaryResponse } from "@/lib/api/types";
-import { StatCard } from "@repowise-dev/ui/shared/stat-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@repowise-dev/ui/ui/card";
-import { Badge } from "@repowise-dev/ui/ui/badge";
-import { ConfidenceBadge } from "@repowise-dev/ui/wiki/confidence-badge";
-import { EmptyState } from "@repowise-dev/ui/shared/empty-state";
-import { formatRelativeTime, formatNumber } from "@repowise-dev/ui/lib/format";
-import { scoreToStatus } from "@repowise-dev/ui/lib/confidence";
+import { StatCard } from "@argus-dev/ui/shared/stat-card";
+import { Card, CardContent, CardHeader, CardTitle } from "@argus-dev/ui/ui/card";
+import { Badge } from "@argus-dev/ui/ui/badge";
+import { ConfidenceBadge } from "@argus-dev/ui/wiki/confidence-badge";
+import { EmptyState } from "@argus-dev/ui/shared/empty-state";
+import { formatRelativeTime, formatNumber } from "@argus-dev/ui/lib/format";
+import { scoreToStatus } from "@argus-dev/ui/lib/confidence";
 import { DeleteRepoButton } from "@/components/repos/delete-repo-button";
 
 export const metadata: Metadata = { title: "Dashboard" };
@@ -126,7 +126,7 @@ export default async function DashboardPage() {
               <div className="px-6 pb-6">
                 <EmptyState
                   title="No repositories yet"
-                  description="Run repowise init on a repository to get started."
+                  description="Run argus init on a repository to get started."
                   icon={<FileText className="h-8 w-8" />}
                 />
               </div>
@@ -195,7 +195,7 @@ export default async function DashboardPage() {
               <div className="px-6 pb-6">
                 <EmptyState
                   title="No jobs yet"
-                  description="Jobs appear after running repowise init or sync."
+                  description="Jobs appear after running argus init or sync."
                   icon={<Activity className="h-8 w-8" />}
                 />
               </div>

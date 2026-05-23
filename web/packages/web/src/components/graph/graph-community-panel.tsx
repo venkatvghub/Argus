@@ -1,8 +1,8 @@
 "use client";
 
-import { GraphCommunityPanel as GraphCommunityPanelShell } from "@repowise-dev/ui/graph/graph-community-panel";
+import { GraphCommunityPanel as GraphCommunityPanelShell } from "@argus-dev/ui/graph/graph-community-panel";
 import { useCommunityDetail } from "@/lib/hooks/use-graph";
-import type { CommunityDetail } from "@repowise-dev/types/graph";
+import type { CommunityDetail } from "@argus-dev/types/graph";
 
 interface GraphCommunityPanelWrapperProps {
   repoId: string;

@@ -1,8 +1,8 @@
 import { FileText, Flame, BarChart3, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "../ui/card";
 import { Badge } from "../ui/badge";
-import type { RepoStats } from "@repowise-dev/types/workspace";
-import type { GitSummary } from "@repowise-dev/types/git";
+import type { RepoStats } from "@argus-dev/types/workspace";
+import type { GitSummary } from "@argus-dev/types/git";
 
 interface RepoCardProps {
   repoId: string;

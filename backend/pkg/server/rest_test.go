@@ -15,11 +15,11 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/venkatvghub/argus/pkg/argus"
 	"github.com/venkatvghub/argus/pkg/config"
-	"github.com/venkatvghub/argus/pkg/repowise"
 )
 
-func setupTestArgus(t *testing.T) (*repowise.Instance, func()) {
+func setupTestArgus(t *testing.T) (*argus.Instance, func()) {
 	tmpDir, err := os.MkdirTemp("", "argus-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
@@ -33,7 +33,7 @@ func setupTestArgus(t *testing.T) (*repowise.Instance, func()) {
 	}
 
 	ctx := context.Background()
-	argus, err := repowise.New(ctx, cfg)
+	argus, err := argus.New(ctx, cfg)
 	if err != nil {
 		os.RemoveAll(tmpDir)
 		t.Fatalf("failed to create argus instance: %v", err)
@@ -94,7 +94,7 @@ func TestRESTServer_ListRepos(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), "[]")
 }
 
-func waitForRepoAnalyzed(t *testing.T, argus *repowise.Instance, timeout time.Duration) {
+func waitForRepoAnalyzed(t *testing.T, argus *argus.Instance, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

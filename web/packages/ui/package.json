@@ -1,7 +1,7 @@
 {
-  "name": "@repowise-dev/ui",
+  "name": "@argus-dev/ui",
   "version": "0.1.0",
-  "description": "Shared visualization components for the Repowise dashboard (packages/web) and downstream consumers. Domains: graph, git, dead-code, decisions, docs, symbols, coverage, wiki, chat, dashboard, workspace, jobs, blast-radius, plus shared primitives and hooks.",
+  "description": "Shared visualization components for the Argus dashboard (packages/web) and downstream consumers. Domains: graph, git, dead-code, decisions, docs, symbols, coverage, wiki, chat, dashboard, workspace, jobs, blast-radius, plus shared primitives and hooks.",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -98,7 +98,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@repowise-dev/types": "*",
+    "@argus-dev/types": "workspace:*",
     "@sigma/edge-curve": "^3.1.0",
     "@xyflow/react": "^12.10.2",
     "class-variance-authority": "^0.7.1",
@@ -122,16 +122,20 @@
     "tailwind-merge": "^3.5.0"
   },
   "peerDependencies": {
+    "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.5.0",
     "@testing-library/react": "^16.0.0",
+    "@types/d3-force": "^3.0.10",
+    "@types/d3-hierarchy": "^3.1.7",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.0",
+    "@vitejs/plugin-react": "^5.1.0",
     "jsdom": "^25.0.0",
+    "next": "~15.5.18",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.6.0",

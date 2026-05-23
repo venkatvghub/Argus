@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Route, Loader2, X, ArrowRight, Search, ChevronDown } from "lucide-react";
 import { Button } from "../ui/button";
 import { useDebounce } from "../hooks/use-debounce";
-import type { GraphPath, NodeSearchResult } from "@repowise-dev/types/graph";
+import type { GraphPath, NodeSearchResult } from "@argus-dev/types/graph";
 
 export interface PathFinderPanelProps {
   /** Inject the autocomplete searcher. Returns the top-N nodes for a query. */

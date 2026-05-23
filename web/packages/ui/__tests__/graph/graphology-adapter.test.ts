@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { fileGraphToGraphology, moduleGraphToGraphology } from "../../src/graph/sigma/graphology-adapter";
-import type { GraphExport, GraphNode, GraphLink, ModuleGraph, ModuleNode, ModuleEdge, CommunitySummaryItem } from "@repowise-dev/types/graph";
+import type { GraphExport, GraphNode, GraphLink, ModuleGraph, ModuleNode, ModuleEdge, CommunitySummaryItem } from "@argus-dev/types/graph";
 
 function makeNode(overrides: Partial<GraphNode> & { node_id: string }): GraphNode {
   return {

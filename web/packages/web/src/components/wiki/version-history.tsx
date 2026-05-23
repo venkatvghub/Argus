@@ -1,7 +1,7 @@
 "use client";
 
-import type { DocPageVersion } from "@repowise-dev/types";
-import { VersionHistory as VersionHistoryShell } from "@repowise-dev/ui/wiki/version-history";
+import type { DocPageVersion } from "@argus-dev/types";
+import { VersionHistory as VersionHistoryShell } from "@argus-dev/ui/wiki/version-history";
 import { usePageVersions } from "@/lib/hooks/use-page";
 
 interface Props {

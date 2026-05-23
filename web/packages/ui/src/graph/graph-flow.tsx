@@ -26,7 +26,7 @@ import type {
   ModuleGraph,
   ExecutionFlows,
   CommunitySummaryItem,
-} from "@repowise-dev/types/graph";
+} from "@argus-dev/types/graph";
 import { SigmaCanvas, type SigmaCanvasHandle } from "./sigma/sigma-canvas";
 import {
   fileGraphToGraphology,

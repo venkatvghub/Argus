@@ -2,9 +2,9 @@
 @plugin "@tailwindcss/typography";
 
 /*
- * @repowise-dev/ui â€” canonical design tokens.
+ * @argus-dev/ui â€” canonical design tokens.
  *
- * Imported by every consumer that wants the standard Repowise look.
+ * Imported by every consumer that wants the standard Argus look.
  * Tailwind v4 `@theme` block defines CSS custom properties; base styles,
  * scrollbar, focus, prose overrides, and React Flow theming follow.
  *
@@ -45,7 +45,7 @@
   --color-text-inverse: #0d0d0d;
 
   /* ------------------------------------------------------------------ */
-  /* Accent â€” repowise Orange                                            */
+  /* Accent â€” argus Orange                                            */
   /* ------------------------------------------------------------------ */
   --color-accent-primary: #f59520;
   --color-accent-hover: #f7a94d;

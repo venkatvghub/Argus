@@ -1,6 +1,6 @@
 "use client";
 
-import { ChatInterface as ChatInterfaceShell } from "@repowise-dev/ui/chat/chat-interface";
+import { ChatInterface as ChatInterfaceShell } from "@argus-dev/ui/chat/chat-interface";
 import { useChat } from "@/lib/hooks/use-chat";
 import { ModelSelector } from "./model-selector";
 import { ConversationHistory } from "./conversation-history";

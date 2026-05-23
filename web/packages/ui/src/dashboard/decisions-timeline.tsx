@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { EmptyState } from "../shared/empty-state";
 import { formatRelativeTime } from "../lib/format";
-import type { DecisionRecord } from "@repowise-dev/types/decisions";
+import type { DecisionRecord } from "@argus-dev/types/decisions";
 
 interface DecisionsTimelineProps {
   decisions: DecisionRecord[];

@@ -27,10 +27,10 @@ import {
   Link2,
   GitMerge,
 } from "lucide-react";
-import { Button } from "@repowise-dev/ui/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@repowise-dev/ui/ui/sheet";
-import { ScrollArea } from "@repowise-dev/ui/ui/scroll-area";
-import { Separator } from "@repowise-dev/ui/ui/separator";
+import { Button } from "@argus-dev/ui/ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@argus-dev/ui/ui/sheet";
+import { ScrollArea } from "@argus-dev/ui/ui/scroll-area";
+import { Separator } from "@argus-dev/ui/ui/separator";
 import { AddRepoDialog } from "@/components/repos/add-repo-dialog";
 import { cn } from "@/lib/utils/cn";
 import type { RepoResponse, WorkspaceResponse } from "@/lib/api/types";
@@ -117,21 +117,21 @@ export function MobileNav({ repos = [], workspace }: MobileNavProps) {
       </Button>
       <div className="flex items-center gap-2 min-w-0 flex-1">
         <Image
-          src="/repowise-logo.png"
-          alt="repowise"
+          src="/argus-logo.png"
+          alt="argus"
           width={24}
           height={24}
           className="shrink-0 drop-shadow-[0_0_8px_rgba(245,149,32,0.3)]"
         />
         <span className="text-base font-semibold text-[var(--color-text-primary)] tracking-tight truncate">
-          repowise
+          argus
         </span>
       </div>
       <Button
         variant="ghost"
         size="icon"
         onClick={() => {
-          window.dispatchEvent(new CustomEvent("repowise:open-command-palette"));
+          window.dispatchEvent(new CustomEvent("argus:open-command-palette"));
         }}
         aria-label="Open search"
         className="h-11 w-11"
@@ -143,13 +143,13 @@ export function MobileNav({ repos = [], workspace }: MobileNavProps) {
         <SheetContent side="left" className="w-72 p-0">
           <SheetHeader className="border-b border-[var(--color-border-default)] h-14 flex-row items-center gap-3 py-0 px-4">
             <Image
-              src="/repowise-logo.png"
-              alt="repowise"
+              src="/argus-logo.png"
+              alt="argus"
               width={28}
               height={28}
               className="shrink-0 drop-shadow-[0_0_8px_rgba(245,149,32,0.3)]"
             />
-            <SheetTitle className="text-base">repowise</SheetTitle>
+            <SheetTitle className="text-base">argus</SheetTitle>
           </SheetHeader>
 
           <ScrollArea className="flex-1">
@@ -282,7 +282,7 @@ export function MobileNav({ repos = [], workspace }: MobileNavProps) {
           </ScrollArea>
 
           <div className="border-t border-[var(--color-border-default)] px-4 py-3">
-            <p className="text-xs text-[var(--color-text-tertiary)]">repowise v0.1.0</p>
+            <p className="text-xs text-[var(--color-text-tertiary)]">argus v0.1.0</p>
           </div>
         </SheetContent>
       </Sheet>

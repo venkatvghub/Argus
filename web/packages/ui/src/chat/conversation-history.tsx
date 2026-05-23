@@ -11,7 +11,7 @@ import { useState } from "react";
 import { History, Plus, Trash2 } from "lucide-react";
 import { cn } from "../lib/cn";
 import { formatRelativeTime } from "../lib/format";
-import type { Conversation } from "@repowise-dev/types/chat";
+import type { Conversation } from "@argus-dev/types/chat";
 
 export interface ConversationHistoryProps {
   conversations: Conversation[] | undefined;

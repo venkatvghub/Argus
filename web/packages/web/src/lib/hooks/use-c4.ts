@@ -6,7 +6,7 @@
  */
 
 import useSWR from "swr";
-import type { C4L1, C4L2, C4L3 } from "@repowise-dev/ui/c4";
+import type { C4L1, C4L2, C4L3 } from "@argus-dev/ui/c4";
 import { getC4L1, getC4L2, getC4L3 } from "@/lib/api/c4";
 
 const SWR_OPTS = { revalidateOnFocus: false, revalidateOnReconnect: false };

@@ -5,7 +5,7 @@ import { ArrowRight, ChevronDown, ChevronRight, Flame } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { cn } from "../lib/cn";
-import type { CodeSymbol } from "@repowise-dev/types/symbols";
+import type { CodeSymbol } from "@argus-dev/types/symbols";
 
 export interface HotSymbol {
   symbol: CodeSymbol;

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { SymbolTable, type SymbolFilters } from "../../src/symbols/symbol-table.js";
-import type { CodeSymbol } from "@repowise-dev/types/symbols";
+import type { CodeSymbol } from "@argus-dev/types/symbols";
 
 const sym = (overrides: Partial<CodeSymbol> = {}): CodeSymbol => ({
   id: "s1",

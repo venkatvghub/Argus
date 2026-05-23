@@ -4,7 +4,7 @@
  *
  * Canonical source: engine `PipelineResult.graph` (NetworkX node_link_data
  * format) and the per-symbol intelligence endpoints in
- * `packages/server/src/repowise/server/schemas.py`.
+ * `packages/server/src/argus/server/schemas.py`.
  *
  * Some downstream backends emit a looser `{ nodes, links, directed?, multigraph? }`
  * shape; consumer-side adapters are responsible for converting that to

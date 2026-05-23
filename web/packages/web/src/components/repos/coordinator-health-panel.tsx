@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { Button } from "@repowise-dev/ui/ui/button";
+import { Button } from "@argus-dev/ui/ui/button";
 import { getCoordinatorHealth, type CoordinatorHealth } from "@/lib/api/health";
 
 interface Props {

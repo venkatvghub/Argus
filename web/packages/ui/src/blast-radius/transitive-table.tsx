@@ -1,4 +1,4 @@
-import type { TransitiveEntry } from "@repowise-dev/types/blast-radius";
+import type { TransitiveEntry } from "@argus-dev/types/blast-radius";
 import { Th, Td } from "./cells";
 
 interface TransitiveTableProps {

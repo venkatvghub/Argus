@@ -4,7 +4,7 @@ import { CommunitySummaryGrid } from "../../src/dashboard/community-summary-grid
 import type {
   CommunityDetail,
   CommunitySummaryItem,
-} from "@repowise-dev/types/graph";
+} from "@argus-dev/types/graph";
 
 const summaries: CommunitySummaryItem[] = [
   { community_id: 1, label: "auth", cohesion: 0.84, member_count: 12, top_file: "auth/index.ts" },

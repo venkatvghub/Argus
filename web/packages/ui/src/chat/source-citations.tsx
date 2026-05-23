@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { getPageTypeIcon } from "../lib/page-types";
-import type { ChatUIToolCall } from "@repowise-dev/types/chat";
+import type { ChatUIToolCall } from "@argus-dev/types/chat";
 
 export interface SourceReference {
   id: string;

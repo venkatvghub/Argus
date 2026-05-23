@@ -1,7 +1,7 @@
 "use client";
 
 import { Folder, Flame, Trash2, BookOpen, Users, ShieldAlert, Lightbulb } from "lucide-react";
-import type { ModuleHealthSummary } from "@repowise-dev/types/modules";
+import type { ModuleHealthSummary } from "@argus-dev/types/modules";
 import { Card, CardContent } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { cn } from "../lib/cn";

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import useSWR from "swr";
-import { SymbolGitPanel } from "@repowise-dev/ui/symbols/symbol-git-panel";
+import { SymbolGitPanel } from "@argus-dev/ui/symbols/symbol-git-panel";
 import { getCoChanges, getGitMetadata } from "@/lib/api/git";
 import { listDeadCode } from "@/lib/api/dead-code";
 import { listDecisions } from "@/lib/api/decisions";

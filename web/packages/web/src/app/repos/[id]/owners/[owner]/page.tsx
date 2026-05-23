@@ -4,9 +4,9 @@ import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import Link from "next/link";
 import { ArrowLeft, Users } from "lucide-react";
-import { OwnerProfileView } from "@repowise-dev/ui/owners/owner-profile";
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
-import { EmptyState } from "@repowise-dev/ui/shared/empty-state";
+import { OwnerProfileView } from "@argus-dev/ui/owners/owner-profile";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
+import { EmptyState } from "@argus-dev/ui/shared/empty-state";
 import { getOwnerProfile } from "@/lib/api/owners";
 import type { OwnerProfileResponse } from "@/lib/api/types";
 

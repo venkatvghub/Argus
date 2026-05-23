@@ -4,8 +4,8 @@ import { TrendingUp, AlertTriangle, TrendingDown } from "lucide-react";
 import { useParams } from "next/navigation";
 import useSWR from "swr";
 
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
-import { TrendChart, deltaColor, formatDelta } from "@repowise-dev/ui/health";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
+import { TrendChart, deltaColor, formatDelta } from "@argus-dev/ui/health";
 
 import {
   getHealthTrend,

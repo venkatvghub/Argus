@@ -1,8 +1,8 @@
 /**
- * Discriminated union of "entity kinds" addressable across the Repowise UI.
+ * Discriminated union of "entity kinds" addressable across the Argus UI.
  * Every entity link, hover card, and context drawer entry uses this shape.
  *
- * Kept in `@repowise-dev/ui` (presentational layer) so the hosted frontend
+ * Kept in `@argus-dev/ui` (presentational layer) so the hosted frontend
  * inherits the same vocabulary without a data-layer import.
  */
 export type EntityKind = "file" | "symbol" | "decision" | "owner" | "commit";

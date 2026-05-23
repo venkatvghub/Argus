@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Trash2, AlertTriangle } from "lucide-react";
 import { deleteRepo } from "@/lib/api/repos";
-import { Button } from "@repowise-dev/ui/ui/button";
+import { Button } from "@argus-dev/ui/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@repowise-dev/ui/ui/dialog";
+} from "@argus-dev/ui/ui/dialog";
 
 interface DeleteRepoButtonProps {
   repoId: string;

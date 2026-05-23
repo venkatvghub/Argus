@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { Badge } from "@repowise-dev/ui/ui/badge";
-import { truncatePath } from "@repowise-dev/ui/lib/format";
-import { getPageTypeLabel } from "@repowise-dev/ui/lib/page-types";
+import { Badge } from "@argus-dev/ui/ui/badge";
+import { truncatePath } from "@argus-dev/ui/lib/format";
+import { getPageTypeLabel } from "@argus-dev/ui/lib/page-types";
 import { cn } from "@/lib/utils/cn";
 import type { SearchResultResponse } from "@/lib/api/types";
 

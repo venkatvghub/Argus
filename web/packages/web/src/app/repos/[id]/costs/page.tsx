@@ -12,19 +12,19 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { StatCard } from "@repowise-dev/ui/shared/stat-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@repowise-dev/ui/ui/card";
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@repowise-dev/ui/ui/tabs";
+import { StatCard } from "@argus-dev/ui/shared/stat-card";
+import { Card, CardContent, CardHeader, CardTitle } from "@argus-dev/ui/ui/card";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@argus-dev/ui/ui/tabs";
 import {
   CacheHitRatioCard,
   CostHeatmap,
   ProviderComparison,
   OperationBreakdown,
-} from "@repowise-dev/ui/costs";
+} from "@argus-dev/ui/costs";
 import { listCosts, getCostSummary } from "@/lib/api/costs";
 import type { CostGroup, CostSummary } from "@/lib/api/costs";
-import { formatCost, formatNumber, formatTokens } from "@repowise-dev/ui/lib/format";
+import { formatCost, formatNumber, formatTokens } from "@argus-dev/ui/lib/format";
 
 export default function CostsPage() {
   const params = useParams<{ id: string }>();

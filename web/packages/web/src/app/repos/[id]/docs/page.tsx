@@ -3,12 +3,12 @@
 import { use, useMemo, useState } from "react";
 import useSWR from "swr";
 import { Download, FolderArchive, Loader2 } from "lucide-react";
-import { Button } from "@repowise-dev/ui/ui/button";
-import { FirstFiveFiles, type FirstFiveFile } from "@repowise-dev/ui/onboarding/first-five-files";
+import { Button } from "@argus-dev/ui/ui/button";
+import { FirstFiveFiles, type FirstFiveFile } from "@argus-dev/ui/onboarding/first-five-files";
 import { DocsExplorer } from "@/components/docs/docs-explorer";
 import { listAllPages, listPages } from "@/lib/api/pages";
 import { getGraph } from "@/lib/api/graph";
-import type { DocPage } from "@repowise-dev/types/docs";
+import type { DocPage } from "@argus-dev/types/docs";
 import { downloadTextFile } from "@/lib/utils/download";
 import type { GraphExportResponse } from "@/lib/api/types";
 

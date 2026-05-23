@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@repowise-dev/ui/ui/card";
-import { Button } from "@repowise-dev/ui/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@argus-dev/ui/ui/card";
+import { Button } from "@argus-dev/ui/ui/button";
 
 const MCP_CONFIG = JSON.stringify(
   {
     mcpServers: {
-      repowise: {
-        command: "repowise",
+      argus: {
+        command: "argus",
         args: ["mcp", "/path/to/your/repo", "--transport", "stdio"],
       },
     },
@@ -56,7 +56,7 @@ export function McpSection() {
         <p className="text-xs text-[var(--color-text-tertiary)]">
           Replace <code className="font-mono">/path/to/your/repo</code> with the local path
           of the repository you want to query. Run{" "}
-          <code className="font-mono">repowise init</code> first to generate documentation.
+          <code className="font-mono">argus init</code> first to generate documentation.
         </p>
       </CardContent>
     </Card>

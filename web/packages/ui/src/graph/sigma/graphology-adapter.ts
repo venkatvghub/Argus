@@ -7,7 +7,7 @@ import type {
   ModuleNode,
   ModuleEdge,
   CommunitySummaryItem,
-} from "@repowise-dev/types/graph";
+} from "@argus-dev/types/graph";
 import type { SigmaNodeAttributes, SigmaEdgeAttributes } from "./types";
 import {
   NODE_BASE_SIZES,

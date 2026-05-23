@@ -1,6 +1,6 @@
 "use client";
 
-import { HealthFileDrawer } from "@repowise-dev/ui/health";
+import { HealthFileDrawer } from "@argus-dev/ui/health";
 import { useFileBreakdown } from "./use-file-breakdown";
 
 export function HealthFileDrawerHost({

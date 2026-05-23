@@ -1,7 +1,7 @@
 "use client";
 
 import { Search } from "lucide-react";
-import { Input } from "@repowise-dev/ui/ui/input";
+import { Input } from "@argus-dev/ui/ui/input";
 import { cn } from "@/lib/utils/cn";
 
 type SearchType = "fulltext" | "semantic";

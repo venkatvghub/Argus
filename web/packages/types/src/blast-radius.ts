@@ -1,6 +1,6 @@
 /**
  * Blast-radius types — mirror the OSS engine's `BlastRadius*` schemas
- * (`packages/server/src/repowise/server/schemas.py`) and the hosted
+ * (`packages/server/src/argus/server/schemas.py`) and the hosted
  * backend's `app/models/schemas.py` `BlastRadius*` Pydantic models.
  *
  * Both backends produce the same shape; this is the canonical TS contract.

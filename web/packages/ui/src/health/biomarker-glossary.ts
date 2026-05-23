@@ -3,7 +3,7 @@
  * label, category, and short explanation used in tooltips, info popovers,
  * and grouped views across all three health pages.
  *
- * Keep in sync with ``packages/core/src/repowise/core/analysis/health/scoring.py``
+ * Keep in sync with ``packages/core/src/argus/core/analysis/health/scoring.py``
  * (the python ``_BIOMARKER_CATEGORY`` map) and ``biomarkers/registry.py``.
  */
 

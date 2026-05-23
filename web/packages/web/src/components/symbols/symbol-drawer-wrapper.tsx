@@ -1,6 +1,6 @@
 "use client";
 
-import { SymbolDrawer } from "@repowise-dev/ui/symbols/symbol-drawer";
+import { SymbolDrawer } from "@argus-dev/ui/symbols/symbol-drawer";
 import { SymbolGraphPanelWrapper } from "./symbol-graph-panel-wrapper";
 import { SymbolGitPanelWrapper } from "./symbol-git-panel-wrapper";
 import type { SymbolResponse } from "@/lib/api/types";

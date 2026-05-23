@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
 import { Search, LayoutDashboard, Settings, BookOpen, Layers, Link2, GitMerge } from "lucide-react";
 import { useSearch } from "@/lib/hooks/use-search";
-import { truncatePath } from "@repowise-dev/ui/lib/format";
+import { truncatePath } from "@argus-dev/ui/lib/format";
 import type { RepoResponse, WorkspaceResponse } from "@/lib/api/types";
 
 interface CommandPaletteProps {
@@ -30,10 +30,10 @@ export function CommandPalette({ repos, workspace }: CommandPaletteProps) {
     };
     const openHandler = () => setOpen(true);
     window.addEventListener("keydown", handler);
-    window.addEventListener("repowise:open-command-palette", openHandler);
+    window.addEventListener("argus:open-command-palette", openHandler);
     return () => {
       window.removeEventListener("keydown", handler);
-      window.removeEventListener("repowise:open-command-palette", openHandler);
+      window.removeEventListener("argus:open-command-palette", openHandler);
     };
   }, []);
 

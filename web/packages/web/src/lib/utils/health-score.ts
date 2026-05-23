@@ -1,4 +1,4 @@
-import type { HealthScoreComponent } from "@repowise-dev/ui/dashboard/health-score-ring";
+import type { HealthScoreComponent } from "@argus-dev/ui/dashboard/health-score-ring";
 
 export interface HealthScoreResult {
   score: number;
@@ -33,7 +33,7 @@ export function computeHealthScore(params: {
 
   // Detect index-only mode: docs were never generated for this repo, so doc
   // coverage and freshness are structurally zero. Penalizing them would punish
-  // users who explicitly opted into `repowise init --index-only`. We drop both
+  // users who explicitly opted into `argus init --index-only`. We drop both
   // components and renormalize the remaining weights.
   const docsGenerated = docCoveragePct > 0 || freshnessScore > 0;
 
@@ -147,8 +147,8 @@ export function aggregateLanguages(
   return counts;
 }
 
-export type { AttentionItem } from "@repowise-dev/ui/dashboard/attention-panel";
-import type { AttentionItem } from "@repowise-dev/ui/dashboard/attention-panel";
+export type { AttentionItem } from "@argus-dev/ui/dashboard/attention-panel";
+import type { AttentionItem } from "@argus-dev/ui/dashboard/attention-panel";
 
 /** Build attention items from existing API responses */
 export function buildAttentionItems(params: {

@@ -1,10 +1,10 @@
 "use client";
 
 import { toast } from "sonner";
-import { GeneralForm } from "@repowise-dev/ui/settings/general-form";
+import { GeneralForm } from "@argus-dev/ui/settings/general-form";
 import { updateRepo } from "@/lib/api/repos";
 import type { RepoResponse } from "@/lib/api/types";
-import type { RepoSettingsValue } from "@repowise-dev/types/settings";
+import type { RepoSettingsValue } from "@argus-dev/types/settings";
 
 interface Props {
   repo: RepoResponse;

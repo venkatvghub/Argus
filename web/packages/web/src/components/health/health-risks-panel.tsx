@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import useSWR from "swr";
-import { HealthBadge } from "@repowise-dev/ui/health";
+import { HealthBadge } from "@argus-dev/ui/health";
 import {
   getHealthOverview,
   type HealthOverviewResponse,

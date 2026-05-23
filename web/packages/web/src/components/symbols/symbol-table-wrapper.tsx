@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import useSWRInfinite from "swr/infinite";
-import { SymbolTable, type SymbolFilters } from "@repowise-dev/ui/symbols/symbol-table";
-import { HotSymbolsBoard, type HotSymbol } from "@repowise-dev/ui/symbols/hot-symbols-board";
+import { SymbolTable, type SymbolFilters } from "@argus-dev/ui/symbols/symbol-table";
+import { HotSymbolsBoard, type HotSymbol } from "@argus-dev/ui/symbols/hot-symbols-board";
 import { SymbolDrawerWrapper } from "./symbol-drawer-wrapper";
 import { listSymbolsPage, type SymbolSortKey } from "@/lib/api/symbols";
 import { useDebounce } from "@/lib/hooks/use-debounce";

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { GraphDocPanel } from "../../src/graph/graph-doc-panel.js";
-import type { DocPage } from "@repowise-dev/types/docs";
+import type { DocPage } from "@argus-dev/types/docs";
 
 const samplePage: DocPage = {
   id: "file_page:src/foo.ts",

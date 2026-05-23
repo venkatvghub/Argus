@@ -1,6 +1,6 @@
 "use client";
 
-import type { SecurityFinding, SecuritySeverity } from "@repowise-dev/types";
+import type { SecurityFinding, SecuritySeverity } from "@argus-dev/types";
 import { Badge } from "../ui/badge";
 
 export interface SecurityPanelProps {

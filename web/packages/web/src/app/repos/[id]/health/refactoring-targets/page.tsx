@@ -11,9 +11,9 @@ import {
   RefactoringTargetList,
   biomarkerLabel,
   buildAiPrompt,
-} from "@repowise-dev/ui/health";
-import type { FindingStatus, RefactoringTarget } from "@repowise-dev/ui/health";
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
+} from "@argus-dev/ui/health";
+import type { FindingStatus, RefactoringTarget } from "@argus-dev/ui/health";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
 
 import {
   getHealthOverview,
@@ -181,7 +181,7 @@ export default function RefactoringTargetsPage() {
         <div className="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] p-6 text-sm text-[var(--color-text-secondary)]">
           No refactoring targets match the current filters. Try widening the
           severity or effort filters, or run{" "}
-          <code className="px-1 rounded bg-[var(--color-bg-muted)]">repowise health</code>{" "}
+          <code className="px-1 rounded bg-[var(--color-bg-muted)]">argus health</code>{" "}
           to populate findings.
         </div>
       ) : (

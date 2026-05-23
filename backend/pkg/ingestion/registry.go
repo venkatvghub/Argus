@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/tree-sitter/go-tree-sitter"
 	tshcl "github.com/tree-sitter-grammars/tree-sitter-hcl/bindings/go"
 	tskotlin "github.com/tree-sitter-grammars/tree-sitter-kotlin/bindings/go"
+	sitter "github.com/tree-sitter/go-tree-sitter"
 	tsgo "github.com/tree-sitter/tree-sitter-go/bindings/go"
 	tsjava "github.com/tree-sitter/tree-sitter-java/bindings/go"
 	tsjs "github.com/tree-sitter/tree-sitter-javascript/bindings/go"
@@ -27,21 +27,21 @@ func NewLanguageRegistry() *LanguageRegistry {
 	r := &LanguageRegistry{
 		extensions: map[string]string{
 			// Core languages
-			".go":  "go",
-			".js":  "javascript",
-			".mjs": "javascript",
-			".cjs": "javascript",
-			".ts":  "typescript",
-			".tsx": "typescript",
+			".go":   "go",
+			".js":   "javascript",
+			".mjs":  "javascript",
+			".cjs":  "javascript",
+			".ts":   "typescript",
+			".tsx":  "typescript",
 			".java": "java",
-			".py":  "python",
+			".py":   "python",
 			// Extended languages
-			".kt":  "kotlin",
-			".kts": "kotlin",
+			".kt":   "kotlin",
+			".kts":  "kotlin",
 			".dart": "dart",
-			".tf":  "terraform",
-			".hcl": "terraform",
-			".sql": "sql",
+			".tf":   "terraform",
+			".hcl":  "terraform",
+			".sql":  "sql",
 		},
 		languages: make(map[string]*sitter.Language),
 	}

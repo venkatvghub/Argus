@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
-import { RegenerateButton as RegenerateButtonShell } from "@repowise-dev/ui/wiki/regenerate-button";
+import { RegenerateButton as RegenerateButtonShell } from "@argus-dev/ui/wiki/regenerate-button";
 import { regeneratePage } from "@/lib/api/pages";
 import { GenerationProgressWrapper as GenerationProgress } from "@/components/jobs/generation-progress-wrapper";
 

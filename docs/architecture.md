@@ -6,7 +6,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │  Argus CLI / Embedded Library                               │
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │  repowise.Instance                                      │ │
+│  │  argus.Instance                                      │ │
 │  │  ├─ Ingestion: Git walk, Tree-sitter parse, Registry  │ │
 │  │  ├─ Analysis: Graph, Community, Flows, Health         │ │
 │  │  ├─ Providers: LLM router (Anthropic, Gemini, etc.)   │ │
@@ -37,7 +37,7 @@
 |---|---|
 | `pkg/config` | Environment-based configuration (envconfig), LLM provider selection, compliance patterns |
 | `pkg/logger` | Structured logging via zap, context propagation, metric tags |
-| `pkg/repowise` | Public API: `Instance` lifecycle, job scheduling, resource management |
+| `pkg/argus` | Public API: `Instance` lifecycle, job scheduling, resource management |
 | `pkg/ingestion/parser` | Tree-sitter bindings, AST extraction, multi-language support (Go, Python, TypeScript, Java, Dart, Kotlin) |
 | `pkg/ingestion/git` | Git log walks, commit history, author tracking, blame attribution |
 | `pkg/ingestion/registry` | Symbol registry: functions, classes, types, their definitions and references |
@@ -48,7 +48,7 @@
 | `pkg/server/rest` | REST API (chi), dashboard export, Cognee webhook |
 | `internal/providers` | LLM drivers: Anthropic, OpenAI, Gemini, tiered cost routing |
 | `internal/models` | Domain entities: FileNode, Symbol, Deduction, HealthMarker |
-| `cmd/repowise` | CLI entrypoint (cobra) |
+| `cmd/argus` | CLI entrypoint (cobra) |
 
 ## Analysis Pipeline
 
@@ -67,7 +67,7 @@
 
 Argus runs a **23-biomarker** pipeline concurrently via `errgroup`. Every file starts at 10.0; markers subtract points subject to per-category caps (see PHILOSOPHY.md). Final score clamped to [1.0, 10.0].
 
-### Structural Quality Biomarkers (12 — ported from original repowise)
+### Structural Quality Biomarkers (12 — foundational set)
 
 | Category | Cap | Markers | Trigger |
 |---|---|---|---|
@@ -85,7 +85,7 @@ Argus runs a **23-biomarker** pipeline concurrently via `errgroup`. Every file s
 | **Concurrency Risk** | uncapped | goroutine_shared_state, java_thread_unsync, py_await_race, js_closure_race, dart_state_after_await | Goroutine/thread mutating outer scope without sync |
 | **DPDP Compliance** | uncapped | dpdp_aadhaar, dpdp_pan, dpdp_upi, dpdp_mobile, pii_email, untracked_consent, rbi_logger_gap, data_sovereignty | PII regex hit; missing consent check; non-Indian outbound routing |
 | **AppSec** | uncapped | tainted_sql, ssrf_blind, broken_crypto, bypassed_rbac, hardcoded_secret | String-concat SQL; unvalidated URL; MD5/SHA1/DES; RBAC skip; literal secret |
-| **AI-Agent Efficiency** | uncapped | token_bloat, hallucination_bait, phantom_coupling, zombie_exports | >`REPOWISE_TOKEN_BLOAT_THRESHOLD` tokens/line; duplicate symbol names; co-change without imports |
+| **AI-Agent Efficiency** | uncapped | token_bloat, hallucination_bait, phantom_coupling, zombie_exports | >`ARGUS_TOKEN_BLOAT_THRESHOLD` tokens/line; duplicate symbol names; co-change without imports |
 
 ## Scoring Architecture
 
@@ -104,11 +104,11 @@ Argus runs a **23-biomarker** pipeline concurrently via `errgroup`. Every file s
 
 ### Worker Pool (Phase 3.4)
 
-The `JobManager` in `pkg/repowise/jobs.go` bounds analysis work to a configurable worker pool (`REPOWISE_WORKER_COUNT`, default 3) with a buffered queue (`REPOWISE_WORK_QUEUE_SIZE`, default 32). The `Submit(jobID, fn)` method replaces raw `go func()` spawning in `Analyze()`, preventing unbounded goroutine proliferation during bulk repository processing. Each job is wrapped with panic recovery via `executeWork()`.
+The `JobManager` in `pkg/argus/jobs.go` bounds analysis work to a configurable worker pool (`ARGUS_WORKER_COUNT`, default 3) with a buffered queue (`ARGUS_WORK_QUEUE_SIZE`, default 32). The `Submit(jobID, fn)` method replaces raw `go func()` spawning in `Analyze()`, preventing unbounded goroutine proliferation during bulk repository processing. Each job is wrapped with panic recovery via `executeWork()`.
 
 ### SSE Chat Streaming (Phase 3.4)
 
-The `chatStreamHandler` in `pkg/server/sse.go` exposes `GET /api/chat/stream?repoID=<id>&q=<query>` for token-level LLM streaming. CORS is restricted via `REPOWISE_CORS_ALLOWED_ORIGINS` (allowlist echo, not `*`). It consumes token and error channels from `provider.ChatStream()`, flushing each token to the client as a Server-Sent Event. Client disconnection is detected via `r.Context().Done()`.
+The `chatStreamHandler` in `pkg/server/sse.go` exposes `GET /api/chat/stream?repoID=<id>&q=<query>` for token-level LLM streaming. CORS is restricted via `ARGUS_CORS_ALLOWED_ORIGINS` (allowlist echo, not `*`). It consumes token and error channels from `provider.ChatStream()`, flushing each token to the client as a Server-Sent Event. Client disconnection is detected via `r.Context().Done()`.
 
 ### Provider Wiring (Phase 3.4)
 
@@ -176,11 +176,11 @@ Key endpoints:
 | **Cheap** | Gemini Flash, Gemini Flash 8B | Bulk analysis, token counting, pattern detection | "Summarize this function. Is it a test?" |
 | **Premium** | Claude 3.5 Sonnet, GPT-4o | Deep reasoning, code review, architectural decisions | "Design a refactor for this class. Why?" |
 
-Cost router selects based on query type. Environment var `REPOWISE_LLM_PROVIDER` selects default tier.
+Cost router selects based on query type. Environment var `ARGUS_LLM_PROVIDER` selects default tier.
 
 ## Data Flow Diagram
 
-### repowise init
+### argus init
 
 ```
 User: argus init --repo-path /target
@@ -243,8 +243,8 @@ POST /export/cognee
 
 ```bash
 cd backend
-go run ./cmd/repowise init --repo-path /path/to/project --data-dir ./data
-go run ./cmd/repowise server --port 8080 --data-dir ./data
+go run ./cmd/argus init --repo-path /path/to/project --data-dir ./data
+go run ./cmd/argus server --port 8080 --data-dir ./data
 ```
 
 ### Docker
@@ -253,7 +253,7 @@ go run ./cmd/repowise server --port 8080 --data-dir ./data
 FROM golang:1.21 as builder
 WORKDIR /app
 COPY backend .
-RUN go build -o argus ./cmd/repowise
+RUN go build -o argus ./cmd/argus
 
 FROM gcr.io/distroless/base-debian12
 COPY --from=builder /app/argus /
@@ -276,7 +276,7 @@ Type=simple
 ExecStart=/usr/local/bin/argus server --port 8080 --data-dir /var/lib/argus
 WorkingDirectory=/var/lib/argus
 Restart=on-failure
-Environment="REPOWISE_OPENAI_API_KEY=..."
+Environment="ARGUS_OPENAI_API_KEY=..."
 
 [Install]
 WantedBy=multi-user.target

@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useMemo } from "react";
 import * as d3 from "d3-force";
-import type { Hotspot } from "@repowise-dev/types/git";
+import type { Hotspot } from "@argus-dev/types/git";
 
 interface ContributorNetworkProps {
   hotspots: Hotspot[];

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   QuickActions as QuickActionsShell,
   type QuickActionKey,
-} from "@repowise-dev/ui/dashboard/quick-actions";
+} from "@argus-dev/ui/dashboard/quick-actions";
 import { syncRepo, fullResyncRepo } from "@/lib/api/repos";
 import { listJobs } from "@/lib/api/jobs";
 import { analyzeDeadCode } from "@/lib/api/dead-code";

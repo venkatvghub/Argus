@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { GraphCommunityPanel } from "../../src/graph/graph-community-panel.js";
-import type { CommunityDetail } from "@repowise-dev/types/graph";
+import type { CommunityDetail } from "@argus-dev/types/graph";
 
 const sampleCommunity: CommunityDetail = {
   community_id: 7,

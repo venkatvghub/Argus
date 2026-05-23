@@ -4,15 +4,15 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { RefreshCw, Zap, ChevronDown, ChevronUp, AlertTriangle, Download } from "lucide-react";
 import { syncRepo, fullResyncRepo } from "@/lib/api/repos";
-import { Button } from "@repowise-dev/ui/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@repowise-dev/ui/ui/card";
+import { Button } from "@argus-dev/ui/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@argus-dev/ui/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@repowise-dev/ui/ui/dialog";
+} from "@argus-dev/ui/ui/dialog";
 import { RunConfigForm, type RunConfig } from "./run-config-form";
 import { GenerationProgressWrapper as GenerationProgress } from "@/components/jobs/generation-progress-wrapper";
 

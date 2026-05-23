@@ -5,7 +5,7 @@ import { Badge } from "../ui/badge";
 import { ScrollArea } from "../ui/scroll-area";
 import { Skeleton } from "../ui/skeleton";
 import { truncatePath } from "../lib/format";
-import type { CommunityDetail } from "@repowise-dev/types/graph";
+import type { CommunityDetail } from "@argus-dev/types/graph";
 
 export interface GraphCommunityPanelProps {
   /** Community id surfaced in the empty/loading title fallback. */

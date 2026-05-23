@@ -4,26 +4,26 @@
 
 AI coding agents read files but lack structural context. They see source code in isolation, missing co-change patterns, dead code clusters, ownership, and regulatory violations. This forces agents to invent history, re-analyze the same logic across files, and hallucinate about architectural intent.
 
-repowise solves this by extracting codebase semantics as a structured graph: which functions call which, which tests cover what, which subsystems form communities, which code is at risk. This intelligence is then served via Claude MCP tools, reducing token bloat and improving agent accuracy. The Python repowise delivers 27× fewer tokens per query and 36% cheaper LLM costs.
+Argus solves this by extracting codebase semantics as a structured graph: which functions call which, which tests cover what, which subsystems form communities, which code is at risk. This intelligence is then served via Claude MCP tools, reducing token bloat and improving agent accuracy.
 
-Argus takes this further by rewriting repowise in Go—gaining speed, portability, and new risk-detection capabilities for compliance, concurrency, and security.
+Inspired from repowise, Argus gains speed, portability, and new risk-detection capabilities for compliance, concurrency, and security.
 
 ## Why Rewrite in Go
 
-| Metric | Python repowise | Argus (Go) | Win |
+| Metric | Earlier Python implementation | Argus (Go) | Win |
 |---|---|---|---|
 | CLI cold start | 300–800ms | 5–15ms | 50–100× faster |
 | Idle memory | ~120MB | 15–25MB | 5–8× smaller |
 | Distribution | pip + venv + overhead | Single static binary | Seamless cross-compile |
 | Cross-compile | Complex (requires host interpreters) | `GOOS=linux GOARCH=arm64 go build` | Native, one command |
 | Concurrency model | GIL-bound threads, multiprocessing overhead | Goroutines with true parallelism | Lock-free graph analysis |
-| Embedding | Via subprocess / REST only | Direct `import "github.com/venkatvghub/argus/pkg/repowise"` | Native Go integration |
+| Embedding | Via subprocess / REST only | Direct `import "github.com/venkatvghub/argus/pkg/argus"` | Native Go integration |
 
-Python's runtime startup, garbage collection pauses, and GIL contention make it unsuitable for both CLI tools (every invocation pays the startup tax) and embedded engines. Go's fast compilation, zero-overhead concurrency, and static binaries align perfectly with repowise's use case: quick, repeated codebase analysis in agents and automation.
+Python's runtime startup, garbage collection pauses, and GIL contention make it unsuitable for both CLI tools (every invocation pays the startup tax) and embedded engines. Go's fast compilation, zero-overhead concurrency, and static binaries align perfectly with Argus's use case: quick, repeated codebase analysis in agents and automation.
 
 ## Foundational Mandates
 
-1. **Programmatic-First Architecture:** Core logic is decoupled from CLI/HTTP layers and exported in `pkg/`. It can be embedded in any Go application via `repowise.New(config)`.
+1. **Programmatic-First Architecture:** Core logic is decoupled from CLI/HTTP layers and exported in `pkg/`. It can be embedded in any Go application via `argus.New(config)`.
 
 2. **Zero-CGo Portability:** Use `modernc.org/sqlite` and pure Go implementations (e.g., Leiden for community detection) to ensure seamless cross-compilation to single static binaries. No C dependencies, no build-time host setup.
 
@@ -50,7 +50,7 @@ Every file in Argus starts with a perfect **10.0** base score. The engine subtra
 | Compliance & AppSec | DPDP, RBI, concurrency, SQL injection, SSRF, crypto, RBAC | uncapped |
 | AI-Agent Efficiency | token_bloat, hallucination_bait, phantom_coupling | uncapped |
 
-The six structural categories above are the **12 original repowise biomarkers**, ported and enhanced with Go AST precision. The Compliance and Efficiency categories are **11 Argus-native biomarkers** — together forming a **23-biomarker compilation engine**.
+The six structural categories above are the **12 foundational structural biomarkers**, ported and enhanced with Go AST precision. The Compliance and Efficiency categories are **11 Argus-native biomarkers** — together forming a **23-biomarker compilation engine**.
 
 ## Biomarker Philosophy
 

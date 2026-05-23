@@ -1,4 +1,4 @@
-import type { BlastRadiusResponse } from "@repowise-dev/types/blast-radius";
+import type { BlastRadiusResponse } from "@argus-dev/types/blast-radius";
 import { RiskScoreCard } from "./risk-score-card";
 import { BlastRadiusSummary } from "./blast-radius-summary";
 import { TableSection } from "./table-section";

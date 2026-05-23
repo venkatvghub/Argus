@@ -5,7 +5,7 @@ import { Network, ChevronDown, ChevronUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { cn } from "../lib/cn";
 import { formatNumber } from "../lib/format";
-import type { ModuleNode, ModuleEdge } from "@repowise-dev/types/graph";
+import type { ModuleNode, ModuleEdge } from "@argus-dev/types/graph";
 
 interface ModuleOverviewGridProps {
   nodes: ModuleNode[];

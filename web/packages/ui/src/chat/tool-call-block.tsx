@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, CheckCircle2, ExternalLink } from "lucide-react";
-import type { ChatUIToolCall } from "@repowise-dev/types/chat";
+import type { ChatUIToolCall } from "@argus-dev/types/chat";
 
 const TOOL_LABELS: Record<string, string> = {
   get_overview: "Getting codebase overview",

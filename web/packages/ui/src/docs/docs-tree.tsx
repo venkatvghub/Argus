@@ -21,7 +21,7 @@ import {
 } from "../lib/page-types";
 import { cn } from "../lib/cn";
 import { statusBadgeClasses, type FreshnessStatus } from "../lib/confidence";
-import type { DocPage } from "@repowise-dev/types/docs";
+import type { DocPage } from "@argus-dev/types/docs";
 
 // Synthetic path used as the Onboarding folder's tree key. Distinct from any
 // real target_path (which never starts with "@") so directory lookups don't

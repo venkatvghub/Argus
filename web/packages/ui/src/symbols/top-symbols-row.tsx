@@ -5,7 +5,7 @@ import { ChevronRight, AlertCircle } from "lucide-react";
 import { Skeleton } from "../ui/skeleton";
 import { Badge } from "../ui/badge";
 import { cn } from "../lib/cn";
-import type { CodeSymbol } from "@repowise-dev/types/symbols";
+import type { CodeSymbol } from "@argus-dev/types/symbols";
 
 interface TopSymbolsRowProps {
   symbols: CodeSymbol[] | undefined;

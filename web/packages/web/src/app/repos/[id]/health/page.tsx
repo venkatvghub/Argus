@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { useParams } from "next/navigation";
 import { HeartPulse, RotateCw, Search } from "lucide-react";
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
-import { Button } from "@repowise-dev/ui/ui/button";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
+import { Button } from "@argus-dev/ui/ui/button";
 import {
   HealthKpiCards,
   HealthFileTable,
@@ -13,7 +13,7 @@ import {
   ModuleRollupList,
   type FileSortField,
   type Severity,
-} from "@repowise-dev/ui/health";
+} from "@argus-dev/ui/health";
 import {
   getHealthOverview,
   getHealthTrend,
@@ -126,7 +126,7 @@ export default function HealthPage() {
         </div>
       ) : error ? (
         <div className="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] p-4 text-sm text-[var(--color-text-secondary)] flex items-center justify-between gap-2">
-          <span>Couldn&apos;t load health data. Run <code>repowise init</code> to populate.</span>
+          <span>Couldn&apos;t load health data. Run <code>argus init</code> to populate.</span>
           <Button size="sm" variant="outline" onClick={() => mutate()}>Retry</Button>
         </div>
       ) : overview ? (

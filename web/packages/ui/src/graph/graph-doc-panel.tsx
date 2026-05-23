@@ -15,7 +15,7 @@ import { Badge } from "../ui/badge";
 import { ChatMarkdown } from "../chat/chat-markdown";
 import { ConfidenceBadge } from "../wiki/confidence-badge";
 import { formatRelativeTime } from "../lib/format";
-import type { DocPage } from "@repowise-dev/types/docs";
+import type { DocPage } from "@argus-dev/types/docs";
 
 export interface GraphDocPanelProps {
   /** Node id whose docs are being shown. Used in the header subtitle. */

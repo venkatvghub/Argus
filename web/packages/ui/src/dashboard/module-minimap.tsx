@@ -5,7 +5,7 @@ import * as d3Force from "d3-force";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { Network } from "lucide-react";
-import type { ModuleNode, ModuleEdge } from "@repowise-dev/types/graph";
+import type { ModuleNode, ModuleEdge } from "@argus-dev/types/graph";
 
 interface ModuleMinimapProps {
   nodes: ModuleNode[];

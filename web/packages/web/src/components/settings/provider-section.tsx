@@ -2,17 +2,17 @@
 
 import { useState, useEffect } from "react";
 import { config } from "@/lib/config";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@repowise-dev/ui/ui/card";
-import { Label } from "@repowise-dev/ui/ui/label";
-import { Input } from "@repowise-dev/ui/ui/input";
-import { Badge } from "@repowise-dev/ui/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@argus-dev/ui/ui/card";
+import { Label } from "@argus-dev/ui/ui/label";
+import { Input } from "@argus-dev/ui/ui/input";
+import { Badge } from "@argus-dev/ui/ui/badge";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@repowise-dev/ui/ui/select";
+} from "@argus-dev/ui/ui/select";
 
 const PROVIDERS = ["gemini", "openai", "anthropic", "deepseek", "ollama", "litellm", "mock"] as const;
 const EMBEDDERS = ["mock", "gemini", "openai"] as const;
@@ -178,14 +178,14 @@ export function ProviderSection() {
                 {embedderVars.map((v) => (
                   <code key={v} className="font-mono">{v}</code>
                 ))}{" "}
-                — set <code className="font-mono">REPOWISE_EMBEDDER={embedder}</code> on the server.
+                — set <code className="font-mono">ARGUS_EMBEDDER={embedder}</code> on the server.
               </p>
             )}
             {embedder === "mock" && (
               <p className="text-xs text-[var(--color-text-tertiary)]">
                 Using mock embedder — semantic search disabled. Set{" "}
-                <code className="font-mono">REPOWISE_EMBEDDER=gemini</code> or{" "}
-                <code className="font-mono">REPOWISE_EMBEDDER=openai</code> for real RAG.
+                <code className="font-mono">ARGUS_EMBEDDER=gemini</code> or{" "}
+                <code className="font-mono">ARGUS_EMBEDDER=openai</code> for real RAG.
               </p>
             )}
           </div>
@@ -196,7 +196,7 @@ export function ProviderSection() {
         <CardHeader>
           <CardTitle className="text-base">Server Connection</CardTitle>
           <CardDescription>
-            Test that the repowise server is reachable and healthy.
+            Test that the argus server is reachable and healthy.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">

@@ -6,15 +6,15 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/venkatvghub/argus/pkg/argus"
 	"github.com/venkatvghub/argus/pkg/constants"
-	"github.com/venkatvghub/argus/pkg/repowise"
 )
 
 type MCPServer struct {
-	argus *repowise.Instance
+	argus *argus.Instance
 }
 
-func NewMCPServer(argus *repowise.Instance) *MCPServer {
+func NewMCPServer(argus *argus.Instance) *MCPServer {
 	return &MCPServer{argus: argus}
 }
 

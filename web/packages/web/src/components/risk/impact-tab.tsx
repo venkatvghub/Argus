@@ -3,11 +3,11 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { Plus, Flame } from "lucide-react";
-import { Button } from "@repowise-dev/ui/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@repowise-dev/ui/ui/card";
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
-import { BlastRadiusResults } from "@repowise-dev/ui/blast-radius";
-import type { BlastRadiusResponse } from "@repowise-dev/types/blast-radius";
+import { Button } from "@argus-dev/ui/ui/button";
+import { Card, CardHeader, CardTitle, CardContent } from "@argus-dev/ui/ui/card";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
+import { BlastRadiusResults } from "@argus-dev/ui/blast-radius";
+import type { BlastRadiusResponse } from "@argus-dev/types/blast-radius";
 import { analyzeBlastRadius } from "@/lib/api/blast-radius";
 import { getHotspots } from "@/lib/api/git";
 

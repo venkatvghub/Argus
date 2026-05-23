@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { GitMerge, Filter } from "lucide-react";
 import { useWorkspaceCoChanges, useWorkspace } from "@/lib/hooks/use-workspace";
-import { CoChangeTable } from "@repowise-dev/ui/workspace/co-change-table";
-import { Card, CardContent, CardHeader, CardTitle } from "@repowise-dev/ui/ui/card";
-import { StatCard } from "@repowise-dev/ui/shared/stat-card";
-import { Skeleton } from "@repowise-dev/ui/ui/skeleton";
+import { CoChangeTable } from "@argus-dev/ui/workspace/co-change-table";
+import { Card, CardContent, CardHeader, CardTitle } from "@argus-dev/ui/ui/card";
+import { StatCard } from "@argus-dev/ui/shared/stat-card";
+import { Skeleton } from "@argus-dev/ui/ui/skeleton";
 
 export default function CoChangesPage() {
   const { workspace } = useWorkspace();

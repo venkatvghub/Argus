@@ -16,16 +16,16 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/venkatvghub/argus/pkg/argus"
 	"github.com/venkatvghub/argus/pkg/config"
 	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/models"
 	"github.com/venkatvghub/argus/pkg/providers"
-	"github.com/venkatvghub/argus/pkg/repowise"
 )
 
 func TestSSEHandler(t *testing.T) {
 	ctx := context.Background()
-	inst, err := repowise.New(ctx, nil)
+	inst, err := argus.New(ctx, nil)
 	assert.NoError(t, err)
 	defer inst.Close()
 
@@ -97,9 +97,9 @@ func TestSSEHandler(t *testing.T) {
 func TestSSEParsing(t *testing.T) {
 	// More detailed parsing test
 	ctx := context.Background()
-	inst, err := repowise.New(ctx, nil)
+	inst, err := argus.New(ctx, nil)
 	if err != nil {
-		t.Fatalf("failed to create repowise instance: %v", err)
+		t.Fatalf("failed to create argus instance: %v", err)
 	}
 	defer inst.Close()
 	srv := NewRESTServer(inst)
@@ -149,7 +149,7 @@ func TestSSEParsing(t *testing.T) {
 
 func TestChatStreamHandler_MissingRepoID(t *testing.T) {
 	ctx := context.Background()
-	inst, err := repowise.New(ctx, nil)
+	inst, err := argus.New(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -166,7 +166,7 @@ func TestChatStreamHandler_MissingRepoID(t *testing.T) {
 
 func TestChatStreamHandler_MissingQuery(t *testing.T) {
 	ctx := context.Background()
-	inst, err := repowise.New(ctx, nil)
+	inst, err := argus.New(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -183,7 +183,7 @@ func TestChatStreamHandler_MissingQuery(t *testing.T) {
 
 func TestChatStreamHandler_RepoNotFound(t *testing.T) {
 	ctx := context.Background()
-	inst, err := repowise.New(ctx, nil)
+	inst, err := argus.New(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -202,7 +202,7 @@ func TestChatStreamHandler_RepoNotFound(t *testing.T) {
 
 func TestChatStreamHandler_NoProvider(t *testing.T) {
 	ctx := context.Background()
-	inst, err := repowise.New(ctx, nil)
+	inst, err := argus.New(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -220,7 +220,7 @@ func TestChatStreamHandler_NoProvider(t *testing.T) {
 
 func TestChatStreamHandler_StreamsTokens(t *testing.T) {
 	ctx := context.Background()
-	inst, err := repowise.New(ctx, nil)
+	inst, err := argus.New(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -246,7 +246,7 @@ func TestChatStreamHandler_StreamsTokens(t *testing.T) {
 
 func TestChatStreamHandler_StreamingError(t *testing.T) {
 	ctx := context.Background()
-	inst, err := repowise.New(ctx, nil)
+	inst, err := argus.New(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -270,7 +270,7 @@ func TestChatStreamHandler_StreamingError(t *testing.T) {
 
 func TestSetProvider(t *testing.T) {
 	ctx := context.Background()
-	inst, err := repowise.New(ctx, nil)
+	inst, err := argus.New(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -360,7 +360,7 @@ func createRouterWithMockProvider(tokens []string, err error) *providers.Router 
 	return router
 }
 
-func seedChatStreamRepo(t *testing.T, inst *repowise.Instance) string {
+func seedChatStreamRepo(t *testing.T, inst *argus.Instance) string {
 	t.Helper()
 
 	tmpRepo, repoCleanup := setupTestRepo(t)
