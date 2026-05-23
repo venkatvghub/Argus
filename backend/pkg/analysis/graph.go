@@ -222,8 +222,7 @@ func (ge *GraphEngine) CalculatePageRank() map[int64]float64 {
 	if ge.g.Nodes().Len() == 0 {
 		return make(map[int64]float64)
 	}
-	// 0.85 is the standard damping factor, 1e-6 is the convergence tolerance.
-	scores := network.PageRank(ge.g, 0.85, 1e-6)
+	scores := network.PageRank(ge.g, pageRankDamping, pageRankTolerance)
 
 	// Update nodes with scores
 	for id, score := range scores {
@@ -253,7 +252,7 @@ func (ge *GraphEngine) GetNodes() []*Node {
 // It updates the CommunityID of each node and returns a map of community IDs to lists of node IDs.
 func (ge *GraphEngine) DetectCommunities() map[int][]int64 {
 	// Call the Leiden implementation
-	communities := Leiden(ge.g, 1.0, 10)
+	communities := Leiden(ge.g, leidenResolution, leidenIterations)
 
 	// Update nodes with community IDs
 	result := make(map[int][]int64)

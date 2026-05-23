@@ -11,15 +11,20 @@ import (
 
 // OpenAIProvider implements the Provider interface for OpenAI.
 type OpenAIProvider struct {
-	apiKey string
-	model  string
+	apiKey      string
+	model       string
+	streamDelay time.Duration
 }
 
 // NewOpenAIProvider creates a new OpenAI provider instance.
 func NewOpenAIProvider(cfg *config.Config) *OpenAIProvider {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
 	return &OpenAIProvider{
-		apiKey: cfg.OpenAIKey,
-		model:  cfg.OpenAIModel,
+		apiKey:      cfg.OpenAIKey,
+		model:       cfg.OpenAIModel,
+		streamDelay: mockStreamDelay(cfg),
 	}
 }
 
@@ -53,7 +58,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, repoID string, prompt s
 				errCh <- ctx.Err()
 				return
 			case out <- word + " ":
-				time.Sleep(50 * time.Millisecond)
+				time.Sleep(p.streamDelay)
 			}
 		}
 	}()

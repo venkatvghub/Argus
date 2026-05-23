@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/providers"
 	"github.com/venkatvghub/argus/pkg/repowise"
 )
@@ -103,7 +104,7 @@ func (s *RESTServer) exportCognee(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, map[string]any{
 		"entities":  []any{},
 		"relations": []any{},
-		"version":   "1.0.0",
+		"version":   constants.APIVersion,
 	})
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/venkatvghub/argus/pkg/config"
+	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/models"
 	"github.com/venkatvghub/argus/pkg/providers"
 	"github.com/venkatvghub/argus/pkg/repowise"
@@ -160,7 +161,7 @@ func TestChatStreamHandler_MissingRepoID(t *testing.T) {
 	srv.chatStreamHandler(rr, req)
 
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
-	assert.Contains(t, rr.Body.String(), "repoId is required")
+	assert.Contains(t, rr.Body.String(), "repoID is required")
 }
 
 func TestChatStreamHandler_MissingQuery(t *testing.T) {
@@ -171,7 +172,7 @@ func TestChatStreamHandler_MissingQuery(t *testing.T) {
 
 	srv := NewRESTServer(inst)
 
-	req := httptest.NewRequest("GET", "/api/chat/stream?repoId=abc", nil)
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoID=abc", nil)
 	rr := httptest.NewRecorder()
 
 	srv.chatStreamHandler(rr, req)
@@ -189,7 +190,7 @@ func TestChatStreamHandler_NoProvider(t *testing.T) {
 	srv := NewRESTServer(inst)
 	// provider is nil by default
 
-	req := httptest.NewRequest("GET", "/api/chat/stream?repoId=abc&q=hello", nil)
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoID=abc&q=hello", nil)
 	rr := httptest.NewRecorder()
 
 	srv.chatStreamHandler(rr, req)
@@ -212,7 +213,7 @@ func TestChatStreamHandler_StreamsTokens(t *testing.T) {
 	router := createRouterWithMockProvider([]string{"token1", "token2", "token3"}, nil)
 	srv.SetProvider(router)
 
-	req := httptest.NewRequest("GET", "/api/chat/stream?repoId="+repoID+"&q=test", nil)
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoID="+repoID+"&q=test", nil)
 	rr := httptest.NewRecorder()
 
 	srv.chatStreamHandler(rr, req)
@@ -238,7 +239,7 @@ func TestChatStreamHandler_StreamingError(t *testing.T) {
 	router := createRouterWithMockProvider([]string{}, errors.New("streaming error"))
 	srv.SetProvider(router)
 
-	req := httptest.NewRequest("GET", "/api/chat/stream?repoId="+repoID+"&q=test", nil)
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoID="+repoID+"&q=test", nil)
 	rr := httptest.NewRecorder()
 
 	srv.chatStreamHandler(rr, req)
@@ -269,7 +270,7 @@ func TestSetProvider(t *testing.T) {
 	assert.NotNil(t, srv.provider)
 
 	// Verify it works by making a request
-	req := httptest.NewRequest("GET", "/api/chat/stream?repoId="+repoID+"&q=hello", nil)
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoID="+repoID+"&q=hello", nil)
 	rr := httptest.NewRecorder()
 
 	srv.chatStreamHandler(rr, req)
@@ -351,7 +352,7 @@ func seedChatStreamRepo(t *testing.T, inst *repowise.Instance) string {
 
 	absPath, err := filepath.Abs(tmpRepo)
 	require.NoError(t, err)
-	repoID := fmt.Sprintf("%x", sha256.Sum256([]byte(absPath)))[:12]
+	repoID := fmt.Sprintf("%x", sha256.Sum256([]byte(absPath)))[:constants.RepoIDLength]
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {

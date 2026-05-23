@@ -11,15 +11,20 @@ import (
 
 // AnthropicProvider implements the Provider interface for Anthropic.
 type AnthropicProvider struct {
-	apiKey string
-	model  string
+	apiKey      string
+	model       string
+	streamDelay time.Duration
 }
 
 // NewAnthropicProvider creates a new Anthropic provider instance.
 func NewAnthropicProvider(cfg *config.Config) *AnthropicProvider {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
 	return &AnthropicProvider{
-		apiKey: cfg.AnthropicKey,
-		model:  cfg.AnthropicModel,
+		apiKey:      cfg.AnthropicKey,
+		model:       cfg.AnthropicModel,
+		streamDelay: mockStreamDelay(cfg),
 	}
 }
 
@@ -52,7 +57,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, repoID string, promp
 				errCh <- ctx.Err()
 				return
 			case out <- word + " ":
-				time.Sleep(50 * time.Millisecond)
+				time.Sleep(p.streamDelay)
 			}
 		}
 	}()

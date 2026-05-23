@@ -116,7 +116,7 @@ func Leiden(g graph.Graph, resolution float64, iterations int) map[int][]int64 {
 				}
 
 				// Use a small epsilon to avoid floating point issues and unnecessary moves
-				if gain > maxGain+1e-9 {
+				if gain > maxGain+floatCompareEpsilon {
 					maxGain = gain
 					bestComm = comm
 				}

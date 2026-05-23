@@ -6,14 +6,15 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/models"
 )
 
 func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
-	repoID := strings.TrimSpace(r.URL.Query().Get("repoId"))
+	repoID := strings.TrimSpace(r.URL.Query().Get("repoID"))
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if repoID == "" {
-		http.Error(w, "repoId is required", http.StatusBadRequest)
+		http.Error(w, "repoID is required", http.StatusBadRequest)
 		return
 	}
 	if query == "" {
@@ -35,10 +36,7 @@ func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	setSSEHeaders(w, r, s.corsAllowedOrigins())
 
 	tokens, errs, err := s.provider.ChatStream(r.Context(), repoID, query)
 	if err != nil {
@@ -80,14 +78,11 @@ func (s *RESTServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	setSSEHeaders(w, r, s.corsAllowedOrigins())
 
 	jobID := r.URL.Query().Get("jobId")
 	if jobID == "" {
-		jobID = "*"
+		jobID = constants.AllJobsWildcard
 	}
 
 	ch, unsubscribe := s.argus.Jobs.Subscribe(jobID)
@@ -107,7 +102,7 @@ func (s *RESTServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 			if job.Status == models.JobStatusCompleted || job.Status == models.JobStatusFailed {
 				// Don't return immediately if we want to keep connection open for other jobs
 				// but if it's a specific jobID, we can return.
-				if jobID != "*" {
+				if jobID != constants.AllJobsWildcard {
 					return
 				}
 			}

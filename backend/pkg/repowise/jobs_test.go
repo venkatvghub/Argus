@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/models"
 )
 
 func TestJobManager(t *testing.T) {
-	jm := NewJobManager()
+	jm := NewJobManager(nil)
+	defer jm.Close()
 
 	t.Run("Create and Get Job", func(t *testing.T) {
 		job := jm.CreateJob("test")
@@ -104,7 +106,8 @@ func TestBackgroundExecution(t *testing.T) {
 }
 
 func TestWorkerPoolSubmit(t *testing.T) {
-	jm := NewJobManager()
+	jm := NewJobManager(nil)
+	defer jm.Close()
 	job := jm.CreateJob("pool_submit_test")
 
 	executed := make(chan struct{}, 1)
@@ -136,7 +139,8 @@ func TestWorkerPoolSubmit(t *testing.T) {
 
 func TestWorkerPoolPanicRecovery(t *testing.T) {
 	// Test that panics in fn are recovered and job transitions to Failed
-	jm := NewJobManager()
+	jm := NewJobManager(nil)
+	defer jm.Close()
 	job := jm.CreateJob("pool_panic_test")
 
 	panicFunc := func() {
@@ -168,7 +172,8 @@ func TestWorkerPoolPanicRecovery(t *testing.T) {
 
 func TestWorkerPoolConcurrency(t *testing.T) {
 	// Test that all 6 jobs (2x pool size) complete successfully
-	jm := NewJobManager()
+	jm := NewJobManager(nil)
+	defer jm.Close()
 	jobCount := 6
 	completionChannel := make(chan string, jobCount)
 
@@ -177,7 +182,7 @@ func TestWorkerPoolConcurrency(t *testing.T) {
 		jobs[i] = jm.CreateJob(fmt.Sprintf("concurrent_job_%d", i))
 	}
 
-	globalCh, unsubscribe := jm.Subscribe("*")
+	globalCh, unsubscribe := jm.Subscribe(constants.AllJobsWildcard)
 	defer unsubscribe()
 
 	// Submit all jobs

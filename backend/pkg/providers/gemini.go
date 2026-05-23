@@ -11,15 +11,20 @@ import (
 
 // GeminiProvider implements the Provider interface for Google Gemini.
 type GeminiProvider struct {
-	apiKey string
-	model  string
+	apiKey      string
+	model       string
+	streamDelay time.Duration
 }
 
 // NewGeminiProvider creates a new Gemini provider instance.
 func NewGeminiProvider(cfg *config.Config) *GeminiProvider {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
 	return &GeminiProvider{
-		apiKey: cfg.GeminiKey,
-		model:  cfg.GeminiModel,
+		apiKey:      cfg.GeminiKey,
+		model:       cfg.GeminiModel,
+		streamDelay: mockStreamDelay(cfg),
 	}
 }
 
@@ -52,7 +57,7 @@ func (p *GeminiProvider) ChatStream(ctx context.Context, repoID string, prompt s
 				errCh <- ctx.Err()
 				return
 			case out <- word + " ":
-				time.Sleep(50 * time.Millisecond)
+				time.Sleep(p.streamDelay)
 			}
 		}
 	}()

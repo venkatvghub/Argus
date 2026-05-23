@@ -6,6 +6,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/repowise"
 )
 
@@ -18,7 +19,11 @@ func NewMCPServer(argus *repowise.Instance) *MCPServer {
 }
 
 func (s *MCPServer) Run() error {
-	mcpSrv := server.NewMCPServer("Argus", "1.0.0")
+	appName := "argus"
+	if cfg := s.argus.Config(); cfg != nil && cfg.AppName != "" {
+		appName = cfg.AppName
+	}
+	mcpSrv := server.NewMCPServer(appName, constants.APIVersion)
 
 	mcpSrv.AddTool(mcp.NewTool("list_repos", mcp.WithDescription("Lists indexed repositories")), s.listReposHandler)
 

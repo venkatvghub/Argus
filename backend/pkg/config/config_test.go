@@ -15,12 +15,12 @@ func TestLoad(t *testing.T) {
 
 	t.Setenv("REPOWISE_APP_NAME", "test-argus")
 	t.Setenv("REPOWISE_DATA_DIR", "/tmp/argus-data")
-	t.Setenv("REPOWISE_PII_PATTERNS", "aadhaar,pan")
+	t.Setenv("REPOWISE_PII_PATTERNS", "AADHAAR,PAN")
 
 	c, err := Load()
 	assert.NoError(t, err)
 	assert.Equal(t, "test-argus", c.AppName)
 	assert.Equal(t, "/tmp/argus-data", c.DataDir)
-	assert.Contains(t, c.PIIPatterns, "aadhaar")
-	assert.Contains(t, c.PIIPatterns, "pan")
+	assert.Contains(t, c.PIIPatterns, "AADHAAR")
+	assert.Contains(t, c.PIIPatterns, "PAN")
 }
