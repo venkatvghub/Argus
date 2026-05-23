@@ -1,8 +1,10 @@
 package analysis
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,6 +51,127 @@ func complex(a int, b string) string {
 	assert.Equal(t, 4, funcs[1].maxNesting)          // four levels of braces (func + 3 if levels)
 }
 
+func TestExtractGoFunctions_IgnoresBracesInStringLiterals(t *testing.T) {
+	content := `package main
+
+func withLiterals() string {
+	c := '"'
+	s := ` + "`{ not a brace }`" + `
+	t := "also { not }"
+	return string(c) + s + t
+}
+`
+	funcs := extractGoFunctions(content)
+	require.Len(t, funcs, 1)
+	assert.Equal(t, "withLiterals", funcs[0].name)
+	assert.Equal(t, 8, funcs[0].endLine)
+}
+
+func TestExtractGenericFunctions_IgnoresBracesInStringLiterals(t *testing.T) {
+	jsContent := `function withLiterals() {
+	const c = '"';
+	const s = ` + "`{ not a brace }`" + `;
+	const t = "also { not }";
+	return c + s + t;
+}`
+	jsFuncs := extractGenericFunctions(jsContent, ".js")
+	require.Len(t, jsFuncs, 1)
+	assert.Equal(t, "withLiterals", jsFuncs[0].name)
+
+	javaContent := `public class Example {
+	public void withLiterals() {
+		char c = '{';
+		String s = "not a { brace";
+	}
+}`
+	javaFuncs := extractGenericFunctions(javaContent, ".java")
+	require.Len(t, javaFuncs, 1)
+	assert.Equal(t, "withLiterals", javaFuncs[0].name)
+}
+
+func TestExtractGenericFunctions_RealWorldPatterns(t *testing.T) {
+	t.Run("python decorated function", func(t *testing.T) {
+		content := `@app.route("/health")
+def health_check():
+    return {"status": "ok"}
+
+class Service:
+    @staticmethod
+    def process(data, transform=lambda x: x(x)):
+        return data
+`
+		funcs := extractGenericFunctions(content, ".py")
+		names := make([]string, len(funcs))
+		for i, fn := range funcs {
+			names[i] = fn.name
+		}
+		assert.Contains(t, names, "health_check")
+		assert.Contains(t, names, "process")
+	})
+
+	t.Run("javascript arrow and nested params", func(t *testing.T) {
+		content := `const parseQuery = (
+  raw,
+  decodeURIComponent(value)
+) => {
+  return raw.split("&");
+};
+
+function legacyHandler(req, res) {
+  res.send("ok");
+}
+
+const handler = async function run(
+  opts,
+  map(fn => fn(opts))
+) {
+  return opts;
+};
+`
+		funcs := extractGenericFunctions(content, ".js")
+		names := make([]string, len(funcs))
+		for i, fn := range funcs {
+			names[i] = fn.name
+		}
+		assert.Contains(t, names, "parseQuery")
+		assert.Contains(t, names, "legacyHandler")
+		assert.Contains(t, names, "run")
+	})
+
+	t.Run("java annotated multiline method", func(t *testing.T) {
+		content := `public class Repo {
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, List<Item>> findByTags(
+        String tenant,
+        Predicate<String> matches(tag)
+    ) throws DataAccessException {
+        return repository.find(tenant, matches);
+    }
+}
+`
+		funcs := extractGenericFunctions(content, ".java")
+		require.NotEmpty(t, funcs)
+		assert.Equal(t, "findByTags", funcs[0].name)
+	})
+
+	t.Run("kotlin fun with annotations", func(t *testing.T) {
+		content := `class UserService {
+    @JvmOverloads
+    fun loadUser(
+        id: String,
+        includeRoles: Boolean = false
+    ): User {
+        return repo.find(id, includeRoles)
+    }
+}
+`
+		funcs := extractGenericFunctions(content, ".kt")
+		require.NotEmpty(t, funcs)
+		assert.Equal(t, "loadUser", funcs[0].name)
+	})
+}
+
 // TestCountNLOC verifies blank lines and comment lines are excluded.
 func TestCountNLOC(t *testing.T) {
 	tests := []struct {
@@ -79,7 +202,26 @@ func TestCountNLOC(t *testing.T) {
 				"  return x",
 				"}",
 			},
-			expected: 3, // func, line with inline comment and code, return
+			expected: 4, // func test() {, inline code after block comment, return x, }
+		},
+		{
+			name: "comment markers inside strings are not comments",
+			input: []string{
+				`x := "https://example.com"`,
+				`s := "/* not a block */"`,
+				`return "line with // inside"`,
+			},
+			expected: 3,
+		},
+		{
+			name: "line comment inside multiline string is not a comment",
+			input: []string{
+				`x := "start`,
+				`// still in string`,
+				`end"`,
+				`y := 1`,
+			},
+			expected: 2, // x := "start..." and y := 1; middle lines are string continuations
 		},
 		{
 			name: "only comments and blanks",
@@ -107,6 +249,46 @@ func TestCountNLOC(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := countNLOC(tt.input)
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestParseGoParams(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "simple params",
+			input:    "x int, y string",
+			expected: []string{"int", "string"},
+		},
+		{
+			name:     "grouped params",
+			input:    "a, b int, c string",
+			expected: []string{"int", "int", "string"},
+		},
+		{
+			name:     "complex types preserved",
+			input:    "m map[string]int, ch chan int, fn func(int) error",
+			expected: []string{"map[string]int", "chan int", "func(int) error"},
+		},
+		{
+			name:     "pointers slices and variadic",
+			input:    "p *int, s []string, vals ...byte",
+			expected: []string{"int", "string", "byte"},
+		},
+		{
+			name:     "empty",
+			input:    "",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, parseGoParams(tt.input))
 		})
 	}
 }
@@ -168,6 +350,26 @@ func TestCountCyclomatic(t *testing.T) {
 			},
 			expected: 2, // if, else if
 		},
+		{
+			name: "while and ternary and default",
+			input: []string{
+				"while x > 0 {",
+				"  y := cond ? a : b",
+				"  switch z {",
+				"  default:",
+				"  }",
+				"}",
+			},
+			expected: 3, // while, ternary, default
+		},
+		{
+			name: "keywords inside string literals ignored",
+			input: []string{
+				`s := "if fake && x"`,
+				`'case'`,
+			},
+			expected: 0,
+		},
 	}
 
 	for _, tt := range tests {
@@ -225,6 +427,18 @@ func TestMaxNestingDepth(t *testing.T) {
 				"y := 2",
 			},
 			expected: 0,
+		},
+		{
+			name: "ignores braces in string literals",
+			input: []string{
+				"func test() {",
+				`  s := "{ not nesting }"`,
+				"  if x > 0 {",
+				"    y := 1",
+				"  }",
+				"}",
+			},
+			expected: 2,
 		},
 	}
 
@@ -307,10 +521,6 @@ func TestHasBumpyRoad(t *testing.T) {
 
 // TestComputePageRankThreshold builds a small graph and checks percentile calculation.
 func TestComputePageRankThreshold(t *testing.T) {
-	// Since GraphEngine uses gonum's graph internally and is hard to mock,
-	// we create minimal nodes and verify logic by testing the percentile math directly.
-	// Test with nil and empty scenarios which are the public API touchpoints.
-
 	// Nil graph returns 0
 	threshold := computePageRankThreshold(nil, 0.10)
 	assert.Equal(t, 0.0, threshold)
@@ -320,11 +530,28 @@ func TestComputePageRankThreshold(t *testing.T) {
 	threshold = computePageRankThreshold(emptyGraph, 0.10)
 	assert.Equal(t, 0.0, threshold)
 
-	// Verify the percentile calculation logic by understanding how a real graph would work:
-	// With 3 nodes at [0.1, 0.5, 0.9] sorted:
-	// - Top 10% idx = 3 * (1 - 0.1) = 2.7 -> idx 2, value 0.9
-	// - Top 50% idx = 3 * (1 - 0.5) = 1.5 -> idx 1, value 0.5
-	// The function sorts scores and returns scores[idx], which is the threshold for that percentile.
+	files := []models.FileNode{
+		{Path: "a.go", IsFile: true},
+		{Path: "b.go", IsFile: true},
+		{Path: "c.go", IsFile: true},
+	}
+	ge := NewGraphEngine()
+	require.NoError(t, ge.BuildGraph(files, nil, nil))
+
+	for path, score := range map[string]float64{
+		"a.go": 0.1,
+		"b.go": 0.5,
+		"c.go": 0.9,
+	} {
+		node, ok := ge.GetNodeByPath(path)
+		require.True(t, ok)
+		node.PageRank = score
+	}
+
+	// Sorted scores [0.1, 0.5, 0.9]:
+	// top 10% -> idx 2 -> 0.9; top 50% -> idx 1 -> 0.5
+	assert.Equal(t, 0.9, computePageRankThreshold(ge, 0.10))
+	assert.Equal(t, 0.5, computePageRankThreshold(ge, 0.50))
 }
 
 // TestCheckStructuralAndSizeMarkers_ComplexMethod emits complex_method for high cyclomatic.
@@ -459,20 +686,14 @@ func TestCheckStructuralAndSizeMarkers_BumpyRoad(t *testing.T) {
 	dir := t.TempDir()
 	me := NewMarkerEngine(dir, nil)
 
-	// The bumpy_road detection looks for 3+ sequential branch-start lines at the same indent.
-	// Lines with code (not just closing braces) reset the counter.
-	// This pattern should trigger bumpy_road: case statements with code between them.
+	// bumpy_road requires 3+ sequential branch-start lines at the same indent;
+	// non-branch lines with code reset the counter, so each if must stand alone.
 	content := `package main
 
-func bumpyFunc() {
-	switch x {
-	case 1:
-		y := 1
-	case 2:
-		y := 2
-	case 3:
-		y := 3
-	}
+func bumpyFunc() int {
+	if x > 0 { return 1 }
+	if x > 1 { return 2 }
+	if x > 2 { return 3 }
 	return 0
 }
 `
@@ -493,11 +714,7 @@ func bumpyFunc() {
 			assert.Equal(t, models.ScoreCatStructural, m.Category)
 		}
 	}
-	// Note: bumpy_road may not always trigger depending on exact line content parsing.
-	// This test validates the marker emission infrastructure, not the regex logic.
-	if bumpyFound {
-		t.Logf("bumpy_road marker found as expected")
-	}
+	assert.True(t, bumpyFound, "bumpy_road marker not found")
 }
 
 // TestCheckDRYViolations detects identical code clones via rolling hash.
@@ -521,7 +738,10 @@ func TestCheckDRYViolations(t *testing.T) {
 		{Path: filePath2, IsFile: true, LastMod: time.Now()},
 	}
 
-	markers := me.checkDRYViolations(files)
+	markers := me.checkDRYViolations(files, map[string]string{
+		filePath1: file1Content,
+		filePath2: file2Content,
+	})
 
 	// Should detect dry_violation (if tokens match closely enough)
 	// This is an integration test of the rolling hash and Jaccard similarity logic.
@@ -530,12 +750,10 @@ func TestCheckDRYViolations(t *testing.T) {
 		if m.Type == "dry_violation" {
 			dryFound = true
 			assert.Equal(t, models.ScoreCatDuplication, m.Category)
-			assert.GreaterOrEqual(t, m.Deduction, 1.5)
+			assert.Equal(t, 1.5, m.Deduction) // both files recently modified → 1.0 * 1.5, capped
 		}
 	}
-	// Note: DRY violation detection depends on token similarity thresholds.
-	// The test validates the marker type and deduction if detected.
-	t.Logf("DRY violation detection: found=%v, marker_count=%d", dryFound, len(markers))
+	require.True(t, dryFound, "expected dry_violation: both files share identical token window [b,c,d,e,f,g]")
 }
 
 // TestTokenizeSource ensures non-identifier chars are excluded.
@@ -606,10 +824,10 @@ func TestJaccard(t *testing.T) {
 			expected: 0.0,
 		},
 		{
-			name:     "50% overlap",
+			name:     "20% overlap",
 			a:        []string{"a", "b", "c"},
 			b:        []string{"a", "d", "e"},
-			expected: 0.2, // {a} / {a,b,c,d,e} = 1/5
+			expected: 0.2, // 1 of 5 union elements shared (Jaccard = 1/5)
 		},
 		{
 			name:     "both empty",
@@ -678,47 +896,70 @@ func TestCheckStructuralAndSizeMarkers_BrainMethod(t *testing.T) {
 	dir := t.TempDir()
 	me := NewMarkerEngine(dir, nil)
 
-	// Build a function meeting all brain_method criteria:
-	// - NLOC > 50
-	// - cyclomatic >= 15
-	// - maxNesting >= 4
-	// - file must be in top 10% PageRank
-	content := `package main
+	var filler, branches strings.Builder
+	for i := 0; i < 40; i++ {
+		fmt.Fprintf(&filler, "\t\t\t\t\tx%02d := %d\n", i, i)
+	}
+	for i := 0; i < 8; i++ {
+		fmt.Fprintf(&branches, "\t\t\t\t\tif e == %d { v%d := %d }\n", i, i, i)
+	}
+	content := fmt.Sprintf(`package main
 
 func superComplex(a, b, c, d, e int) int {
-	// Adding lines to reach >50 NLOC
 	if a > 0 {
 		if b > 0 {
 			if c > 0 {
 				if d > 0 {
 					if a == 1 { x := 1 } else if a == 2 { x := 2 }
 					if b == 1 { y := 1 } else if b == 2 { y := 2 }
-					if c == 1 { z := 1 } else if c == 2 { z := 2 }
-					if d == 1 { w := 1 } else if d == 2 { w := 2 }
-					return x + y + z + w
+%s%s
+					return x + y
 				}
 			}
 		}
 	}
 	return 0
 }
-`
+`, branches.String(), filler.String())
 
 	filePath := "brain.go"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, filePath), []byte(content), 0644))
 
-	// Create node with high PageRank to trigger brain_method check
-	fileNode := &Node{nodeType: NodeTypeFile, PageRank: 0.95}
-	markers := me.checkStructuralAndSizeMarkers(filePath, content, ".go", 0.50, fileNode)
+	funcs := extractGoFunctions(content)
+	require.Len(t, funcs, 1)
+	fn := funcs[0]
 
-	// Should have brain_method marker if all criteria met
-	// (Note: may not trigger if NLOC or cyclomatic don't reach exact thresholds)
+	const prThreshold = 0.50
+	fileNode := &Node{nodeType: NodeTypeFile, PageRank: 0.95}
+	isTopPageRank := fileNode.PageRank >= prThreshold && prThreshold > 0
+	shouldEmit := fn.nloc > brainMethodNLOCThreshold &&
+		fn.cyclomatic >= brainMethodCyclomaticMin &&
+		fn.maxNesting >= brainMethodNestingMin &&
+		isTopPageRank
+
+	markers := me.checkStructuralAndSizeMarkers(filePath, content, ".go", prThreshold, fileNode)
+
+	var brainMarkers []models.Marker
 	for _, m := range markers {
 		if m.Type == "brain_method" {
-			assert.Equal(t, "brain.go", m.File)
-			assert.Equal(t, 1.5, m.Deduction)
-			assert.Equal(t, models.ScoreCatStructural, m.Category)
+			brainMarkers = append(brainMarkers, m)
 		}
+	}
+
+	if shouldEmit {
+		require.Len(t, brainMarkers, 1,
+			"expected brain_method when nloc=%d cyclomatic=%d nesting=%d PageRank=%.2f",
+			fn.nloc, fn.cyclomatic, fn.maxNesting, fileNode.PageRank)
+		m := brainMarkers[0]
+		assert.Equal(t, "brain.go", m.File)
+		assert.Equal(t, fn.startLine, m.Line)
+		assert.Equal(t, "high", m.Severity)
+		assert.Equal(t, 1.5, m.Deduction)
+		assert.Equal(t, models.ScoreCatStructural, m.Category)
+	} else {
+		assert.Empty(t, brainMarkers,
+			"unexpected brain_method when nloc=%d cyclomatic=%d nesting=%d PageRank=%.2f prThreshold=%.2f",
+			fn.nloc, fn.cyclomatic, fn.maxNesting, fileNode.PageRank, prThreshold)
 	}
 }
 

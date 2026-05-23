@@ -2,6 +2,10 @@ package analysis
 
 import (
 	"fmt"
+	"go/ast"
+	"go/format"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -63,6 +67,8 @@ func primTypesForExt(ext string) map[string]bool {
 
 func largeMethodThreshold(ext string) int {
 	switch ext {
+	case ".go":
+		return largeMethodNLOCGo
 	case ".java", ".py", ".kt":
 		return largeMethodNLOCJavaPython
 	default:
@@ -81,12 +87,83 @@ func supportedStructuralExt(ext string) bool {
 // goFuncRe matches Go function declarations (methods and plain functions).
 var goFuncRe = regexp.MustCompile(`^func\s+(?:\([^)]*\)\s+)?(\w+)\s*\(([^)]*)\)`)
 
+// scanLineBraceDepth adjusts depth for '{' and '}' on line, skipping braces inside
+// double-quoted and single-quoted literals. When allowRaw is true, backtick strings
+// are also treated as literal. If maxD is non-nil, it tracks the peak depth seen.
+func scanLineBraceDepth(line string, depth int, allowRaw bool, maxD *int, inDouble, inSingle, inRaw, prevEscape *bool) int {
+	for _, ch := range line {
+		if *inRaw {
+			if ch == '`' {
+				*inRaw = false
+			}
+			continue
+		}
+		if *inDouble {
+			if *prevEscape {
+				*prevEscape = false
+				continue
+			}
+			if ch == '\\' {
+				*prevEscape = true
+				continue
+			}
+			if ch == '"' {
+				*inDouble = false
+			}
+			continue
+		}
+		if *inSingle {
+			if *prevEscape {
+				*prevEscape = false
+				continue
+			}
+			if ch == '\\' {
+				*prevEscape = true
+				continue
+			}
+			if ch == '\'' {
+				*inSingle = false
+			}
+			continue
+		}
+		*prevEscape = false
+		switch ch {
+		case '"':
+			*inDouble = true
+		case '\'':
+			*inSingle = true
+		case '`':
+			if allowRaw {
+				*inRaw = true
+			}
+		case '{':
+			depth++
+			if maxD != nil && depth > *maxD {
+				*maxD = depth
+			}
+		case '}':
+			if depth > 0 {
+				depth--
+			}
+		}
+	}
+	return depth
+}
+
+// updateBraceDepthIgnoreStrings adjusts depth for '{' and '}' on line, skipping braces
+// inside double-quoted and single-quoted literals. When allowRaw is true, backtick
+// strings are also treated as literal (JS/TS/Go).
+func updateBraceDepthIgnoreStrings(line string, depth int, allowRaw bool, inDouble, inSingle, inRaw, prevEscape *bool) int {
+	return scanLineBraceDepth(line, depth, allowRaw, nil, inDouble, inSingle, inRaw, prevEscape)
+}
+
 // extractGoFunctions parses Go source using brace counting and returns per-function metrics.
 func extractGoFunctions(content string) []funcInfo {
 	lines := strings.Split(content, "\n")
 	var funcs []funcInfo
 	inFunc := false
 	depth := 0
+	var inDouble, inSingle, inRaw, prevEscape bool
 	var current funcInfo
 	var bodyLines []string
 
@@ -104,23 +181,11 @@ func extractGoFunctions(content string) []funcInfo {
 				bodyLines = nil
 				inFunc = true
 				depth = 0
+				inDouble, inSingle, inRaw, prevEscape = false, false, false, false
 			}
 		}
 		if inFunc {
-			inStr := false
-			for _, ch := range line {
-				if ch == '"' || ch == '\'' {
-					inStr = !inStr
-				}
-				if inStr {
-					continue
-				}
-				if ch == '{' {
-					depth++
-				} else if ch == '}' {
-					depth--
-				}
-			}
+			depth = updateBraceDepthIgnoreStrings(line, depth, true, &inDouble, &inSingle, &inRaw, &prevEscape)
 			bodyLines = append(bodyLines, line)
 			if depth <= 0 && len(bodyLines) > 1 {
 				current.endLine = lineno
@@ -136,23 +201,21 @@ func extractGoFunctions(content string) []funcInfo {
 	return funcs
 }
 
-// funcStartRe returns a function-start regex for non-Go languages.
-func funcStartRe(ext string) *regexp.Regexp {
-	switch ext {
-	case ".java", ".kt":
-		return regexp.MustCompile(`(?:public|private|protected|static|\s)+[\w<>\[\]]+\s+(\w+)\s*\(([^)]*)\)\s*(?:throws\s+[\w,\s]+)?\s*\{`)
-	case ".ts", ".tsx", ".js", ".jsx":
-		return regexp.MustCompile(`(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?(?:function|\())\s*\(([^)]*)`)
-	case ".py":
-		return regexp.MustCompile(`^def\s+(\w+)\s*\(([^)]*)\)\s*:`)
-	}
-	return nil
-}
+var (
+	pythonDefRe     = regexp.MustCompile(`\bdef\s+(\w+)\s*\(`)
+	jsNamedFuncRe   = regexp.MustCompile(`function\s+(\w+)\s*\(`)
+	jsVarFuncRe     = regexp.MustCompile(`(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?function\s*\(`)
+	jsArrowAssignRe = regexp.MustCompile(`(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?\(`)
+	javaMethodRe    = regexp.MustCompile(`(?:public|private|protected|static|\s)+[\w<>\[\],.]+\s+(\w+)\s*\(`)
+	kotlinFunRe     = regexp.MustCompile(`\bfun\s+(\w+)\s*\(`)
+	jsArrowTailRe   = regexp.MustCompile(`=>`)
+)
 
 // extractGenericFunctions extracts function info for non-Go languages.
 func extractGenericFunctions(content, ext string) []funcInfo {
-	re := funcStartRe(ext)
-	if re == nil {
+	switch ext {
+	case ".java", ".kt", ".ts", ".tsx", ".js", ".jsx", ".py":
+	default:
 		return nil
 	}
 	lines := strings.Split(content, "\n")
@@ -162,23 +225,25 @@ func extractGenericFunctions(content, ext string) []funcInfo {
 	var bodyLines []string
 	depth := 0
 	baseIndent := 0
+	var inDouble, inSingle, inRaw, prevEscape bool
+	allowRaw := ext == ".ts" || ext == ".tsx" || ext == ".js" || ext == ".jsx"
+
+	beginFunc := func(name string, lineno int, line string) {
+		current = funcInfo{name: name, startLine: lineno, cyclomatic: 1}
+		if ext == ".py" {
+			baseIndent = lineIndent(line)
+		}
+		bodyLines = nil
+		inFunc = true
+		depth = 0
+		inDouble, inSingle, inRaw, prevEscape = false, false, false, false
+	}
 
 	for i, line := range lines {
 		lineno := i + 1
 		if !inFunc {
-			m := re.FindStringSubmatch(line)
-			if m != nil {
-				name := extractMatchedName(m, ext)
-				if name == "" {
-					continue
-				}
-				current = funcInfo{name: name, startLine: lineno, cyclomatic: 1}
-				if ext == ".py" {
-					baseIndent = lineIndent(line)
-				}
-				bodyLines = nil
-				inFunc = true
-				depth = 0
+			if name, ok := tryMatchGenericFunc(lines, i, ext); ok {
+				beginFunc(name, lineno, line)
 			}
 		}
 		if inFunc {
@@ -195,25 +260,14 @@ func extractGenericFunctions(content, ext string) []funcInfo {
 						funcs = append(funcs, current)
 						inFunc = false
 						bodyLines = nil
-						// recheck this line as a new function start
-						if m2 := re.FindStringSubmatch(line); m2 != nil {
-							if name := extractMatchedName(m2, ext); name != "" {
-								current = funcInfo{name: name, startLine: lineno, cyclomatic: 1}
-								baseIndent = lineIndent(line)
-								bodyLines = []string{line}
-								inFunc = true
-							}
+						if name, ok := tryMatchGenericFunc(lines, i, ext); ok {
+							beginFunc(name, lineno, line)
+							bodyLines = []string{line}
 						}
 					}
 				}
 			} else {
-				for _, ch := range line {
-					if ch == '{' {
-						depth++
-					} else if ch == '}' {
-						depth--
-					}
-				}
+				depth = updateBraceDepthIgnoreStrings(line, depth, allowRaw, &inDouble, &inSingle, &inRaw, &prevEscape)
 				if depth <= 0 && len(bodyLines) > 1 {
 					current.endLine = lineno
 					current.nloc = countNLOC(bodyLines)
@@ -236,70 +290,410 @@ func extractGenericFunctions(content, ext string) []funcInfo {
 	return funcs
 }
 
-func extractMatchedName(m []string, ext string) string {
+func tryMatchGenericFunc(lines []string, idx int, ext string) (string, bool) {
 	switch ext {
-	case ".py", ".java", ".kt":
-		return m[1]
+	case ".py":
+		return tryMatchPythonFunc(lines, idx)
 	case ".ts", ".tsx", ".js", ".jsx":
-		if m[1] != "" {
-			return m[1]
-		}
-		return m[2]
+		return tryMatchJSFunc(lines, idx)
+	case ".java", ".kt":
+		return tryMatchJavaKotlinFunc(lines, idx, ext)
+	default:
+		return "", false
 	}
-	return ""
+}
+
+func tryMatchPythonFunc(lines []string, idx int) (string, bool) {
+	line := lines[idx]
+	m := pythonDefRe.FindStringSubmatch(line)
+	if m == nil {
+		return "", false
+	}
+	openIdx := strings.Index(line, m[0]) + strings.LastIndex(m[0], "(")
+	closeLine, closeCol, ok := findClosingParen(lines, idx, openIdx)
+	if !ok || !pythonHeaderHasColon(lines, closeLine, closeCol) {
+		return "", false
+	}
+	return m[1], true
+}
+
+func tryMatchJSFunc(lines []string, idx int) (string, bool) {
+	line := lines[idx]
+	type match struct {
+		name    string
+		openIdx int
+		isArrow bool
+	}
+	var candidate *match
+	try := func(re *regexp.Regexp, isArrow bool) {
+		if candidate != nil {
+			return
+		}
+		loc := re.FindStringSubmatchIndex(line)
+		if loc == nil {
+			return
+		}
+		openIdx := strings.LastIndex(line[:loc[1]], "(")
+		if openIdx < 0 {
+			return
+		}
+		candidate = &match{name: line[loc[2]:loc[3]], openIdx: openIdx, isArrow: isArrow}
+	}
+	try(jsNamedFuncRe, false)
+	try(jsVarFuncRe, false)
+	try(jsArrowAssignRe, true)
+	if candidate == nil {
+		return "", false
+	}
+	closeLine, closeCol, ok := findClosingParen(lines, idx, candidate.openIdx)
+	if !ok {
+		return "", false
+	}
+	if candidate.isArrow && !jsHeaderHasArrow(lines, closeLine, closeCol) {
+		return "", false
+	}
+	return candidate.name, true
+}
+
+func tryMatchJavaKotlinFunc(lines []string, idx int, ext string) (string, bool) {
+	line := lines[idx]
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" || strings.HasPrefix(trimmed, "@") {
+		return "", false
+	}
+	var m []string
+	if ext == ".kt" {
+		m = kotlinFunRe.FindStringSubmatch(line)
+	}
+	if m == nil {
+		m = javaMethodRe.FindStringSubmatch(line)
+	}
+	if m == nil {
+		return "", false
+	}
+	openIdx := strings.Index(line, m[0]) + strings.LastIndex(m[0], "(")
+	if _, _, ok := findClosingParen(lines, idx, openIdx); !ok {
+		return "", false
+	}
+	return m[1], true
+}
+
+func findClosingParen(lines []string, startLine, startCol int) (endLine, endCol int, ok bool) {
+	if startLine < 0 || startLine >= len(lines) || startCol < 0 || startCol >= len(lines[startLine]) {
+		return 0, 0, false
+	}
+	if lines[startLine][startCol] != '(' {
+		return 0, 0, false
+	}
+	depth := 0
+	for li := startLine; li < len(lines); li++ {
+		colStart := 0
+		if li == startLine {
+			colStart = startCol
+		}
+		for col := colStart; col < len(lines[li]); col++ {
+			switch lines[li][col] {
+			case '(':
+				depth++
+			case ')':
+				depth--
+				if depth == 0 {
+					return li, col, true
+				}
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+func pythonHeaderHasColon(lines []string, closeLine, closeCol int) bool {
+	for li := closeLine; li < len(lines) && li <= closeLine+2; li++ {
+		start := 0
+		if li == closeLine {
+			start = closeCol + 1
+		}
+		rest := strings.TrimSpace(stripHashComment(lines[li][start:]))
+		if rest == "" {
+			continue
+		}
+		beforeBrace := rest
+		if idx := strings.Index(rest, "{"); idx >= 0 {
+			beforeBrace = rest[:idx]
+		}
+		return strings.Contains(beforeBrace, ":")
+	}
+	return false
+}
+
+func jsHeaderHasArrow(lines []string, closeLine, closeCol int) bool {
+	for li := closeLine; li < len(lines) && li <= closeLine+2; li++ {
+		start := 0
+		if li == closeLine {
+			start = closeCol + 1
+		}
+		rest := stripLineComment(lines[li][start:], "//")
+		if idx := strings.Index(rest, "{"); idx >= 0 {
+			rest = rest[:idx]
+		}
+		if jsArrowTailRe.MatchString(rest) {
+			return true
+		}
+		if strings.TrimSpace(rest) != "" {
+			return false
+		}
+	}
+	return false
+}
+
+func stripHashComment(s string) string {
+	if idx := strings.Index(s, "#"); idx >= 0 {
+		return s[:idx]
+	}
+	return s
+}
+
+func stripLineComment(s, marker string) string {
+	if idx := strings.Index(s, marker); idx >= 0 {
+		return s[:idx]
+	}
+	return s
 }
 
 func lineIndent(line string) int {
 	return len(line) - len(strings.TrimLeft(line, " \t"))
 }
 
-// parseGoParams extracts base type names from a Go parameter list.
+// parseGoParams extracts normalized type names from a Go parameter list.
 func parseGoParams(paramStr string) []string {
 	paramStr = strings.TrimSpace(paramStr)
 	if paramStr == "" {
 		return nil
 	}
-	var types []string
-	for _, part := range strings.Split(paramStr, ",") {
-		fields := strings.Fields(strings.TrimSpace(part))
-		if len(fields) == 0 {
+
+	src := "package p\nfunc _ (" + paramStr + ") {}"
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "", src, 0)
+	if err != nil {
+		return nil
+	}
+
+	var params []string
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Type == nil || fn.Type.Params == nil {
 			continue
 		}
-		t := fields[len(fields)-1]
-		t = strings.TrimPrefix(t, "*")
-		t = strings.TrimPrefix(t, "...")
-		t = strings.TrimPrefix(t, "[]")
-		types = append(types, t)
+		for _, field := range fn.Type.Params.List {
+			typeStr := normalizeGoType(typeExprString(fset, field.Type))
+			if typeStr == "" {
+				continue
+			}
+			n := len(field.Names)
+			if n == 0 {
+				n = 1
+			}
+			for range n {
+				params = append(params, typeStr)
+			}
+		}
+		break
 	}
-	return types
+	return params
+}
+
+func typeExprString(fset *token.FileSet, expr ast.Expr) string {
+	var buf strings.Builder
+	if err := format.Node(&buf, fset, expr); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(buf.String())
+}
+
+func normalizeGoType(typeStr string) string {
+	t := strings.TrimSpace(typeStr)
+	for {
+		switch {
+		case strings.HasPrefix(t, "..."):
+			t = strings.TrimPrefix(t, "...")
+		case strings.HasPrefix(t, "*"):
+			t = strings.TrimPrefix(t, "*")
+		case strings.HasPrefix(t, "[]"):
+			t = strings.TrimPrefix(t, "[]")
+		default:
+			return strings.TrimSpace(t)
+		}
+	}
+}
+
+// lineHasNLOCCode scans line for non-comment code, updating block/string state.
+func lineHasNLOCCode(line string, inBlock bool, inDouble, inSingle, inRaw, prevEscape *bool) (hasCode bool, outBlock bool) {
+	outBlock = inBlock
+	runes := []rune(line)
+	for i := 0; i < len(runes); {
+		if outBlock {
+			if i+1 < len(runes) && runes[i] == '*' && runes[i+1] == '/' {
+				i += 2
+				outBlock = false
+				continue
+			}
+			i++
+			continue
+		}
+
+		if *inRaw {
+			if runes[i] == '`' {
+				*inRaw = false
+			}
+			i++
+			continue
+		}
+		if *inDouble {
+			if *prevEscape {
+				*prevEscape = false
+				i++
+				continue
+			}
+			if runes[i] == '\\' {
+				*prevEscape = true
+				i++
+				continue
+			}
+			if runes[i] == '"' {
+				*inDouble = false
+			}
+			i++
+			continue
+		}
+		if *inSingle {
+			if *prevEscape {
+				*prevEscape = false
+				i++
+				continue
+			}
+			if runes[i] == '\\' {
+				*prevEscape = true
+				i++
+				continue
+			}
+			if runes[i] == '\'' {
+				*inSingle = false
+			}
+			i++
+			continue
+		}
+		*prevEscape = false
+
+		switch {
+		case runes[i] == '/' && i+1 < len(runes) && runes[i+1] == '/':
+			return hasCode, outBlock
+		case runes[i] == '/' && i+1 < len(runes) && runes[i+1] == '*':
+			i += 2
+			outBlock = true
+			for i < len(runes) && outBlock {
+				if i+1 < len(runes) && runes[i] == '*' && runes[i+1] == '/' {
+					i += 2
+					outBlock = false
+					break
+				}
+				i++
+			}
+		case runes[i] == '#':
+			return hasCode, outBlock
+		case runes[i] == '"':
+			*inDouble = true
+			i++
+		case runes[i] == '\'':
+			*inSingle = true
+			i++
+		case runes[i] == '`':
+			*inRaw = true
+			i++
+		default:
+			if !unicode.IsSpace(runes[i]) {
+				hasCode = true
+			}
+			i++
+		}
+	}
+	return hasCode, outBlock
 }
 
 // countNLOC counts non-blank, non-comment lines.
 func countNLOC(lines []string) int {
 	count := 0
 	inBlock := false
+	var inDouble, inSingle, inRaw, prevEscape bool
 	for _, line := range lines {
 		t := strings.TrimSpace(line)
-		if inBlock {
-			if strings.Contains(t, "*/") {
-				inBlock = false
-			}
+		if t == "" {
 			continue
 		}
-		if strings.HasPrefix(t, "/*") {
-			inBlock = !strings.Contains(t, "*/")
-			continue
+		var hasCode bool
+		hasCode, inBlock = lineHasNLOCCode(line, inBlock, &inDouble, &inSingle, &inRaw, &prevEscape)
+		if hasCode {
+			count++
 		}
-		if t == "" || strings.HasPrefix(t, "//") || strings.HasPrefix(t, "#") {
-			continue
-		}
-		count++
 	}
 	return count
 }
 
+// stripCodeLiterals removes double-quoted, single-quoted, and raw backtick
+// literal contents so keyword scans do not match text inside strings.
+func stripCodeLiterals(line string) string {
+	var b strings.Builder
+	inDouble, inSingle, inRaw, prevEscape := false, false, false, false
+	for _, ch := range line {
+		if inRaw {
+			if ch == '`' {
+				inRaw = false
+			}
+			continue
+		}
+		if inDouble {
+			if prevEscape {
+				prevEscape = false
+				continue
+			}
+			if ch == '\\' {
+				prevEscape = true
+				continue
+			}
+			if ch == '"' {
+				inDouble = false
+			}
+			continue
+		}
+		if inSingle {
+			if prevEscape {
+				prevEscape = false
+				continue
+			}
+			if ch == '\\' {
+				prevEscape = true
+				continue
+			}
+			if ch == '\'' {
+				inSingle = false
+			}
+			continue
+		}
+		prevEscape = false
+		switch ch {
+		case '"':
+			inDouble = true
+		case '\'':
+			inSingle = true
+		case '`':
+			inRaw = true
+		default:
+			b.WriteRune(ch)
+		}
+	}
+	return b.String()
+}
+
 // branchRe matches branch/loop keywords that add cyclomatic complexity.
-var branchRe = regexp.MustCompile(`\bif\b|\belse if\b|\bfor\b|\bcase\b|\bcatch\b|\b&&\b|\|\|`)
+var branchRe = regexp.MustCompile(`\belse if\b|\bif\b|\bfor\b|\bwhile\b|\bcase\b|\bcatch\b|\bdefault\b|\?[^:]*:|\b&&\b|\|\|`)
 
 // countCyclomatic counts additional branch points in function body lines.
 func countCyclomatic(lines []string) int {
@@ -309,7 +703,7 @@ func countCyclomatic(lines []string) int {
 		if strings.HasPrefix(t, "//") || strings.HasPrefix(t, "#") {
 			continue
 		}
-		count += len(branchRe.FindAllString(line, -1))
+		count += len(branchRe.FindAllString(stripCodeLiterals(line), -1))
 	}
 	return count
 }
@@ -317,20 +711,9 @@ func countCyclomatic(lines []string) int {
 // maxNestingDepth returns the maximum brace-based nesting depth in lines.
 func maxNestingDepth(lines []string) int {
 	depth, maxD := 0, 0
+	var inDouble, inSingle, inRaw, prevEscape bool
 	for _, line := range lines {
-		for _, ch := range line {
-			switch ch {
-			case '{':
-				depth++
-				if depth > maxD {
-					maxD = depth
-				}
-			case '}':
-				if depth > 0 {
-					depth--
-				}
-			}
-		}
+		depth = scanLineBraceDepth(line, depth, true, &maxD, &inDouble, &inSingle, &inRaw, &prevEscape)
 	}
 	return maxD
 }
@@ -521,7 +904,8 @@ type windowEntry struct {
 
 // checkDRYViolations runs Rabin–Karp rolling hash across files to detect clones.
 // Phase 5.3: dry_violation.
-func (me *MarkerEngine) checkDRYViolations(files []models.FileNode) []models.Marker {
+// contents supplies already-read file bodies keyed by path; missing entries fall back to disk.
+func (me *MarkerEngine) checkDRYViolations(files []models.FileNode, contents map[string]string) []models.Marker {
 	hashMap := make(map[uint64]*windowEntry)
 	seen := make(map[string]bool) // file-pair keys already marked
 	var markers []models.Marker
@@ -535,16 +919,20 @@ func (me *MarkerEngine) checkDRYViolations(files []models.FileNode) []models.Mar
 		if !supportedStructuralExt(ext) {
 			continue
 		}
-		content, err := os.ReadFile(filepath.Join(me.repoPath, f.Path))
-		if err != nil {
-			continue
+		content, ok := contents[f.Path]
+		if !ok {
+			b, err := os.ReadFile(filepath.Join(me.repoPath, f.Path))
+			if err != nil {
+				continue
+			}
+			content = string(b)
 		}
 
-		tokens := tokenizeSource(string(content))
+		tokens := tokenizeSource(content)
 		if len(tokens) < dryHashWindow {
 			continue
 		}
-		lines := strings.Split(string(content), "\n")
+		lines := strings.Split(content, "\n")
 
 		for i := 0; i <= len(tokens)-dryHashWindow; i += dryHashStride {
 			window := tokens[i : i+dryHashWindow]
@@ -558,10 +946,11 @@ func (me *MarkerEngine) checkDRYViolations(files []models.FileNode) []models.Mar
 					pairKey := pairKey(f.Path, prev.file)
 					if !seen[pairKey] {
 						seen[pairKey] = true
-						deduction := 1.5
+						deduction := 1.0
 						if f.LastMod.After(cutoff) && prev.lastMod.After(cutoff) {
-							deduction = min(1.5, deduction*dryActiveDeductionMultiplier)
+							deduction *= dryActiveDeductionMultiplier
 						}
+						deduction = min(1.5, deduction)
 						markers = append(markers, models.Marker{
 							Type:      "dry_violation",
 							Severity:  "medium",
@@ -663,13 +1052,10 @@ func estimateLineNum(tokens []string, idx int, lines []string) int {
 		return 1
 	}
 	target := tokens[idx]
-	charPos := 0
 	for li, line := range lines {
-		if pos := strings.Index(line, target); pos >= 0 {
-			_ = charPos
+		if strings.Contains(line, target) {
 			return li + 1
 		}
-		charPos += len(line) + 1
 	}
 	return 1
 }

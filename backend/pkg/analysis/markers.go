@@ -105,6 +105,8 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 	// Pre-compute PageRank threshold for brain_method (top 10% of file nodes).
 	prThreshold := computePageRankThreshold(graph, brainMethodPageRankTopPct)
 
+	fileContents := make(map[string]string)
+
 	for _, file := range files {
 		if !file.IsFile {
 			continue
@@ -114,6 +116,7 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 			continue
 		}
 		sContent := string(content)
+		fileContents[file.Path] = sContent
 
 		// 4.2 Indian Regulatory Compliance (DPDP)
 		markers = append(markers, me.checkPII(file.Path, sContent)...)
@@ -155,7 +158,7 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 	}
 
 	// 5.3: DRY violation — cross-file Rabin–Karp rolling hash
-	markers = append(markers, me.checkDRYViolations(files)...)
+	markers = append(markers, me.checkDRYViolations(files, fileContents)...)
 
 	return markers
 }

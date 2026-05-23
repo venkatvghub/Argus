@@ -28,16 +28,16 @@ const (
 	bumpyRoadBranchMin        = 3
 
 	// Phase 5.2 — Size & API Complexity markers
-	complexMethodCyclomaticMin  = 9
-	largeMethodNLOCGo           = 60
-	largeMethodNLOCJavaPython   = 80
-	largeMethodNLOCDefault      = 60
-	primitiveObsessionParamMin  = 6
+	complexMethodCyclomaticMin = 9
+	largeMethodNLOCGo          = 60
+	largeMethodNLOCJavaPython  = 80
+	largeMethodNLOCDefault     = 60
+	primitiveObsessionParamMin = 6
 
 	// Phase 5.3 — DRY Violation
-	dryHashWindow              = 6
-	dryHashStride              = 3
-	dryHashMinSimilarity       = 0.80
-	dryActiveDaysThreshold     = 90
+	dryHashWindow                = 6
+	dryHashStride                = 3
+	dryHashMinSimilarity         = 0.80
+	dryActiveDaysThreshold       = 90
 	dryActiveDeductionMultiplier = 1.5
 )
