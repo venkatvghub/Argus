@@ -65,14 +65,40 @@
 
 ## Biomarker Matrix
 
-All markers run concurrently via `errgroup` using Tree-sitter AST queries:
+Argus runs a **23-biomarker** pipeline concurrently via `errgroup`. Every file starts at 10.0; markers subtract points subject to per-category caps (see PHILOSOPHY.md). Final score clamped to [1.0, 10.0].
 
-| Category | Markers | Trigger | Example |
+### Structural Quality Biomarkers (12 — ported from original repowise)
+
+| Category | Cap | Markers | Trigger |
 |---|---|---|---|
-| **Concurrency Risk** | Go race detection, Java thread unsync, Python await race, Node closure, Dart post-await | Goroutine without channel/mutex, unsync field write, shared async state | Goroutine reading parent loop var |
-| **Regulatory (DPDP)** | Aadhaar, PAN, UPI_ID, mobile, email | String literal or regex match | `"aadhaar_number"` field |
-| **AI Efficiency** | Token bloat, export count, complexity, zombie code | LOC > threshold, unused export, cyclomatic > 15 | 500-line function with no tests |
-| **AppSec** | SQL injection sink, SSRF, broken crypto, RBAC, hardcoded secret | Pattern match on call args, crypto constant, hardcoded string | `WHERE id=" + id`, `Math.random()` for token |
+| **Structural Complexity** | −3.5 | brain_method, nested_complexity, bumpy_road | Cyclomatic ≥ 15 + centrality; nesting ≥ 4; sequential same-depth branches |
+| **Size & API Complexity** | −2.0 | complex_method, large_method, primitive_obsession | Cyclomatic ≥ 9; NLOC > threshold; ≥ 6 primitives in signature |
+| **Duplication** | −1.5 | dry_violation | Rabin–Karp rolling hash over Tree-sitter tokens; co-change weighted |
+| **Test Coverage** | −2.0 | untested_hotspot, coverage_gap | LCOV/Cobertura: high-churn file + zero coverage; low coverage surface |
+| **Organizational Risk** | −1.0 | developer_congestion, knowledge_loss | ≥ 5 active authors/file; primary author inactive in last 90 days |
+| **Dead Code** | −1.0 | dead_code, unreferenced_symbols, zombie_exports | Zero incoming call edges (internal + exported) |
+
+### Argus-Native Biomarkers (11 — compliance, AppSec, AI-agent efficiency)
+
+| Category | Cap | Markers | Trigger |
+|---|---|---|---|
+| **Concurrency Risk** | uncapped | goroutine_shared_state, java_thread_unsync, py_await_race, js_closure_race, dart_state_after_await | Goroutine/thread mutating outer scope without sync |
+| **DPDP Compliance** | uncapped | dpdp_aadhaar, dpdp_pan, dpdp_upi, dpdp_mobile, pii_email, untracked_consent, rbi_logger_gap, data_sovereignty | PII regex hit; missing consent check; non-Indian outbound routing |
+| **AppSec** | uncapped | tainted_sql, ssrf_blind, broken_crypto, bypassed_rbac, hardcoded_secret | String-concat SQL; unvalidated URL; MD5/SHA1/DES; RBAC skip; literal secret |
+| **AI-Agent Efficiency** | uncapped | token_bloat, hallucination_bait, phantom_coupling, zombie_exports | >50 tokens/line; duplicate symbol names; co-change without imports |
+
+## Scoring Architecture
+
+```
+[]Marker (per file)
+   → group by Category
+   → sum Deduction per category
+   → clamp each category sum to CategoryCaps[cat]
+   → total = sum of clamped category deductions
+   → FileScore.Final = max(1.0, 10.0 - total)
+```
+
+`models.FileScore` holds the result. `models.CategoryCaps` defines the per-category maximums. Score computation will live in `pkg/analysis/scorer.go` (Phase 5).
 
 ## Server Modes
 

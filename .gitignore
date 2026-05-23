@@ -1,0 +1,54 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment / local config
+.env
+.env.local
+.env.*.local
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Go
+backend/bin/
+backend/out/
+backend/vendor/
+backend/*.test
+backend/*.exe
+backend/*.exe~
+backend/*.dll
+backend/*.so
+backend/*.dylib
+*.test
+*.out
+coverage.out
+cover.out
+*.coverprofile
+.coverprofile
+coverage.txt
+coverage/
+htmlcov/
+
+# Node / workspace deps
+**/node_modules/
+.pnpm-store/
+.npm/
+
+# Frontend build caches and outputs
+web/.turbo/
+web/packages/*/.next/
+web/packages/*/dist/
+web/packages/*/build/
+web/packages/*/coverage/
+web/packages/*/.eslintcache
+web/packages/*/*.tsbuildinfo
+web/packages/web/.vercel/
+
+# Misc local data
+/tmp/
