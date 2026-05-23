@@ -25,7 +25,7 @@ const (
 	brainMethodNestingMin     = 4
 	brainMethodPageRankTopPct = 0.10 // top 10%
 	nestedComplexityDepthMin  = 4
-	bumbyRoadBranchMin        = 3
+	bumpyRoadBranchMin        = 3
 
 	// Phase 5.2 — Size & API Complexity markers
 	complexMethodCyclomaticMin  = 9

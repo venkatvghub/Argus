@@ -338,7 +338,7 @@ func maxNestingDepth(lines []string) int {
 // branchLineRe detects branch-start lines for bumpy-road detection.
 var branchLineRe = regexp.MustCompile(`^(\s*)(?:if\s|case\s|case\t|default:)`)
 
-// hasBumpyRoad returns true if there are ≥bumbyRoadBranchMin sequential branch
+// hasBumpyRoad returns true if there are ≥bumpyRoadBranchMin sequential branch
 // lines at the same indentation level within the given lines slice.
 func hasBumpyRoad(lines []string) bool {
 	seq, maxSeq, lastIndent := 0, 0, -1
@@ -360,7 +360,7 @@ func hasBumpyRoad(lines []string) bool {
 			lastIndent = -1
 		}
 	}
-	return maxSeq >= bumbyRoadBranchMin
+	return maxSeq >= bumpyRoadBranchMin
 }
 
 // computePageRankThreshold returns the PageRank value at the (1-topPct) percentile
@@ -455,7 +455,7 @@ func (me *MarkerEngine) checkStructuralAndSizeMarkers(
 			markers = append(markers, models.Marker{
 				Type:      "bumpy_road",
 				Severity:  "medium",
-				Message:   fmt.Sprintf("Bumpy road in '%s': ≥%d sequential branches at same level", fn.name, bumbyRoadBranchMin),
+				Message:   fmt.Sprintf("Bumpy road in '%s': ≥%d sequential branches at same level", fn.name, bumpyRoadBranchMin),
 				File:      filePath,
 				Line:      fn.startLine,
 				Deduction: 1.0,
