@@ -10,19 +10,32 @@ import (
 	"github.com/venkatvghub/argus/pkg/models"
 )
 
+type workItem struct {
+	jobID string
+	fn    func()
+}
+
 type JobManager struct {
 	mu        sync.RWMutex
 	jobs      map[string]*models.Job
 	listeners map[string][]chan models.Job
 	cancels   map[string]context.CancelFunc
+	workQueue chan workItem
 }
 
+const defaultWorkerCount = 3
+
 func NewJobManager() *JobManager {
-	return &JobManager{
+	jm := &JobManager{
 		jobs:      make(map[string]*models.Job),
 		listeners: make(map[string][]chan models.Job),
 		cancels:   make(map[string]context.CancelFunc),
+		workQueue: make(chan workItem, 32),
 	}
+	for range defaultWorkerCount {
+		go jm.runWorker()
+	}
+	return jm
 }
 
 func (jm *JobManager) CreateJob(jobType string) *models.Job {
@@ -147,4 +160,30 @@ func (jm *JobManager) ListJobs() []models.Job {
 		jobs = append(jobs, *j)
 	}
 	return jobs
+}
+
+// Submit enqueues a work function to the bounded worker pool; returns immediately.
+// Falls back to a new goroutine if the queue is full (capacity 32).
+func (jm *JobManager) Submit(jobID string, fn func()) {
+	item := workItem{jobID: jobID, fn: fn}
+	select {
+	case jm.workQueue <- item:
+	default:
+		go jm.executeWork(item)
+	}
+}
+
+func (jm *JobManager) runWorker() {
+	for item := range jm.workQueue {
+		jm.executeWork(item)
+	}
+}
+
+func (jm *JobManager) executeWork(item workItem) {
+	defer func() {
+		if r := recover(); r != nil {
+			jm.UpdateStatus(item.jobID, models.JobStatusFailed, "", fmt.Errorf("panic: %v", r))
+		}
+	}()
+	item.fn()
 }

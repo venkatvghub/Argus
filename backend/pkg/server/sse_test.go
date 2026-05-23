@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,7 +12,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/venkatvghub/argus/pkg/config"
 	"github.com/venkatvghub/argus/pkg/models"
+	"github.com/venkatvghub/argus/pkg/providers"
 	"github.com/venkatvghub/argus/pkg/repowise"
 )
 
@@ -137,4 +141,192 @@ func TestSSEParsing(t *testing.T) {
 		}
 	}
 	assert.True(t, found)
+}
+
+func TestChatStreamHandler_MissingRepoID(t *testing.T) {
+	ctx := context.Background()
+	inst, err := repowise.New(ctx, nil)
+	require.NoError(t, err)
+	defer inst.Close()
+
+	srv := NewRESTServer(inst)
+
+	req := httptest.NewRequest("GET", "/api/chat/stream?q=hello", nil)
+	rr := httptest.NewRecorder()
+
+	srv.chatStreamHandler(rr, req)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.Contains(t, rr.Body.String(), "repoId is required")
+}
+
+func TestChatStreamHandler_MissingQuery(t *testing.T) {
+	ctx := context.Background()
+	inst, err := repowise.New(ctx, nil)
+	require.NoError(t, err)
+	defer inst.Close()
+
+	srv := NewRESTServer(inst)
+
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoId=abc", nil)
+	rr := httptest.NewRecorder()
+
+	srv.chatStreamHandler(rr, req)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+	assert.Contains(t, rr.Body.String(), "q is required")
+}
+
+func TestChatStreamHandler_NoProvider(t *testing.T) {
+	ctx := context.Background()
+	inst, err := repowise.New(ctx, nil)
+	require.NoError(t, err)
+	defer inst.Close()
+
+	srv := NewRESTServer(inst)
+	// provider is nil by default
+
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoId=abc&q=hello", nil)
+	rr := httptest.NewRecorder()
+
+	srv.chatStreamHandler(rr, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
+	assert.Contains(t, rr.Body.String(), "LLM provider not configured")
+}
+
+func TestChatStreamHandler_StreamsTokens(t *testing.T) {
+	ctx := context.Background()
+	inst, err := repowise.New(ctx, nil)
+	require.NoError(t, err)
+	defer inst.Close()
+
+	srv := NewRESTServer(inst)
+
+	// Create a router with mock provider that streams 3 tokens
+	router := createRouterWithMockProvider([]string{"token1", "token2", "token3"}, nil)
+	srv.SetProvider(router)
+
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoId=abc&q=test", nil)
+	rr := httptest.NewRecorder()
+
+	srv.chatStreamHandler(rr, req)
+
+	body := rr.Body.String()
+	assert.Contains(t, body, "data: token1\n\n")
+	assert.Contains(t, body, "data: token2\n\n")
+	assert.Contains(t, body, "data: token3\n\n")
+	assert.Contains(t, body, "data: [DONE]\n\n")
+}
+
+func TestChatStreamHandler_StreamingError(t *testing.T) {
+	ctx := context.Background()
+	inst, err := repowise.New(ctx, nil)
+	require.NoError(t, err)
+	defer inst.Close()
+
+	srv := NewRESTServer(inst)
+
+	// Create a router with mock provider that errors
+	router := createRouterWithMockProvider([]string{}, errors.New("streaming error"))
+	srv.SetProvider(router)
+
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoId=abc&q=test", nil)
+	rr := httptest.NewRecorder()
+
+	srv.chatStreamHandler(rr, req)
+
+	body := rr.Body.String()
+	assert.Contains(t, body, "[ERROR]")
+	assert.Contains(t, body, "streaming error")
+}
+
+func TestSetProvider(t *testing.T) {
+	ctx := context.Background()
+	inst, err := repowise.New(ctx, nil)
+	require.NoError(t, err)
+	defer inst.Close()
+
+	srv := NewRESTServer(inst)
+
+	// Before SetProvider, provider should be nil
+	assert.Nil(t, srv.provider)
+
+	// Create and set a router with mock provider
+	router := createRouterWithMockProvider([]string{"test"}, nil)
+	srv.SetProvider(router)
+
+	// After SetProvider, it should be set
+	assert.NotNil(t, srv.provider)
+
+	// Verify it works by making a request
+	req := httptest.NewRequest("GET", "/api/chat/stream?repoId=abc&q=hello", nil)
+	rr := httptest.NewRecorder()
+
+	srv.chatStreamHandler(rr, req)
+
+	// Should succeed (200-ish) not fail with 503
+	assert.NotEqual(t, http.StatusServiceUnavailable, rr.Code)
+	assert.Contains(t, rr.Body.String(), "data: ")
+}
+
+// TestMockProvider implements the providers.Provider interface for testing
+type TestMockProvider struct {
+	tokens []string
+	err    error
+	name   string
+}
+
+func (m *TestMockProvider) Chat(ctx context.Context, prompt string) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+	return strings.Join(m.tokens, " "), nil
+}
+
+func (m *TestMockProvider) ChatStream(ctx context.Context, prompt string) (<-chan string, <-chan error, error) {
+	tokenCh := make(chan string, len(m.tokens))
+	errCh := make(chan error)
+
+	go func() {
+		defer close(tokenCh)
+		defer close(errCh)
+
+		if m.err != nil {
+			errCh <- m.err
+			return
+		}
+
+		for _, token := range m.tokens {
+			select {
+			case <-ctx.Done():
+				return
+			case tokenCh <- token:
+			}
+		}
+	}()
+
+	return tokenCh, errCh, nil
+}
+
+func (m *TestMockProvider) Name() string {
+	return m.name
+}
+
+// createRouterWithMockProvider creates a real Router with a registered mock provider
+func createRouterWithMockProvider(tokens []string, err error) *providers.Router {
+	cfg := &config.Config{
+		LLMProvider: "test-mock",
+	}
+	router := providers.NewRouter(cfg)
+
+	// Override the active provider with our mock
+	mock := &TestMockProvider{
+		tokens: tokens,
+		err:    err,
+		name:   "test-mock",
+	}
+	router.Register(mock)
+
+	return router
 }

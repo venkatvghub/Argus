@@ -88,7 +88,7 @@ func (i *Instance) Close() error {
 func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error) {
 	job := i.Jobs.CreateJob("analysis")
 
-	go func() {
+	i.Jobs.Submit(job.ID, func() {
 		i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, "Indexing...", nil)
 
 		absPath, err := filepath.Abs(repoPath)
@@ -138,7 +138,7 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 		i.mu.Unlock()
 
 		i.Jobs.UpdateStatus(job.ID, models.JobStatusCompleted, "Complete", nil)
-	}()
+	})
 
 	return job.ID, nil
 }

@@ -100,6 +100,20 @@ Argus runs a **23-biomarker** pipeline concurrently via `errgroup`. Every file s
 
 `models.FileScore` holds the result. `models.CategoryCaps` defines the per-category maximums. Score computation will live in `pkg/analysis/scorer.go` (Phase 5).
 
+## Async Job Execution & SSE Chat Streaming
+
+### Worker Pool (Phase 3.4)
+
+The `JobManager` in `pkg/repowise/jobs.go` bounds analysis work to a fixed 3-goroutine pool with a buffered queue (32 items). The `Submit(jobID, fn)` method replaces raw `go func()` spawning in `Analyze()`, preventing unbounded goroutine proliferation during bulk repository processing. Each job is wrapped with panic recovery via `executeWork()`.
+
+### SSE Chat Streaming (Phase 3.4)
+
+The `chatStreamHandler` in `pkg/server/sse.go` exposes `GET /api/chat/stream?repoId=<id>&q=<query>` for token-level LLM streaming. It consumes token and error channels from `provider.ChatStream()`, flushing each token to the client as a Server-Sent Event. Client disconnection is detected via `r.Context().Done()`.
+
+### Provider Wiring (Phase 3.4)
+
+`RESTServer.SetProvider(p *providers.Router)` post-construction injects the active LLM router (Anthropic, Gemini, OpenAI) after the server is instantiated. This defers provider initialization until runtime and supports cost-based tier selection.
+
 ## Server Modes
 
 ### MCP Server (stdio)

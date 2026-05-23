@@ -7,17 +7,24 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/venkatvghub/argus/pkg/providers"
 	"github.com/venkatvghub/argus/pkg/repowise"
 )
 
 // RESTServer handles HTTP requests for Argus.
 type RESTServer struct {
-	argus *repowise.Instance
+	argus    *repowise.Instance
+	provider *providers.Router
 }
 
 // NewRESTServer creates a new RESTServer instance.
 func NewRESTServer(argus *repowise.Instance) *RESTServer {
 	return &RESTServer{argus: argus}
+}
+
+// SetProvider wires the active LLM provider router for chat stream token-streaming endpoints.
+func (s *RESTServer) SetProvider(p *providers.Router) {
+	s.provider = p
 }
 
 // Routes initializes the chi router and returns it.
@@ -33,6 +40,7 @@ func (s *RESTServer) Routes() chi.Router {
 		r.Get("/repos/{repoID}/markers", s.getMarkers)
 		r.Get("/export/cognee", s.exportCognee)
 		r.Get("/events", s.sseHandler)
+		r.Get("/chat/stream", s.chatStreamHandler)
 	})
 
 	return r

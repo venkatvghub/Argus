@@ -4,9 +4,70 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/venkatvghub/argus/pkg/models"
 )
+
+func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
+	repoID := strings.TrimSpace(r.URL.Query().Get("repoId"))
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if repoID == "" {
+		http.Error(w, "repoId is required", http.StatusBadRequest)
+		return
+	}
+	if query == "" {
+		http.Error(w, "q is required", http.StatusBadRequest)
+		return
+	}
+	if s.provider == nil {
+		http.Error(w, "LLM provider not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	tokens, errs, err := s.provider.ChatStream(r.Context(), query)
+	if err != nil {
+		fmt.Fprintf(w, "data: [ERROR] %s\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case e, ok := <-errs:
+			if !ok {
+				errs = nil
+				continue
+			}
+			if e != nil {
+				fmt.Fprintf(w, "data: [ERROR] %s\n\n", e.Error())
+				flusher.Flush()
+				return
+			}
+		case token, ok := <-tokens:
+			if !ok {
+				fmt.Fprintf(w, "data: [DONE]\n\n")
+				flusher.Flush()
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", token)
+			flusher.Flush()
+		}
+	}
+}
 
 func (s *RESTServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
