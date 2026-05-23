@@ -6,9 +6,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/pkoukk/tiktoken-go"
 	"github.com/venkatvghub/argus/pkg/models"
+	gonum_graph "gonum.org/v1/gonum/graph"
 )
 
 // Regex patterns for Indian Regulatory Compliance (DPDP)
@@ -291,18 +293,21 @@ func (me *MarkerEngine) detectZombieExports(graph *GraphEngine) []models.Marker 
 	var markers []models.Marker
 	nodes := graph.GetNodes()
 	for _, node := range nodes {
-		if node.InternalType() == NodeTypeSymbol {
-			// A "zombie" export is a symbol node with zero incoming "calls" edges
-			// but it's exported (Heuristic: symbols we capture are usually the ones we care about).
-			if graph.g.To(node.ID()).Len() == 0 {
-				markers = append(markers, models.Marker{
-					Type:     "zombie_exports",
-					Severity: "low",
-					Message:  fmt.Sprintf("Exported symbol '%s' has zero incoming call edges", node.Name),
-					File:     node.Symbol().FilePath,
-					Line:     node.Symbol().Line,
-				})
-			}
+		if node.InternalType() != NodeTypeSymbol {
+			continue
+		}
+		// Only flag exported symbols (uppercase first letter — covers Go and common conventions).
+		if len(node.Name) == 0 || !unicode.IsUpper(rune(node.Name[0])) {
+			continue
+		}
+		if graph.g.To(node.ID()).Len() == 0 {
+			markers = append(markers, models.Marker{
+				Type:     "zombie_exports",
+				Severity: "low",
+				Message:  fmt.Sprintf("Exported symbol '%s' has zero incoming call edges", node.Name),
+				File:     node.Symbol().FilePath,
+				Line:     node.Symbol().Line,
+			})
 		}
 	}
 	return markers
@@ -392,15 +397,19 @@ func (me *MarkerEngine) detectPhantomCoupling(files []models.FileNode, graph *Gr
 			continue
 		}
 
-		hasStructuralEdges := false
-		neighbors := graph.g.From(node.ID())
-		for neighbors.Next() {
-			n := neighbors.Node()
-			if gn, ok := n.(*Node); ok && gn.InternalType() == NodeTypeFile {
-				hasStructuralEdges = true
-				break
+		// Check both outgoing and incoming file-to-file edges — a file with only
+		// incoming structural edges would be incorrectly flagged otherwise.
+		hasStructuralEdges := func() bool {
+			for _, iter := range []func(id int64) gonum_graph.Nodes{graph.g.From, graph.g.To} {
+				neighbors := iter(node.ID())
+				for neighbors.Next() {
+					if gn, ok := neighbors.Node().(*Node); ok && gn.InternalType() == NodeTypeFile {
+						return true
+					}
+				}
 			}
-		}
+			return false
+		}()
 
 		if !hasStructuralEdges {
 			ownershipPercent := int(f.Ownership * 100)

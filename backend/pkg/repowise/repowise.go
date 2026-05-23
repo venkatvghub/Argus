@@ -89,7 +89,6 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 	job := i.Jobs.CreateJob("analysis")
 
 	go func() {
-		ctx := context.Background() // Use fresh context for background job
 		i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, "Indexing...", nil)
 
 		absPath, err := filepath.Abs(repoPath)
@@ -174,7 +173,10 @@ func (i *Instance) SearchSymbols(ctx context.Context, query string, symbolType s
 func (i *Instance) GetFileMarkers(ctx context.Context, repoID string, filePath string) ([]models.Marker, error) {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
-	markers := i.markers[repoID]
+	markers, ok := i.markers[repoID]
+	if !ok {
+		return nil, fmt.Errorf("repo not found")
+	}
 	var results []models.Marker = []models.Marker{}
 	for _, m := range markers {
 		if m.File == filePath {

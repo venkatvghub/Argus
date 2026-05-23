@@ -26,7 +26,7 @@ func TestJobManager(t *testing.T) {
 
 	t.Run("Update Status and Notify", func(t *testing.T) {
 		job := jm.CreateJob("notify_test")
-		ch := jm.Subscribe(job.ID)
+		ch, _ := jm.Subscribe(job.ID)
 
 		go func() {
 			jm.UpdateStatus(job.ID, models.JobStatusInProgress, "50%", nil)

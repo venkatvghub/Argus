@@ -34,6 +34,9 @@ func (p *GeminiProvider) Chat(ctx context.Context, prompt string) (string, error
 
 // ChatStream sends a prompt to Gemini and returns a stream of tokens.
 func (p *GeminiProvider) ChatStream(ctx context.Context, prompt string) (<-chan string, <-chan error, error) {
+	if p.apiKey == "" {
+		return nil, nil, fmt.Errorf("Gemini API key is missing")
+	}
 	out := make(chan string)
 	errCh := make(chan error, 1)
 

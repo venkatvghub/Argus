@@ -67,9 +67,10 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 		// AST Analysis if parser is available
 		if w.parser != nil {
 			symbols, err := w.analyzeFile(ctx, f)
-			if err == nil {
-				allSymbols = append(allSymbols, symbols...)
+			if err != nil {
+				return fmt.Errorf("analyze %s: %w", f.Name, err)
 			}
+			allSymbols = append(allSymbols, symbols...)
 		}
 
 		return nil

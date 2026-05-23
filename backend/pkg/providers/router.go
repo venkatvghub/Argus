@@ -15,6 +15,9 @@ type Router struct {
 
 // NewRouter initializes a router with providers based on configuration.
 func NewRouter(cfg *config.Config) *Router {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
 	r := &Router{
 		providers: make(map[string]Provider),
 		active:    cfg.LLMProvider,

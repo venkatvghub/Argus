@@ -55,14 +55,16 @@ func (jm *JobManager) UpdateStatus(id string, status models.JobStatus, progress 
 		job.Error = ""
 	}
 	job.UpdatedAt = time.Now()
+	if status == models.JobStatusCompleted || status == models.JobStatusFailed {
+		delete(jm.cancels, id)
+	}
+	jobSnapshot := *job // snapshot before unlock to avoid race on job struct
 
-	// Copy listeners to avoid holding lock while sending
 	var jobListeners []chan models.Job
 	if l, ok := jm.listeners[id]; ok {
 		jobListeners = make([]chan models.Job, len(l))
 		copy(jobListeners, l)
 	}
-	// Global listeners
 	if l, ok := jm.listeners["*"]; ok {
 		jobListeners = append(jobListeners, l...)
 	}
@@ -70,20 +72,33 @@ func (jm *JobManager) UpdateStatus(id string, status models.JobStatus, progress 
 
 	for _, ch := range jobListeners {
 		select {
-		case ch <- *job:
+		case ch <- jobSnapshot:
 		default:
-			// listener too slow, skip or handle
 		}
 	}
 }
 
-func (jm *JobManager) Subscribe(jobID string) chan models.Job {
+func (jm *JobManager) Subscribe(jobID string) (<-chan models.Job, func()) {
 	jm.mu.Lock()
 	defer jm.mu.Unlock()
 
 	ch := make(chan models.Job, 10)
 	jm.listeners[jobID] = append(jm.listeners[jobID], ch)
-	return ch
+	unsubscribe := func() {
+		jm.mu.Lock()
+		defer jm.mu.Unlock()
+		listeners := jm.listeners[jobID]
+		for i, l := range listeners {
+			if l == ch {
+				jm.listeners[jobID] = append(listeners[:i], listeners[i+1:]...)
+				if len(jm.listeners[jobID]) == 0 {
+					delete(jm.listeners, jobID)
+				}
+				return
+			}
+		}
+	}
+	return ch, unsubscribe
 }
 
 func (jm *JobManager) GetJob(id string) (*models.Job, bool) {
@@ -106,6 +121,12 @@ func (jm *JobManager) RegisterCancel(id string, cancel context.CancelFunc) {
 
 func (jm *JobManager) CancelJob(id string) error {
 	jm.mu.Lock()
+	if job, exists := jm.jobs[id]; exists {
+		if job.Status == models.JobStatusCompleted || job.Status == models.JobStatusFailed {
+			jm.mu.Unlock()
+			return fmt.Errorf("job already in terminal state: %s", job.Status)
+		}
+	}
 	cancel, ok := jm.cancels[id]
 	delete(jm.cancels, id)
 	jm.mu.Unlock()

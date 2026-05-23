@@ -25,7 +25,8 @@ func (s *RESTServer) sseHandler(w http.ResponseWriter, r *http.Request) {
 		jobID = "*"
 	}
 
-	ch := s.argus.Jobs.Subscribe(jobID)
+	ch, unsubscribe := s.argus.Jobs.Subscribe(jobID)
+	defer unsubscribe()
 
 	for {
 		select {

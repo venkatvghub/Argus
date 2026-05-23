@@ -34,6 +34,9 @@ func (p *AnthropicProvider) Chat(ctx context.Context, prompt string) (string, er
 
 // ChatStream sends a prompt to Anthropic and returns a stream of tokens.
 func (p *AnthropicProvider) ChatStream(ctx context.Context, prompt string) (<-chan string, <-chan error, error) {
+	if p.apiKey == "" {
+		return nil, nil, fmt.Errorf("Anthropic API key is missing")
+	}
 	out := make(chan string)
 	errCh := make(chan error, 1)
 

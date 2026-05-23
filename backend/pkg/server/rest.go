@@ -62,7 +62,12 @@ func (s *RESTServer) indexRepo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *RESTServer) getSymbols(w http.ResponseWriter, r *http.Request) {
-	symbols, err := s.argus.SearchSymbols(r.Context(), "", "")
+	repoID := chi.URLParam(r, "repoID")
+	if repoID == "" {
+		s.error(w, http.StatusBadRequest, "repoID is required")
+		return
+	}
+	symbols, err := s.argus.GetRepoSymbols(r.Context(), repoID)
 	if err != nil {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return
@@ -72,8 +77,7 @@ func (s *RESTServer) getSymbols(w http.ResponseWriter, r *http.Request) {
 
 func (s *RESTServer) getMarkers(w http.ResponseWriter, r *http.Request) {
 	repoID := chi.URLParam(r, "repoID")
-	// SearchSymbols is a placeholder, real implementation should use repoID
-	markers, err := s.argus.GetFileMarkers(r.Context(), repoID, "")
+	markers, err := s.argus.GetRepoMarkers(r.Context(), repoID)
 	if err != nil {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return

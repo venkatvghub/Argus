@@ -40,21 +40,21 @@ type Config struct {
 }
 
 var (
-	once sync.Once
-	cfg  *Config
+	once    sync.Once
+	cfg     *Config
+	initErr error // persists across calls; once.Do local err would be lost after first call
 )
 
 // Load returns the singleton configuration object. It initializes the config
-// on the first call by reading environment variables.
+// on the first call by reading environment variables. Any initialization error
+// is preserved and returned on all subsequent calls.
 func Load() (*Config, error) {
-	var err error
 	once.Do(func() {
 		cfg = &Config{}
-		err = envconfig.Process("REPOWISE", cfg)
+		initErr = envconfig.Process("REPOWISE", cfg)
 	})
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to process config: %w", err)
+	if initErr != nil {
+		return nil, fmt.Errorf("failed to process config: %w", initErr)
 	}
 	return cfg, nil
 }

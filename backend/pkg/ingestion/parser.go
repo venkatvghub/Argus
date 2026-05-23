@@ -51,6 +51,9 @@ func (p *TreeSitterParser) Parse(ctx context.Context, content []byte, path strin
 
 // ExecuteBiomarkers runs pre-defined queries against the AST and returns symbols.
 func (p *TreeSitterParser) ExecuteBiomarkers(tree *sitter.Tree, langName string, content []byte) ([]models.Symbol, error) {
+	if tree == nil {
+		return nil, fmt.Errorf("nil syntax tree for language %q", langName)
+	}
 	langQueries, ok := p.queries[langName]
 	if !ok {
 		return nil, nil

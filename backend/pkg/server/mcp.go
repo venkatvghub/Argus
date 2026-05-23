@@ -58,10 +58,11 @@ func (s *MCPServer) listReposHandler(ctx context.Context, req mcp.CallToolReques
 
 func (s *MCPServer) indexRepoHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	path := req.GetString("path", "")
-	if _, err := s.argus.Analyze(ctx, path); err != nil {
+	jobID, err := s.argus.Analyze(ctx, path)
+	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	return mcp.NewToolResultText(fmt.Sprintf("Analysis completed for %s", path)), nil
+	return mcp.NewToolResultText(fmt.Sprintf("Analysis queued for %s (jobID: %s)", path, jobID)), nil
 }
 
 func (s *MCPServer) searchSymbolsHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

@@ -94,6 +94,19 @@ func TestRESTServer_ListRepos(t *testing.T) {
 	assert.Contains(t, rr.Body.String(), "[]")
 }
 
+func waitForRepoAnalyzed(t *testing.T, argus *repowise.Instance, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		repos, err := argus.ListRepositories(context.Background())
+		if err == nil && len(repos) > 0 {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for analysis to complete")
+}
+
 func TestRESTServer_IndexRepo(t *testing.T) {
 	argus, cleanup := setupTestArgus(t)
 	defer cleanup()
@@ -112,7 +125,9 @@ func TestRESTServer_IndexRepo(t *testing.T) {
 
 	assert.Equal(t, http.StatusAccepted, rr.Code)
 
-	// Verify it was added
+	// Poll until analysis completes before asserting repo presence
+	waitForRepoAnalyzed(t, argus, 5*time.Second)
+
 	req = httptest.NewRequest("GET", "/api/repos", nil)
 	rr = httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
@@ -132,6 +147,8 @@ func TestRESTServer_GetRepoMarkers(t *testing.T) {
 
 	_, err := argus.Analyze(context.Background(), tmpRepo)
 	assert.NoError(t, err)
+
+	waitForRepoAnalyzed(t, argus, 5*time.Second)
 
 	repos, _ := argus.ListRepositories(context.Background())
 	assert.NotEmpty(t, repos)
@@ -158,6 +175,8 @@ func TestRESTServer_GetRepoSymbols(t *testing.T) {
 	_, err := argus.Analyze(context.Background(), tmpRepo)
 	assert.NoError(t, err)
 
+	waitForRepoAnalyzed(t, argus, 5*time.Second)
+
 	repos, _ := argus.ListRepositories(context.Background())
 	assert.NotEmpty(t, repos)
 	repoID := repos[0].ID
@@ -167,8 +186,6 @@ func TestRESTServer_GetRepoSymbols(t *testing.T) {
 	router.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusOK, rr.Code)
-	// We use exact name match in SearchSymbols for now, and our setupTestRepo has 'main' symbol
-	// Actually symbols found by tree-sitter will be returned.
 }
 
 func TestRESTServer_ExportCognee(t *testing.T) {

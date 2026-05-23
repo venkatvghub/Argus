@@ -35,6 +35,9 @@ func (p *OpenAIProvider) Chat(ctx context.Context, prompt string) (string, error
 
 // ChatStream sends a prompt to OpenAI and returns a stream of tokens.
 func (p *OpenAIProvider) ChatStream(ctx context.Context, prompt string) (<-chan string, <-chan error, error) {
+	if p.apiKey == "" {
+		return nil, nil, fmt.Errorf("OpenAI API key is missing")
+	}
 	out := make(chan string)
 	errCh := make(chan error, 1)
 
