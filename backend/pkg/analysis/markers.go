@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -103,8 +104,9 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 
 	tkm, _ := tiktoken.GetEncoding(tiktokenEncoding)
 
-	// Pre-compute PageRank threshold for brain_method (top 10% of file nodes).
+	// Pre-compute PageRank thresholds for structural and coverage markers.
 	prThreshold := computePageRankThreshold(graph, brainMethodPageRankTopPct)
+	coveragePRThreshold := computePageRankThreshold(graph, coverageUntestedPageRankTopPct)
 
 	fileContents := make(map[string]string)
 
@@ -162,8 +164,11 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 	markers = append(markers, me.checkDRYViolations(files, fileContents)...)
 
 	// 5.4: Coverage markers
-	coverage, _ := loadCoverage(me.repoPath, me.cfg)
-	markers = append(markers, me.checkCoverageMarkers(files, coverage, graph, prThreshold)...)
+	coverage, coverageErr := loadCoverage(me.repoPath, me.cfg)
+	if coverageErr != nil {
+		log.Printf("argus: %v", coverageErr)
+	}
+	markers = append(markers, me.checkCoverageMarkers(files, coverage, graph, coveragePRThreshold)...)
 
 	// 5.5: Organizational risk
 	markers = append(markers, me.checkGitOrgMarkers(files)...)
@@ -378,7 +383,7 @@ func (me *MarkerEngine) detectZombieExports(graph *GraphEngine) []models.Marker 
 				Message:   fmt.Sprintf("Symbol '%s' has zero incoming call edges", node.Name),
 				File:      node.Symbol().FilePath,
 				Line:      node.Symbol().Line,
-				Deduction: 0,
+				Deduction: deadCodeDeductionPerSymbol,
 				Category:  models.ScoreCatDeadCode,
 			})
 		}

@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/xml"
+	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,42 +17,38 @@ import (
 
 // loadCoverage attempts to load coverage data from a configured or auto-discovered file.
 // Returns nil, nil if no coverage file is found.
+// Returns a non-nil error if ARGUS_COVERAGE_FILE is set but the format is unrecognized.
 func loadCoverage(repoPath string, cfg *config.Config) (map[string]float64, error) {
-	candidates := []string{}
+	explicit := cfg != nil && cfg.CoverageFile != ""
 
-	if cfg != nil && cfg.CoverageFile != "" {
-		candidates = append(candidates, cfg.CoverageFile)
+	var paths []string
+	if explicit {
+		paths = []string{cfg.CoverageFile}
+	} else {
+		paths = []string{
+			filepath.Join(repoPath, "lcov.info"),
+			filepath.Join(repoPath, "coverage.xml"),
+			filepath.Join(repoPath, "clover.xml"),
+		}
 	}
 
-	candidates = append(candidates,
-		filepath.Join(repoPath, "lcov.info"),
-		filepath.Join(repoPath, "coverage.xml"),
-		filepath.Join(repoPath, "clover.xml"),
-	)
-
-	for _, path := range candidates {
+	for _, path := range paths {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}
-		switch filepath.Base(path) {
-		case "lcov.info":
+		// Content-sniff first so a misnamed file (e.g. coverage.xml containing lcov) parses correctly.
+		if bytes.Contains(data, []byte("SF:")) {
 			return parseLCOV(data), nil
-		case "coverage.xml":
+		}
+		if bytes.Contains(data, []byte("line-rate")) {
 			return parseCobertura(data), nil
-		case "clover.xml":
+		}
+		if bytes.Contains(data, []byte("<clover")) {
 			return parseClover(data), nil
-		default:
-			// For ARGUS_COVERAGE_FILE, detect format by content
-			if bytes.Contains(data, []byte("SF:")) {
-				return parseLCOV(data), nil
-			}
-			if bytes.Contains(data, []byte("line-rate")) {
-				return parseCobertura(data), nil
-			}
-			if bytes.Contains(data, []byte("<clover")) {
-				return parseClover(data), nil
-			}
+		}
+		if explicit {
+			return nil, fmt.Errorf("coverage file %q: unrecognized format (expected lcov/cobertura/clover)", path)
 		}
 	}
 
@@ -74,7 +72,7 @@ func parseLCOV(data []byte) map[string]float64 {
 	}
 
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := strings.TrimRight(scanner.Text(), "\r")
 		switch {
 		case strings.HasPrefix(line, "SF:"):
 			flush()
@@ -186,7 +184,8 @@ func (me *MarkerEngine) checkCoverageMarkers(files []models.FileNode, coverage m
 			continue
 		}
 
-		isTestFile := strings.Contains(file.Path, "_test") || strings.Contains(file.Path, "test_")
+		base := filepath.Base(file.Path)
+		isTestFile := strings.HasSuffix(base, "_test.go")
 
 		// untested_hotspot: high churn + high PageRank + very low coverage
 		if file.Churn >= coverageUntestedChurnThreshold && cov < coverageUntestedThreshold {
@@ -231,11 +230,26 @@ func lookupCoverage(coverage map[string]float64, filePath string) (float64, bool
 	if v, ok := coverage[filePath]; ok {
 		return v, true
 	}
-	// Try matching by suffix (coverage maps may store absolute or repo-relative paths)
-	for k, v := range coverage {
-		if strings.HasSuffix(k, filePath) || strings.HasSuffix(filePath, k) {
-			return v, true
+	// Try matching by suffix (coverage maps may store absolute or repo-relative paths).
+	// Prefer the longest matching key to avoid misattributing duplicate basenames.
+	var bestKey string
+	var tieCount int
+	for k := range coverage {
+		if !strings.HasSuffix(k, filePath) && !strings.HasSuffix(filePath, k) {
+			continue
+		}
+		if bestKey == "" || len(k) > len(bestKey) {
+			bestKey = k
+			tieCount = 1
+		} else if len(k) == len(bestKey) {
+			tieCount++
 		}
 	}
-	return 0, false
+	if bestKey == "" {
+		return 0, false
+	}
+	if tieCount > 1 {
+		log.Printf("analysis: ambiguous coverage path match for %q (%d equally long candidates)", filePath, tieCount)
+	}
+	return coverage[bestKey], true
 }

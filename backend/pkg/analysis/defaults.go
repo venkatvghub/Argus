@@ -55,4 +55,7 @@ const (
 	knowledgeLossChurnThreshold  = 5
 	devCongestionDeduction       = 0.5
 	knowledgeLossDeduction       = 0.5
+
+	// Phase 5.6 — Dead Code
+	deadCodeDeductionPerSymbol = 0.1
 )
