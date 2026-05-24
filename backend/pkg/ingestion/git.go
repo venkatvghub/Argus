@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,6 +16,14 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/venkatvghub/argus/pkg/models"
+)
+
+// commitRecordSep and fieldSep are the parsed byte values from git's %x1e/%x1f format escapes.
+// We use git's %x<hex> notation in the format string (not raw bytes) to avoid NUL-terminaton
+// issues when passing format strings as exec.Command arguments.
+const (
+	commitRecordSep = "\x1e" // git %x1e — record separator, safe in CLI args
+	fieldSep        = "\x1f" // git %x1f — unit separator
 )
 
 // GitWalker provides methods to traverse a Git repository and extract metadata and AST insights.
@@ -77,8 +88,8 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 		return nil, nil, err
 	}
 
-	// Single history walk for all file metrics — O(commits) instead of O(files × commits).
-	metricsMap, err := buildFileMetricsMap(repo, w.OnHistoryProgress)
+	// Single native git log --numstat call — native C diff, much faster than go-git c.Stats().
+	metricsMap, err := buildFileMetricsMap(w.repoPath, w.OnHistoryProgress)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build metrics: %w", err)
 	}
@@ -89,7 +100,6 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 	}
 
 	type fileResult struct {
-		idx     int
 		node    models.FileNode
 		symbols []models.Symbol
 		err     error
@@ -123,7 +133,7 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 				var parseErr error
 				symbols, parseErr = w.analyzeFile(ctx, f)
 				if parseErr != nil {
-					results[idx] = fileResult{idx: idx, err: fmt.Errorf("analyze %s: %w", f.Name, parseErr)}
+					results[idx] = fileResult{err: fmt.Errorf("analyze %s: %w", f.Name, parseErr)}
 					return
 				}
 			}
@@ -133,19 +143,17 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 				w.OnProgress(int(n))
 			}
 
-			results[idx] = fileResult{idx: idx, node: node, symbols: symbols}
+			results[idx] = fileResult{node: node, symbols: symbols}
 		}(i, f)
 	}
 	wg.Wait()
 
-	// Collect results in original order.
 	nodes := make([]models.FileNode, 0, len(files))
 	var allSymbols []models.Symbol
 	for _, r := range results {
 		if r.err != nil {
 			return nil, nil, r.err
 		}
-		// Skip zero-value results (gitignore-filtered slot would not appear here, but guard anyway).
 		if r.node.Path == "" {
 			continue
 		}
@@ -182,12 +190,23 @@ func (w *GitWalker) analyzeFile(ctx context.Context, f *object.File) ([]models.S
 	return symbols, nil
 }
 
-// buildFileMetricsMap walks the entire commit history once and accumulates per-file stats.
-// This is O(commits × avg_files_changed) rather than O(files × commits).
-func buildFileMetricsMap(repo *git.Repository, onProgress func(int)) (map[string]fileMetrics, error) {
-	cIter, err := repo.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})
+// buildFileMetricsMap uses a single `git log --numstat` call (native C diff engine) to accumulate
+// per-file commit stats. This mirrors repowise's approach and is orders of magnitude faster than
+// go-git's c.Stats() which computes in-memory diffs for every commit.
+func buildFileMetricsMap(repoPath string, onProgress func(int)) (map[string]fileMetrics, error) {
+	// %x1e = record separator, %x1f = field separator, %ae = author email, %ct = commit timestamp (unix)
+	logFormat := "%x1e%ae%x1f%ct"
+	cmd := exec.Command("git", "log",
+		"--numstat",
+		"--no-merges",
+		"--format="+logFormat,
+		"HEAD",
+	)
+	cmd.Dir = repoPath
+
+	out, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("git log --numstat: %w", err)
 	}
 
 	type perFileAuthorStats struct {
@@ -200,22 +219,49 @@ func buildFileMetricsMap(repo *git.Repository, onProgress func(int)) (map[string
 	cutoff := time.Now().AddDate(0, 0, -90)
 	commitCount := 0
 
-	_ = cIter.ForEach(func(c *object.Commit) error {
+	// Output is split by the NUL record separator; first element is always empty.
+	for _, record := range strings.Split(string(out), commitRecordSep) {
+		if record == "" {
+			continue
+		}
+
+		// First line: "email\x1ftimestamp", rest: numstat lines
+		nl := strings.IndexByte(record, '\n')
+		if nl < 0 {
+			continue
+		}
+		header := record[:nl]
+		body := record[nl+1:]
+
+		parts := strings.SplitN(header, fieldSep, 2)
+		if len(parts) < 2 {
+			continue
+		}
+		email := parts[0]
+		ts, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+		if err != nil {
+			continue
+		}
+		commitTime := time.Unix(ts, 0)
+		isRecent := commitTime.After(cutoff)
+
 		commitCount++
 		if onProgress != nil && commitCount%100 == 0 {
 			onProgress(commitCount)
 		}
 
-		email := c.Author.Email
-		isRecent := c.Author.When.After(cutoff)
+		for _, line := range strings.Split(body, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			// numstat format: "added\tdeleted\tpath"
+			cols := strings.SplitN(line, "\t", 3)
+			if len(cols) != 3 || cols[0] == "-" { // "-" = binary file
+				continue
+			}
+			path := normalizeRename(cols[2])
 
-		stats, err := c.Stats()
-		if err != nil {
-			return nil // skip commits where diff fails (e.g. merge conflicts, binary)
-		}
-
-		for _, s := range stats {
-			path := s.Name
 			if _, ok := fileAuthorStats[path]; !ok {
 				fileAuthorStats[path] = make(map[string]*perFileAuthorStats)
 				fileRecentAuthors[path] = make(map[string]bool)
@@ -226,15 +272,14 @@ func buildFileMetricsMap(repo *git.Repository, onProgress func(int)) (map[string
 				fileAuthorStats[path][email] = as
 			}
 			as.totalCommits++
-			if c.Author.When.After(as.lastCommit) {
-				as.lastCommit = c.Author.When
+			if commitTime.After(as.lastCommit) {
+				as.lastCommit = commitTime
 			}
 			if isRecent {
 				fileRecentAuthors[path][email] = true
 			}
 		}
-		return nil
-	})
+	}
 
 	result := make(map[string]fileMetrics, len(fileAuthorStats))
 	for path, authorMap := range fileAuthorStats {
@@ -270,6 +315,29 @@ func buildFileMetricsMap(repo *git.Repository, onProgress func(int)) (map[string
 		}
 	}
 	return result, nil
+}
+
+// normalizeRename extracts the destination path from git's rename notation in numstat output.
+// "{src => dst}/file.go" → "dst/file.go"
+// "old/path.go => new/path.go" → "new/path.go"
+func normalizeRename(path string) string {
+	arrow := strings.Index(path, " => ")
+	if arrow < 0 {
+		return path
+	}
+	// Brace notation: prefix{old => new}suffix
+	braceStart := strings.LastIndex(path[:arrow], "{")
+	if braceStart >= 0 {
+		braceEnd := strings.Index(path[arrow:], "}")
+		if braceEnd >= 0 {
+			prefix := path[:braceStart]
+			newPart := path[arrow+4 : arrow+braceEnd]
+			suffix := path[arrow+braceEnd+1:]
+			return prefix + newPart + suffix
+		}
+	}
+	// Simple: "old => new"
+	return path[arrow+4:]
 }
 
 // loadGitignore reads .gitignore patterns from the repository worktree.
