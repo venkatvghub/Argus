@@ -247,7 +247,7 @@ func (i *Instance) GetRepoMarkers(ctx context.Context, repoID string) ([]models.
 }
 
 // GetFileScore returns the computed health score for a single file.
-func (i *Instance) GetFileScore(repoID, filePath string) (models.FileScore, error) {
+func (i *Instance) GetFileScore(ctx context.Context, repoID, filePath string) (models.FileScore, error) {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
@@ -267,7 +267,7 @@ func (i *Instance) GetFileScore(repoID, filePath string) (models.FileScore, erro
 }
 
 // GetRepoScore returns the aggregate health score for a repository.
-func (i *Instance) GetRepoScore(repoID string) (float64, error) {
+func (i *Instance) GetRepoScore(ctx context.Context, repoID string) (float64, error) {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 
@@ -282,22 +282,31 @@ func (i *Instance) GetRepoScore(repoID string) (float64, error) {
 		byFile[m.File] = append(byFile[m.File], m)
 	}
 
-	// Build per-file scores.
-	fileScores := make([]models.FileScore, 0, len(byFile))
-	for file, fm := range byFile {
-		fileScores = append(fileScores, analysis.ComputeFileScore(file, fm))
-	}
-
-	// Build PageRank map from file nodes in the graph.
+	// Build PageRank map and collect all file paths from the graph so that
+	// files with zero markers (perfect score 10.0) are included in the average.
 	var pageRanks map[string]float64
+	allFilePaths := make(map[string]struct{})
 	if engine, ok := i.engines[repoID]; ok {
 		pageRanks = make(map[string]float64)
 		for _, n := range engine.GetNodes() {
 			if n.InternalType() == analysis.NodeTypeFile {
 				if f := n.File(); f != nil {
 					pageRanks[f.Path] = n.PageRank
+					allFilePaths[f.Path] = struct{}{}
 				}
 			}
+		}
+	}
+
+	// Score every file: marker-bearing files get actual deductions; others score 10.0.
+	fileScores := make([]models.FileScore, 0, len(allFilePaths))
+	for path := range allFilePaths {
+		fileScores = append(fileScores, analysis.ComputeFileScore(path, byFile[path]))
+	}
+	// Fall back to marker-only files if graph has no file nodes (e.g. analysis not run).
+	if len(fileScores) == 0 {
+		for file, fm := range byFile {
+			fileScores = append(fileScores, analysis.ComputeFileScore(file, fm))
 		}
 	}
 

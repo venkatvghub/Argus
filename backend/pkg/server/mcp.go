@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"math"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -114,18 +116,30 @@ func (s *MCPServer) getCommunityGraphHandler(ctx context.Context, req mcp.CallTo
 func (s *MCPServer) getFileScoreHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	repoID := req.GetString("repo_id", "")
 	filePath := req.GetString("path", "")
-	score, err := s.argus.GetFileScore(repoID, filePath)
+	score, err := s.argus.GetFileScore(ctx, repoID, filePath)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	return mcp.NewToolResultText(fmt.Sprintf("%v", score)), nil
+	b, _ := json.Marshal(score)
+	return mcp.NewToolResultText(string(b)), nil
+}
+
+type repoScoreResponse struct {
+	Score float64 `json:"score"`
 }
 
 func (s *MCPServer) getRepoScoreHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	repoID := req.GetString("repo_id", "")
-	score, err := s.argus.GetRepoScore(repoID)
+	score, err := s.argus.GetRepoScore(ctx, repoID)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	return mcp.NewToolResultText(fmt.Sprintf(`{"score": %v}`, score)), nil
+	if math.IsNaN(score) || math.IsInf(score, 0) {
+		return mcp.NewToolResultError("repository score is not finite"), nil
+	}
+	result, err := mcp.NewToolResultJSON(repoScoreResponse{Score: score})
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return result, nil
 }

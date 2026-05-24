@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -112,9 +113,13 @@ func (s *RESTServer) getFileScore(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, "path is required")
 		return
 	}
-	score, err := s.argus.GetFileScore(repoID, filePath)
+	score, err := s.argus.GetFileScore(r.Context(), repoID, filePath)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 	s.json(w, http.StatusOK, score)
@@ -126,9 +131,13 @@ func (s *RESTServer) getRepoScore(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, "repo_id is required")
 		return
 	}
-	score, err := s.argus.GetRepoScore(repoID)
+	score, err := s.argus.GetRepoScore(r.Context(), repoID)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 	s.json(w, http.StatusOK, map[string]float64{"score": score})
