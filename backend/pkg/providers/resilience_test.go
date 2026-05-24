@@ -93,26 +93,11 @@ func TestClassifyError_NetworkTransient(t *testing.T) {
 }
 
 func TestClassifyError_EOFSubstringNotOvermatched(t *testing.T) {
-	// A message containing "EOF" in an unrelated position should not be
-	// classified as transient solely because of the substring.
-	// e.g. a model named "BEOF-model" should not match.
-	msg := "some error about BEOF-model not found"
-	err := classifyError(errors.New(msg))
-	// No HTTP status, no ": EOF", no "unexpected EOF", no network keywords →
-	// falls through to unknown → ErrTransient (expected — unknown is retried).
-	// The key assertion: it must NOT match because of "EOF" alone — the
-	// "BEOF" string does not contain ": EOF" or "unexpected EOF".
+	// "BEOF" contains "EOF" but must not match network ": EOF" / "unexpected EOF" patterns
+	// (see TestClassifyError_NetworkTransient for those cases).
+	err := classifyError(errors.New("some error about BEOF-model not found"))
 	if !errors.Is(err, ErrTransient) {
-		t.Errorf("unexpected classification for %q: %v", msg, err)
-	}
-	// Confirm the inverse: a bare "EOF" without prefix does NOT trigger the network branch.
-	bare := "EOF"
-	bareErr := classifyError(errors.New(bare))
-	// "EOF" alone doesn't contain ": EOF" → falls to unknown → still ErrTransient,
-	// but via the fallback path, not the network branch. Both are ErrTransient so
-	// we just verify the outcome is still transient.
-	if !errors.Is(bareErr, ErrTransient) {
-		t.Errorf("bare EOF should be transient: %v", bareErr)
+		t.Errorf("got %v, want ErrTransient", err)
 	}
 }
 

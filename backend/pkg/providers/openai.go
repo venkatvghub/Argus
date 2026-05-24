@@ -41,13 +41,6 @@ func NewOpenAIProvider(cfg *config.Config) *OpenAIProvider {
 	}
 }
 
-func (p *OpenAIProvider) httpClient() *http.Client {
-	if p.client != nil {
-		return p.client
-	}
-	return llmHTTPClient(&config.Config{})
-}
-
 // openAIChatRequest is the JSON body for chat completions.
 type openAIChatRequest struct {
 	Model    string              `json:"model"`
@@ -114,7 +107,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, prompt string) (string, error
 		return "", fmt.Errorf("openai chat: request: %w", err)
 	}
 
-	resp, err := p.httpClient().Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("openai chat: http: %w", err)
 	}
@@ -156,7 +149,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, repoID string, prompt s
 		return nil, nil, fmt.Errorf("openai stream: request: %w", err)
 	}
 
-	resp, err := p.httpClient().Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("openai stream: http: %w", err)
 	}
@@ -235,7 +228,7 @@ func (p *OpenAIProvider) ListModels(ctx context.Context) ([]string, error) {
 		req.Header.Set("X-Title", openRouterTitle)
 	}
 
-	resp, err := p.httpClient().Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("openai list models: http: %w", err)
 	}

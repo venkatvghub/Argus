@@ -3,6 +3,7 @@ package config
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -104,6 +105,11 @@ func TestLoad_LLMResilienceValidation(t *testing.T) {
 			wantErr: "LLM_CIRCUIT_RESET_TIMEOUT_S must be >= 0",
 		},
 		{
+			name:    "negative HTTP timeout",
+			env:     map[string]string{"ARGUS_LLM_HTTP_TIMEOUT_S": "-1"},
+			wantErr: "LLM_HTTP_TIMEOUT_S must be >= 0",
+		},
+		{
 			name: "circuit failure threshold zero allowed",
 			env:  map[string]string{"ARGUS_LLM_CIRCUIT_FAILURE_THRESHOLD": "0"},
 		},
@@ -128,6 +134,27 @@ func TestLoad_LLMResilienceValidation(t *testing.T) {
 			}
 			assert.NoError(t, err)
 			assert.NotNil(t, c)
+		})
+	}
+}
+
+func TestConfig_LLMHTTPTimeout(t *testing.T) {
+	defaultTimeout := time.Duration(defaultLLMHTTPTimeoutS) * time.Second
+
+	tests := []struct {
+		name string
+		s    int
+		want time.Duration
+	}{
+		{name: "zero uses default", s: 0, want: defaultTimeout},
+		{name: "negative uses default", s: -5, want: defaultTimeout},
+		{name: "positive seconds", s: 30, want: 30 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Config{LLMHTTPTimeoutS: tt.s}
+			assert.Equal(t, tt.want, c.LLMHTTPTimeout())
 		})
 	}
 }

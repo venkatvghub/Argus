@@ -503,6 +503,7 @@ func readFileSnippet(path string, maxLines int) string {
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 256*1024), 10*1024*1024)
 	var lines []string
 	extra := 0
 	for scanner.Scan() {

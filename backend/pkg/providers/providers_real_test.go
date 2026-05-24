@@ -97,6 +97,7 @@ func TestOpenAIChat_Success(t *testing.T) {
 		apiKey:  "test-key",
 		baseURL: server.URL,
 		model:   "gpt-4o",
+		client:  &http.Client{},
 	}
 
 	result, err := p.Chat(context.Background(), "test prompt")
@@ -116,6 +117,7 @@ func TestOpenAIChat_HTTPError(t *testing.T) {
 		apiKey:  "bad-key",
 		baseURL: server.URL,
 		model:   "gpt-4o",
+		client:  &http.Client{},
 	}
 
 	_, err := p.Chat(context.Background(), "test prompt")
@@ -183,6 +185,7 @@ func TestOpenAIChatStream_Success(t *testing.T) {
 		apiKey:  "test-key",
 		baseURL: server.URL,
 		model:   "gpt-4o",
+		client:  &http.Client{},
 	}
 
 	out, errCh, err := p.ChatStream(context.Background(), "repo-123", "test prompt")
@@ -234,6 +237,7 @@ func TestOpenAIListModels_Success(t *testing.T) {
 		apiKey:  "test-key",
 		baseURL: server.URL,
 		model:   "gpt-4o",
+		client:  &http.Client{},
 	}
 
 	models, err := p.ListModels(context.Background())
@@ -255,6 +259,7 @@ func TestOpenAIListModels_HTTPError(t *testing.T) {
 		apiKey:  "bad-key",
 		baseURL: server.URL,
 		model:   "gpt-4o",
+		client:  &http.Client{},
 	}
 
 	_, err := p.ListModels(context.Background())
@@ -288,6 +293,7 @@ func TestOpenAIValidate_ModelFound(t *testing.T) {
 		apiKey:  "test-key",
 		baseURL: server.URL,
 		model:   "gpt-4o",
+		client:  &http.Client{},
 	}
 
 	err := p.Validate(context.Background())
@@ -320,6 +326,7 @@ func TestOpenAIValidate_ModelNotFound(t *testing.T) {
 		apiKey:  "test-key",
 		baseURL: server.URL,
 		model:   "nonexistent-model",
+		client:  &http.Client{},
 	}
 
 	err := p.Validate(context.Background())
@@ -639,6 +646,7 @@ func TestRouterValidateProvider_ModelNotFound(t *testing.T) {
 		apiKey:  "test-key",
 		baseURL: server.URL,
 		model:   "nonexistent-model",
+		client:  &http.Client{},
 	}
 
 	router := &Router{

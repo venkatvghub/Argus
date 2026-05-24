@@ -137,13 +137,10 @@ func computeHeuristics(files []models.FileNode) map[string]PageTokenHeuristic {
 	h["symbol_spotlight"] = sp
 
 	// module_page aggregates several files — scale by sqrt(files per module).
-	// Approximate: total files / modules gives avg files per module.
-	if numFiles := fileCount; numFiles > 0 {
-		mp := h["module_page"]
-		mp.Input = avgTokens*3 + 1000
-		mp.Output = max(500, avgTokens/2)
-		h["module_page"] = mp
-	}
+	mp := h["module_page"]
+	mp.Input = avgTokens*3 + 1000
+	mp.Output = max(500, avgTokens/2)
+	h["module_page"] = mp
 
 	return h
 }

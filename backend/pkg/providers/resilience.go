@@ -124,6 +124,7 @@ func (r *retryingProvider) callWithRetry(ctx context.Context, fn func() error) e
 		MaxElapsedTime:      0, // rely on MaxRetries + context
 		Clock:               backoff.SystemClock,
 	}
+	// Struct literal skips NewExponentialBackOff()'s init (Stop, nextBackoff); Reset() required.
 	eb.Reset()
 
 	bo := backoff.WithContext(

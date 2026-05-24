@@ -50,6 +50,7 @@ func TestVersionCmd_RunE(t *testing.T) {
 	var versionOutput map[string]string
 	require.NoError(t, json.Unmarshal(output, &versionOutput))
 
+	assert.NotEmpty(t, versionOutput["version"])
 	assert.Equal(t, constants.APIVersion, versionOutput["version"])
 	assert.Equal(t, "argus", versionOutput["app"])
 	assert.Len(t, versionOutput, 2)

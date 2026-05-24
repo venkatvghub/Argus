@@ -32,7 +32,7 @@ Copy `backend/.env.example` to `backend/.env` and adjust values for local develo
 | `ARGUS_JOB_LISTENER_BUFFER` | `10` | Per-subscriber SSE job update buffer |
 | `ARGUS_MOCK_STREAM_TOKEN_DELAY_MS` | `50` | Stub LLM stream delay per token (ms) |
 | `ARGUS_CORS_ALLOWED_ORIGINS` | — | Comma-separated browser origins for SSE (empty = no CORS headers) |
-| `ARGUS_LLM_HTTP_TIMEOUT_S` | `120` | Per-request HTTP timeout (seconds) for LLM provider API calls |
+| `ARGUS_LLM_HTTP_TIMEOUT_S` | `120` | Per-request HTTP timeout (seconds) for LLM API calls and OpenRouter discovery |
 | `ARGUS_LLM_MAX_RETRIES` | `3` | Max retry attempts per LLM call (`0` disables retry) |
 | `ARGUS_LLM_RETRY_INITIAL_DELAY_MS` | `500` | First backoff interval (ms) |
 | `ARGUS_LLM_RETRY_MAX_DELAY_MS` | `30000` | Cap on exponential backoff (ms) |

@@ -10,13 +10,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/venkatvghub/argus/pkg/config"
 )
-
-// openRouterHTTPClient is used for model discovery calls; 15 s prevents indefinite hangs.
-var openRouterHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 // OpenRouterModel holds model metadata returned by OpenRouter's /models endpoint.
 type OpenRouterModel struct {
@@ -121,6 +117,9 @@ func discoverOpenRouterModels(ctx context.Context, cfg *config.Config) ([]string
 }
 
 func fetchOpenRouterModels(ctx context.Context, cfg *config.Config, url string) ([]string, map[string][2]float64, error) {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("openrouter discover: request: %w", err)
@@ -129,7 +128,7 @@ func fetchOpenRouterModels(ctx context.Context, cfg *config.Config, url string) 
 	req.Header.Set("HTTP-Referer", openRouterReferer)
 	req.Header.Set("X-Title", openRouterTitle)
 
-	resp, err := openRouterHTTPClient.Do(req)
+	resp, err := llmHTTPClient(cfg).Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("openrouter discover: http: %w", err)
 	}
