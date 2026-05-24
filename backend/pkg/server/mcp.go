@@ -120,7 +120,10 @@ func (s *MCPServer) getFileScoreHandler(ctx context.Context, req mcp.CallToolReq
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	b, _ := json.Marshal(score)
+	b, err := json.Marshal(score)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	return mcp.NewToolResultText(string(b)), nil
 }
 
