@@ -338,7 +338,40 @@ Key endpoints:
 - `POST /compliance/report` — DPDP compliance findings
 - `POST /health/markers` — All biomarkers for a file or symbol
 
-## LLM Provider Tiers
+## LLM Providers
+
+Argus integrates with real HTTP-based LLM providers via the `Router` and `ModelValidator` interfaces in `internal/providers`. Providers are selected via `ARGUS_LLM_PROVIDER` (values: `openai`, `anthropic`, `gemini`).
+
+### ModelValidator Interface
+
+Every provider implements `ModelValidator`:
+
+- `Validate(ctx)` — Checks API key existence and verifies the configured model exists on the provider's API. Returns an actionable error if validation fails.
+- `ListModels(ctx)` — Fetches and returns the list of available models for the provider.
+
+### Provider Details
+
+**OpenAI**
+- API Endpoint: `https://api.openai.com/v1` (overridable via `ARGUS_OPENAI_BASE_URL`)
+- Chat: `POST /chat/completions`
+- List Models: `GET /models`
+- Supports OpenRouter: Set `ARGUS_OPENAI_BASE_URL=https://openrouter.ai/api/v1` and any supported model slug as `ARGUS_OPENAI_MODEL`
+
+**Anthropic**
+- API Endpoint: `https://api.anthropic.com`
+- Chat: `POST /v1/messages` with required header `anthropic-version: 2023-06-01`
+- List Models: `GET /v1/models`
+
+**Gemini**
+- API Endpoint: `https://generativelanguage.googleapis.com`
+- Chat: `POST /v1beta/models/{model}:generateContent`
+- List Models: `GET /v1beta/models`
+
+### Provider Validation on Startup
+
+`Router.ValidateProvider(ctx)` runs automatically on `serve rest` and `serve mcp` startup. It validates the configured LLM provider's API key and model existence. If validation fails, the server lists available models for the provider and exits with a descriptive error message, helping users quickly identify misconfiguration.
+
+### LLM Provider Tiers
 
 | Tier | Providers | Use Case | Example |
 |---|---|---|---|

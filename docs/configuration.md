@@ -17,6 +17,7 @@ Copy `backend/.env.example` to `backend/.env` and adjust values for local develo
 | `ARGUS_DOCS_DIR` | `docs` | Generated documentation output root |
 | `ARGUS_LLM_PROVIDER` | `openai` | Active LLM (`openai`, `anthropic`, `gemini`) |
 | `ARGUS_OPENAI_API_KEY` | — | Required for OpenAI |
+| `ARGUS_OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI API base URL; set to `https://openrouter.ai/api/v1` for OpenRouter |
 | `ARGUS_ANTHROPIC_API_KEY` | — | Required for Anthropic |
 | `ARGUS_GEMINI_API_KEY` | — | Required for Gemini |
 | `ARGUS_OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model name |

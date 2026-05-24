@@ -2,6 +2,7 @@ package ingestion
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -94,6 +95,9 @@ func (w *GitWalker) analyzeFile(ctx context.Context, f *object.File) ([]models.S
 
 	tree, langName, err := w.parser.Parse(ctx, []byte(content), f.Name)
 	if err != nil {
+		if errors.Is(err, ErrUnsupportedLanguage) {
+			return nil, nil // skip files with no registered grammar
+		}
 		return nil, err
 	}
 

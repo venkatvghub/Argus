@@ -2,7 +2,9 @@ package providers
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/venkatvghub/argus/pkg/config"
 )
@@ -55,8 +57,31 @@ func (r *Router) ChatStream(ctx context.Context, repoID string, prompt string) (
 }
 
 // GetProvider returns a registered provider by name.
-
 func (r *Router) GetProvider(name string) (Provider, bool) {
 	p, ok := r.providers[name]
 	return p, ok
+}
+
+// ValidateProvider runs Validate on the active provider if it implements ModelValidator.
+// If the model is not found, it calls ListModels and returns an error listing available models.
+func (r *Router) ValidateProvider(ctx context.Context) error {
+	p, ok := r.providers[r.active]
+	if !ok {
+		return fmt.Errorf("provider %q not registered", r.active)
+	}
+	mv, ok := p.(ModelValidator)
+	if !ok {
+		return nil // provider doesn't support validation
+	}
+	if err := mv.Validate(ctx); err != nil {
+		if errors.Is(err, ErrModelNotFound) {
+			models, listErr := mv.ListModels(ctx)
+			if listErr != nil {
+				return fmt.Errorf("%w (could not list models: %v)", err, listErr)
+			}
+			return fmt.Errorf("%w\navailable models:\n  %s", err, strings.Join(models, "\n  "))
+		}
+		return err
+	}
+	return nil
 }

@@ -40,6 +40,9 @@ type Config struct {
 	AnthropicKey string `envconfig:"ANTHROPIC_API_KEY"`
 	GeminiKey    string `envconfig:"GEMINI_API_KEY"`
 
+	// OpenAIBaseURL overrides the default OpenAI endpoint — use for OpenRouter or Azure.
+	OpenAIBaseURL string `envconfig:"OPENAI_BASE_URL" default:"https://api.openai.com/v1"`
+
 	// Model Names
 	OpenAIModel    string `envconfig:"OPENAI_MODEL" default:"gpt-4o-mini"`
 	AnthropicModel string `envconfig:"ANTHROPIC_MODEL" default:"claude-3-5-haiku-20241022"`

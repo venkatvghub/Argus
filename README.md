@@ -114,7 +114,7 @@ Select a provider and model via environment variables. Argus supports a **cheap*
 | **Gemini** | Premium | `gemini-1.5-pro` | `ARGUS_LLM_PROVIDER=gemini`<br>`ARGUS_GEMINI_API_KEY=AIza…`<br>`ARGUS_GEMINI_MODEL=gemini-1.5-pro` |
 | **OpenRouter** | Any | any model slug | `ARGUS_LLM_PROVIDER=openai`<br>`ARGUS_OPENAI_API_KEY=sk-or-…`<br>`ARGUS_OPENAI_MODEL=<slug>` ¹ |
 
-> ¹ OpenRouter exposes an OpenAI-compatible API. Point the OpenAI provider at `https://openrouter.ai/api/v1` and set any [supported model slug](https://openrouter.ai/models) as `ARGUS_OPENAI_MODEL`.
+> ¹ OpenRouter exposes an OpenAI-compatible API. Set `ARGUS_OPENAI_BASE_URL=https://openrouter.ai/api/v1` alongside `ARGUS_OPENAI_API_KEY=sk-or-…` and any [supported model slug](https://openrouter.ai/models) as `ARGUS_OPENAI_MODEL`.
 
 ## Documentation
 

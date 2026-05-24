@@ -2,11 +2,15 @@ package ingestion
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/venkatvghub/argus/pkg/models"
 )
+
+// ErrUnsupportedLanguage is returned by Parse when no grammar is registered for the file extension.
+var ErrUnsupportedLanguage = errors.New("unsupported language")
 
 // TreeSitterParser provides AST parsing and querying capabilities.
 type TreeSitterParser struct {
@@ -33,7 +37,7 @@ func NewTreeSitterParser() (*TreeSitterParser, error) {
 func (p *TreeSitterParser) Parse(ctx context.Context, content []byte, path string) (*sitter.Tree, string, error) {
 	lang, langName := p.registry.GetLanguageForPath(path)
 	if lang == nil {
-		return nil, "", fmt.Errorf("unsupported language for path: %s", path)
+		return nil, "", fmt.Errorf("%w for path: %s", ErrUnsupportedLanguage, path)
 	}
 
 	parser := sitter.NewParser()
