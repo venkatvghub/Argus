@@ -7,14 +7,16 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/venkatvghub/argus/pkg/models"
 )
 
 // GitWalker provides methods to traverse a Git repository and extract metadata and AST insights.
 type GitWalker struct {
-	repoPath string
-	parser   *TreeSitterParser
+	repoPath   string
+	parser     *TreeSitterParser
+	OnProgress func(filesProcessed int)
 }
 
 // NewGitWalker creates a new GitWalker for the repository at the given path.
@@ -26,6 +28,7 @@ func NewGitWalker(repoPath string, parser *TreeSitterParser) *GitWalker {
 }
 
 // Walk traverses the repository's HEAD tree and returns metadata and biomarkers for each file.
+// Files matching .gitignore patterns are skipped. Progress is reported via OnProgress if set.
 func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbol, error) {
 	repo, err := git.PlainOpen(w.repoPath)
 	if err != nil {
@@ -47,17 +50,23 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 		return nil, nil, fmt.Errorf("failed to get tree: %w", err)
 	}
 
+	ignoreMatcher := loadGitignore(repo)
+
 	var nodes []models.FileNode
 	var allSymbols []models.Symbol
+	processed := 0
 
 	err = tree.Files().ForEach(func(f *object.File) error {
+		if ignoreMatcher != nil && ignoreMatcher.Match(splitPath(f.Name), false) {
+			return nil
+		}
+
 		node := models.FileNode{
 			Path:   f.Name,
 			IsFile: true,
 			Size:   f.Size,
 		}
 
-		// Calculate churn, ownership, and git org metrics
 		churn, ownership, authorCount, primaryLastCommit, err := calculateMetrics(repo, f.Name)
 		if err != nil {
 			return fmt.Errorf("metrics for %s: %w", f.Name, err)
@@ -68,7 +77,6 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 		node.PrimaryAuthorLastCommit = primaryLastCommit
 		nodes = append(nodes, node)
 
-		// AST Analysis if parser is available
 		if w.parser != nil {
 			symbols, err := w.analyzeFile(ctx, f)
 			if err != nil {
@@ -77,11 +85,21 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 			allSymbols = append(allSymbols, symbols...)
 		}
 
+		processed++
+		if w.OnProgress != nil && processed%50 == 0 {
+			w.OnProgress(processed)
+		}
+
 		return nil
 	})
 
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Final progress update with actual total
+	if w.OnProgress != nil {
+		w.OnProgress(processed)
 	}
 
 	return nodes, allSymbols, nil
@@ -106,12 +124,43 @@ func (w *GitWalker) analyzeFile(ctx context.Context, f *object.File) ([]models.S
 		return nil, err
 	}
 
-	// Enrich symbols with file path
 	for i := range symbols {
 		symbols[i].FilePath = f.Name
 	}
 
 	return symbols, nil
+}
+
+// loadGitignore reads .gitignore patterns from the repository worktree.
+// Returns nil if patterns cannot be loaded (non-fatal).
+func loadGitignore(repo *git.Repository) gitignore.Matcher {
+	wt, err := repo.Worktree()
+	if err != nil {
+		return nil
+	}
+	patterns, err := gitignore.ReadPatterns(wt.Filesystem, nil)
+	if err != nil || len(patterns) == 0 {
+		return nil
+	}
+	return gitignore.NewMatcher(patterns)
+}
+
+// splitPath converts a slash-separated path string into a component slice for gitignore matching.
+func splitPath(p string) []string {
+	var parts []string
+	start := 0
+	for i := 0; i < len(p); i++ {
+		if p[i] == '/' {
+			if i > start {
+				parts = append(parts, p[start:i])
+			}
+			start = i + 1
+		}
+	}
+	if start < len(p) {
+		parts = append(parts, p[start:])
+	}
+	return parts
 }
 
 // calculateMetrics computes churn, top-author ownership, distinct author count (last 90 days),
@@ -160,7 +209,6 @@ func calculateMetrics(repo *git.Repository, filePath string) (churn int, ownersh
 		return 0, 0, 0, time.Time{}, nil
 	}
 
-	// Find primary author (highest total commit count)
 	maxCommits := 0
 	var primaryEmail string
 	for email, st := range allAuthorStats {

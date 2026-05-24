@@ -2,7 +2,6 @@
 package ingestion
 
 import (
-	"log"
 	"path/filepath"
 	"strings"
 
@@ -87,10 +86,10 @@ func (r *LanguageRegistry) registerExtended() {
 	r.registerWithFallback("sql", nil)
 }
 
-// registerWithFallback registers a language grammar only when the binding is available, skipping nil entries gracefully.
+// registerWithFallback registers a language grammar only when the binding is available, skipping nil entries silently.
+// Files with unsupported extensions are skipped via ErrUnsupportedLanguage at parse time.
 func (r *LanguageRegistry) registerWithFallback(name string, lang *sitter.Language) {
 	if lang == nil {
-		log.Printf("tree-sitter: grammar for %q is unavailable; files with matching extensions will not be parsed", name)
 		return
 	}
 	r.languages[name] = lang
