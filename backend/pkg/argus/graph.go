@@ -7,7 +7,7 @@ import (
 	"github.com/venkatvghub/argus/pkg/analysis"
 )
 
-// GraphNode is the REST API shape for a graph node.
+// GraphNode is the REST API response shape for a code graph node.
 type GraphNode struct {
 	ID        string  `json:"id"`
 	Label     string  `json:"label"`

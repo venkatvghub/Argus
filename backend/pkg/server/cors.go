@@ -1,3 +1,5 @@
+// Package server provides HTTP and MCP server implementations for Argus.
+// It handles CORS, SSE streaming, and RPC protocol support.
 package server
 
 import (

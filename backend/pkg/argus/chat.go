@@ -9,6 +9,7 @@ import (
 	"github.com/venkatvghub/argus/pkg/models"
 )
 
+// newShortID generates a short unique ID from a seed string.
 func newShortID(seed string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(seed+time.Now().UTC().String())))[:16]
 }

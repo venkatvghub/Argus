@@ -1,3 +1,6 @@
+// Package argus provides the core orchestration layer for repository ingestion,
+// analysis, and API serving. It manages in-memory graph engines, markers, and jobs
+// for indexed repositories.
 package argus
 
 import (
