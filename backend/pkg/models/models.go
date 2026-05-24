@@ -139,12 +139,32 @@ const (
 
 type Job struct {
 	ID        string    `json:"id"`
+	RepoID    string    `json:"repo_id,omitempty"`
 	Type      string    `json:"type"` // e.g., "analysis"
 	Status    JobStatus `json:"status"`
 	Progress  string    `json:"progress"`
 	Error     string    `json:"error,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Conversation holds a chat session for a repo.
+type Conversation struct {
+	ID           string    `json:"id"`
+	RepositoryID string    `json:"repository_id"`
+	Title        string    `json:"title"`
+	MessageCount int       `json:"message_count"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// ChatMessage is a single user or assistant turn in a conversation.
+type ChatMessage struct {
+	ID             string    `json:"id"`
+	ConversationID string    `json:"conversation_id"`
+	Role           string    `json:"role"`    // "user" | "assistant"
+	Content        string    `json:"content"` // plain text or JSON for tool calls
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // WikiJobStatus represents the lifecycle state of a wiki generation job.

@@ -308,12 +308,207 @@ func (db *DB) GetWikiPage(ctx context.Context, pageID string) (models.WikiPage, 
 
 const sqliteTimestampLayout = "2006-01-02 15:04:05"
 
+var sqliteTimestampLayouts = []string{
+	sqliteTimestampLayout,
+	time.RFC3339,
+	time.RFC3339Nano,
+	"2006-01-02T15:04:05.999Z",
+	"2006-01-02T15:04:05Z",
+}
+
 func parseSQLiteTimestamp(field, raw string) (time.Time, error) {
-	t, err := time.Parse(sqliteTimestampLayout, raw)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("parse %s timestamp %q: %w", field, raw, err)
+	for _, layout := range sqliteTimestampLayouts {
+		if t, err := time.Parse(layout, raw); err == nil {
+			return t, nil
+		}
 	}
-	return t, nil
+	return time.Time{}, fmt.Errorf("parse %s timestamp %q: unrecognised format", field, raw)
+}
+
+// DeleteRepository removes a repository record by ID.
+func (db *DB) DeleteRepository(ctx context.Context, repoID string) error {
+	_, err := db.ExecContext(ctx, "DELETE FROM repositories WHERE id = ?", repoID)
+	return err
+}
+
+// CreateJob inserts a new job record.
+func (db *DB) CreateJob(ctx context.Context, job models.Job) error {
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO jobs (id, repo_id, type, status, progress, error, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`,
+		job.ID, job.RepoID, job.Type, string(job.Status), job.Progress, job.Error)
+	return err
+}
+
+// GetJob returns a job by ID.
+func (db *DB) GetJob(ctx context.Context, jobID string) (models.Job, error) {
+	var j models.Job
+	var status, createdAt, updatedAt string
+	err := db.QueryRowContext(ctx, `
+		SELECT id, repo_id, type, status, progress, error, created_at, updated_at
+		FROM jobs WHERE id = ?`, jobID).
+		Scan(&j.ID, &j.RepoID, &j.Type, &status, &j.Progress, &j.Error, &createdAt, &updatedAt)
+	if err != nil {
+		return j, err
+	}
+	j.Status = models.JobStatus(status)
+	var parseErr error
+	if j.CreatedAt, parseErr = parseSQLiteTimestamp("created_at", createdAt); parseErr != nil {
+		return j, fmt.Errorf("job %q: %w", jobID, parseErr)
+	}
+	if j.UpdatedAt, parseErr = parseSQLiteTimestamp("updated_at", updatedAt); parseErr != nil {
+		return j, fmt.Errorf("job %q: %w", jobID, parseErr)
+	}
+	return j, nil
+}
+
+// ListJobs returns jobs; when repoID is empty, all jobs are returned.
+func (db *DB) ListJobs(ctx context.Context, repoID string) ([]models.Job, error) {
+	var rows *sql.Rows
+	var err error
+	if repoID == "" {
+		rows, err = db.QueryContext(ctx, `
+			SELECT id, repo_id, type, status, progress, error, created_at, updated_at
+			FROM jobs ORDER BY created_at DESC`)
+	} else {
+		rows, err = db.QueryContext(ctx, `
+			SELECT id, repo_id, type, status, progress, error, created_at, updated_at
+			FROM jobs WHERE repo_id = ? ORDER BY created_at DESC`, repoID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var jobs []models.Job
+	for rows.Next() {
+		var j models.Job
+		var status, createdAt, updatedAt string
+		if err := rows.Scan(&j.ID, &j.RepoID, &j.Type, &status, &j.Progress, &j.Error, &createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		j.Status = models.JobStatus(status)
+		if j.CreatedAt, err = parseSQLiteTimestamp("created_at", createdAt); err != nil {
+			return nil, fmt.Errorf("job %q: %w", j.ID, err)
+		}
+		if j.UpdatedAt, err = parseSQLiteTimestamp("updated_at", updatedAt); err != nil {
+			return nil, fmt.Errorf("job %q: %w", j.ID, err)
+		}
+		jobs = append(jobs, j)
+	}
+	return jobs, rows.Err()
+}
+
+// UpdateJobStatus updates status, progress, and error fields of a job.
+func (db *DB) UpdateJobStatus(ctx context.Context, jobID, status, progress, errMsg string) error {
+	_, err := db.ExecContext(ctx, `
+		UPDATE jobs SET status = ?, progress = ?, error = ?,
+		updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+		status, progress, errMsg, jobID)
+	return err
+}
+
+// CreateConversation inserts a new conversation record.
+func (db *DB) CreateConversation(ctx context.Context, conv models.Conversation) error {
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO conversations (id, repo_id, title, message_count, created_at, updated_at)
+		VALUES (?, ?, ?, 0, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`,
+		conv.ID, conv.RepositoryID, conv.Title)
+	return err
+}
+
+// GetConversation returns a conversation by ID.
+func (db *DB) GetConversation(ctx context.Context, convID string) (models.Conversation, error) {
+	var c models.Conversation
+	var createdAt, updatedAt string
+	err := db.QueryRowContext(ctx, `
+		SELECT id, repo_id, title, message_count, created_at, updated_at
+		FROM conversations WHERE id = ?`, convID).
+		Scan(&c.ID, &c.RepositoryID, &c.Title, &c.MessageCount, &createdAt, &updatedAt)
+	if err != nil {
+		return c, err
+	}
+	var parseErr error
+	if c.CreatedAt, parseErr = parseSQLiteTimestamp("created_at", createdAt); parseErr != nil {
+		return c, fmt.Errorf("conversation %q: %w", convID, parseErr)
+	}
+	if c.UpdatedAt, parseErr = parseSQLiteTimestamp("updated_at", updatedAt); parseErr != nil {
+		return c, fmt.Errorf("conversation %q: %w", convID, parseErr)
+	}
+	return c, nil
+}
+
+// ListConversations returns all conversations for a repository.
+func (db *DB) ListConversations(ctx context.Context, repoID string) ([]models.Conversation, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, repo_id, title, message_count, created_at, updated_at
+		FROM conversations WHERE repo_id = ? ORDER BY updated_at DESC`, repoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var convs []models.Conversation
+	for rows.Next() {
+		var c models.Conversation
+		var createdAt, updatedAt string
+		if err := rows.Scan(&c.ID, &c.RepositoryID, &c.Title, &c.MessageCount, &createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		if c.CreatedAt, err = parseSQLiteTimestamp("created_at", createdAt); err != nil {
+			return nil, fmt.Errorf("conversation %q: %w", c.ID, err)
+		}
+		if c.UpdatedAt, err = parseSQLiteTimestamp("updated_at", updatedAt); err != nil {
+			return nil, fmt.Errorf("conversation %q: %w", c.ID, err)
+		}
+		convs = append(convs, c)
+	}
+	return convs, rows.Err()
+}
+
+// DeleteConversation removes a conversation and its messages (via FK cascade).
+func (db *DB) DeleteConversation(ctx context.Context, convID string) error {
+	_, err := db.ExecContext(ctx, "DELETE FROM conversations WHERE id = ?", convID)
+	return err
+}
+
+// IncrementMessageCount increments the message_count for a conversation by 1.
+func (db *DB) IncrementMessageCount(ctx context.Context, convID string) error {
+	_, err := db.ExecContext(ctx, `
+		UPDATE conversations SET message_count = message_count + 1,
+		updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`, convID)
+	return err
+}
+
+// CreateChatMessage inserts a new chat message.
+func (db *DB) CreateChatMessage(ctx context.Context, msg models.ChatMessage) error {
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO chat_messages (id, conversation_id, role, content, created_at)
+		VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`,
+		msg.ID, msg.ConversationID, msg.Role, msg.Content)
+	return err
+}
+
+// ListChatMessages returns all messages for a conversation in chronological order.
+func (db *DB) ListChatMessages(ctx context.Context, convID string) ([]models.ChatMessage, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, conversation_id, role, content, created_at
+		FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC`, convID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var msgs []models.ChatMessage
+	for rows.Next() {
+		var m models.ChatMessage
+		var createdAt string
+		if err := rows.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &createdAt); err != nil {
+			return nil, err
+		}
+		if m.CreatedAt, err = parseSQLiteTimestamp("created_at", createdAt); err != nil {
+			return nil, fmt.Errorf("chat message %q: %w", m.ID, err)
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
 }
 
 func runMigrations(db *sql.DB) error {

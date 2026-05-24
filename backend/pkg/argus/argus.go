@@ -475,6 +475,27 @@ func (i *Instance) GetCommunityCount(ctx context.Context, repoID string) (int, e
 	return len(seen), nil
 }
 
+// GetJob returns a job by ID from the in-memory JobManager.
+func (i *Instance) GetJob(ctx context.Context, jobID string) (models.Job, error) {
+	job, ok := i.Jobs.GetJob(jobID)
+	if !ok {
+		return models.Job{}, fmt.Errorf("job not found: %s", jobID)
+	}
+	return *job, nil
+}
+
+// ListJobs returns all jobs tracked by the in-memory JobManager.
+// repoID is accepted for API consistency but is not currently used as a filter
+// since JobManager does not track repo associations in memory.
+func (i *Instance) ListJobs(ctx context.Context, repoID string) ([]models.Job, error) {
+	return i.Jobs.ListJobs(), nil
+}
+
+// CancelJob cancels a running job.
+func (i *Instance) CancelJob(ctx context.Context, jobID string) error {
+	return i.Jobs.CancelJob(jobID)
+}
+
 // Run starts the default pipeline.
 func (i *Instance) Run(ctx context.Context) error {
 	_, err := i.Analyze(ctx, defaultAnalyzePath)

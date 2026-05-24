@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/venkatvghub/argus/pkg/argus"
 	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/logger"
@@ -73,6 +74,112 @@ func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
 				flusher.Flush()
 				return
 			}
+			writeSSEEvent(w, token)
+			flusher.Flush()
+		}
+	}
+}
+
+// postChatMessage handles POST /api/repos/{repoID}/chat/messages.
+// It persists the user message, streams the LLM response via SSE, then persists the assistant reply.
+func (s *RESTServer) postChatMessage(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+
+	var body struct {
+		Message        string  `json:"message"`
+		ConversationID *string `json:"conversation_id"`
+		Provider       *string `json:"provider"`
+		Model          *string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(body.Message) == "" {
+		s.error(w, http.StatusBadRequest, "message is required")
+		return
+	}
+	if s.provider == nil {
+		s.error(w, http.StatusServiceUnavailable, "LLM provider not configured")
+		return
+	}
+
+	ctx := r.Context()
+
+	// Resolve or create conversation.
+	var convID string
+	if body.ConversationID != nil && strings.TrimSpace(*body.ConversationID) != "" {
+		convID = strings.TrimSpace(*body.ConversationID)
+	} else {
+		title := body.Message
+		if len(title) > 50 {
+			title = title[:50]
+		}
+		conv, err := s.argus.CreateConversation(ctx, repoID, title)
+		if err != nil {
+			logger.FromContext(ctx).Error("create conversation failed", "repo_id", repoID, "error", err)
+			s.error(w, http.StatusInternalServerError, "failed to create conversation")
+			return
+		}
+		convID = conv.ID
+	}
+
+	// Persist the user message before streaming starts.
+	userMsg, err := s.argus.CreateChatMessage(ctx, convID, "user", body.Message)
+	if err != nil {
+		logger.FromContext(ctx).Error("persist user message failed", "conv_id", convID, "error", err)
+		s.error(w, http.StatusInternalServerError, "failed to persist message")
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		s.error(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+
+	setSSEHeaders(w, r, s.corsAllowedOrigins())
+
+	tokens, errs, err := s.provider.ChatStream(ctx, repoID, body.Message)
+	if err != nil {
+		writeSSEEvent(w, "[ERROR] "+err.Error())
+		flusher.Flush()
+		return
+	}
+
+	var sb strings.Builder
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case e, ok := <-errs:
+			if !ok {
+				errs = nil
+				continue
+			}
+			if e != nil {
+				writeSSEEvent(w, "[ERROR] "+e.Error())
+				flusher.Flush()
+				return
+			}
+		case token, ok := <-tokens:
+			if !ok {
+				// Stream done — persist the assistant message.
+				assistantMsg, persistErr := s.argus.CreateChatMessage(ctx, convID, "assistant", sb.String())
+				if persistErr != nil {
+					logger.FromContext(ctx).Error("persist assistant message failed", "conv_id", convID, "error", persistErr)
+				}
+				donePayload, _ := json.Marshal(map[string]string{
+					"type":            "done",
+					"conversation_id": convID,
+					"message_id":      assistantMsg.ID,
+					"user_message_id": userMsg.ID,
+				})
+				fmt.Fprintf(w, "data: %s\n\n", donePayload)
+				flusher.Flush()
+				return
+			}
+			sb.WriteString(token)
 			writeSSEEvent(w, token)
 			flusher.Flush()
 		}
