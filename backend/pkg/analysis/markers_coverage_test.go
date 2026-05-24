@@ -378,4 +378,20 @@ func TestLookupCoverage(t *testing.T) {
 		assert.False(t, ok)
 		assert.Zero(t, cov)
 	})
+
+	t.Run("basename-only key does not suffix-match nested path", func(t *testing.T) {
+		cov, ok := lookupCoverage(map[string]float64{"app.go": 75.0}, "pkg/app.go")
+		assert.False(t, ok)
+		assert.Zero(t, cov)
+	})
+
+	t.Run("equal-length suffix ties pick lexicographically smaller key", func(t *testing.T) {
+		coverage := map[string]float64{
+			"b/pkg/app.go": 30.0,
+			"a/pkg/app.go": 40.0,
+		}
+		cov, ok := lookupCoverage(coverage, "pkg/app.go")
+		assert.True(t, ok)
+		assert.InDelta(t, 40.0, cov, 0.01)
+	})
 }

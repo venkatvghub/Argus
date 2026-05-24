@@ -23,7 +23,11 @@ func loadCoverage(repoPath string, cfg *config.Config) (map[string]float64, erro
 
 	var paths []string
 	if explicit {
-		paths = []string{cfg.CoverageFile}
+		path := cfg.CoverageFile
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(repoPath, path)
+		}
+		paths = []string{path}
 	} else {
 		paths = []string{
 			filepath.Join(repoPath, "lcov.info"),
@@ -35,6 +39,9 @@ func loadCoverage(repoPath string, cfg *config.Config) (map[string]float64, erro
 	for _, path := range paths {
 		data, err := os.ReadFile(path)
 		if err != nil {
+			if explicit {
+				return nil, fmt.Errorf("coverage file %q: %w", cfg.CoverageFile, err)
+			}
 			continue
 		}
 		// Content-sniff first so a misnamed file (e.g. coverage.xml containing lcov) parses correctly.
@@ -263,23 +270,40 @@ func lookupCoverage(coverage map[string]float64, filePath string) (float64, bool
 	// Try matching by suffix (coverage maps may store absolute or repo-relative paths).
 	// Prefer the longest matching key to avoid misattributing duplicate basenames.
 	var bestKey string
-	var tieCount int
+	var ambiguous bool
 	for k := range coverage {
-		if !strings.HasSuffix(k, filePath) && !strings.HasSuffix(filePath, k) {
+		if !coveragePathMatches(k, filePath) {
 			continue
 		}
 		if bestKey == "" || len(k) > len(bestKey) {
 			bestKey = k
-			tieCount = 1
-		} else if len(k) == len(bestKey) {
-			tieCount++
+			ambiguous = false
+		} else if len(k) == len(bestKey) && k != bestKey {
+			ambiguous = true
+			if strings.Compare(k, bestKey) < 0 {
+				bestKey = k
+			}
 		}
 	}
 	if bestKey == "" {
 		return 0, false
 	}
-	if tieCount > 1 {
-		log.Printf("analysis: ambiguous coverage path match for %q (%d equally long candidates)", filePath, tieCount)
+	if ambiguous {
+		log.Printf("analysis: ambiguous coverage path match for %q (using %q)", filePath, bestKey)
 	}
 	return coverage[bestKey], true
+}
+
+// coveragePathMatches reports whether a coverage map key corresponds to filePath.
+// Basename-only keys (no path separator) require an exact path match.
+func coveragePathMatches(coverageKey, filePath string) bool {
+	if len(coverageKey) > len(filePath) && strings.HasSuffix(coverageKey, filePath) {
+		prefixLen := len(coverageKey) - len(filePath)
+		return prefixLen == 0 || coverageKey[prefixLen-1] == filepath.Separator
+	}
+	if len(filePath) > len(coverageKey) && strings.Contains(coverageKey, string(filepath.Separator)) && strings.HasSuffix(filePath, coverageKey) {
+		prefixLen := len(filePath) - len(coverageKey)
+		return prefixLen > 0 && filePath[prefixLen-1] == filepath.Separator
+	}
+	return false
 }

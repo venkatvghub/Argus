@@ -163,6 +163,8 @@ func calculateMetrics(repo *git.Repository, filePath string) (churn int, ownersh
 		if st.totalCommits > maxCommits {
 			maxCommits = st.totalCommits
 			primaryEmail = email
+		} else if st.totalCommits == maxCommits && (primaryEmail == "" || email < primaryEmail) {
+			primaryEmail = email
 		}
 	}
 

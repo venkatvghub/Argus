@@ -138,7 +138,7 @@ func TestDetectDeadCode_UsedSymbol(t *testing.T) {
 		}
 	}
 
-	// Run should NOT have a dead_code marker (BuildGraph adds an incoming file "contains" edge)
+	// Run should have a dead_code marker (only incoming call edges prevent dead_code, not contains edges)
 	foundRun := false
 	for _, m := range markers {
 		if m.Type == "dead_code" && m.File == "main.go" && m.Line == 20 {
@@ -146,7 +146,7 @@ func TestDetectDeadCode_UsedSymbol(t *testing.T) {
 			break
 		}
 	}
-	assert.False(t, foundRun, "dead_code marker should not be emitted for Run with incoming contains edge")
+	assert.True(t, foundRun, "dead_code marker should be emitted for Run with no incoming call edges")
 }
 
 // TestDetectDeadCode_MultipleUnused verifies markers for multiple unused symbols.

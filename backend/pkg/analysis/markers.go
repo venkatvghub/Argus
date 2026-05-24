@@ -366,6 +366,16 @@ func (me *MarkerEngine) detectHallucinationBait(symbols []models.Symbol) []model
 	return markers
 }
 
+func hasIncomingCallEdges(graph *GraphEngine, nodeID int64) bool {
+	it := graph.g.To(nodeID)
+	for it.Next() {
+		if e, ok := graph.g.Edge(it.Node().ID(), nodeID).(TypedEdge); ok && e.Type() == "calls" {
+			return true
+		}
+	}
+	return false
+}
+
 func (me *MarkerEngine) detectZombieExports(graph *GraphEngine) []models.Marker {
 	var markers []models.Marker
 	nodes := graph.GetNodes()
@@ -376,7 +386,7 @@ func (me *MarkerEngine) detectZombieExports(graph *GraphEngine) []models.Marker 
 		if len(node.Name) == 0 {
 			continue
 		}
-		if graph.g.To(node.ID()).Len() == 0 {
+		if !hasIncomingCallEdges(graph, node.ID()) {
 			markers = append(markers, models.Marker{
 				Type:      "dead_code",
 				Severity:  "low",
