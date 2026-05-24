@@ -472,13 +472,8 @@ func TestComputeRepoScore_PartialPageRanks(t *testing.T) {
 	}
 
 	repoScore := ComputeRepoScore(scores, pageRanks)
-	// Weighted = 8.0*0.5 + 6.0*0 + 4.0*0 = 4.0
-	// Note: depends on whether weights are normalized by sum or not
-	// If normalized: sum of weights = 0.5, so avg = 4.0 / 0.5 = 8.0
-	// If unnormalized: assume we need to handle this. Test assumption from plan: missing = 0 weight.
-	// This is ambiguous; likely implementation normalizes non-zero weights.
-	// Let's test both interpretations are reasonable by checking result is between 4.0 and 8.0
-	assert.True(t, repoScore >= 4.0 && repoScore <= 8.0)
+	// Weighted = 8.0*0.5 + 6.0*0 + 4.0*0 = 4.0; totalWeight = 0.5 → 4.0/0.5 = 8.0
+	assert.InDelta(t, 8.0, repoScore, 1e-9)
 }
 
 // TestComputeRepoScore_ResultClamped verifies repo score is clamped to [1.0, 10.0].
