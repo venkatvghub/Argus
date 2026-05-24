@@ -17,10 +17,11 @@ import (
 
 // GitWalker provides methods to traverse a Git repository and extract metadata and AST insights.
 type GitWalker struct {
-	repoPath   string
-	parser     *TreeSitterParser
-	Workers    int // concurrent file processors; 0 → runtime.NumCPU()
-	OnProgress func(filesProcessed int)
+	repoPath          string
+	parser            *TreeSitterParser
+	Workers           int // concurrent file processors; 0 → runtime.NumCPU()
+	OnProgress        func(filesProcessed int)
+	OnHistoryProgress func(commitsProcessed int)
 }
 
 // NewGitWalker creates a new GitWalker for the repository at the given path.
@@ -77,7 +78,7 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 	}
 
 	// Single history walk for all file metrics — O(commits) instead of O(files × commits).
-	metricsMap, err := buildFileMetricsMap(repo)
+	metricsMap, err := buildFileMetricsMap(repo, w.OnHistoryProgress)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build metrics: %w", err)
 	}
@@ -183,7 +184,7 @@ func (w *GitWalker) analyzeFile(ctx context.Context, f *object.File) ([]models.S
 
 // buildFileMetricsMap walks the entire commit history once and accumulates per-file stats.
 // This is O(commits × avg_files_changed) rather than O(files × commits).
-func buildFileMetricsMap(repo *git.Repository) (map[string]fileMetrics, error) {
+func buildFileMetricsMap(repo *git.Repository, onProgress func(int)) (map[string]fileMetrics, error) {
 	cIter, err := repo.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})
 	if err != nil {
 		return nil, err
@@ -197,8 +198,14 @@ func buildFileMetricsMap(repo *git.Repository) (map[string]fileMetrics, error) {
 	fileAuthorStats := make(map[string]map[string]*perFileAuthorStats)
 	fileRecentAuthors := make(map[string]map[string]bool)
 	cutoff := time.Now().AddDate(0, 0, -90)
+	commitCount := 0
 
 	_ = cIter.ForEach(func(c *object.Commit) error {
+		commitCount++
+		if onProgress != nil && commitCount%100 == 0 {
+			onProgress(commitCount)
+		}
+
 		email := c.Author.Email
 		isRecent := c.Author.When.After(cutoff)
 

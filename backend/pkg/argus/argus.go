@@ -111,6 +111,9 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 		i.log.Info("starting analysis", "repo_path", absPath, "repo_id", repoID)
 
 		walker := ingestion.NewGitWalker(absPath, i.parser)
+		walker.OnHistoryProgress = func(n int) {
+			i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, fmt.Sprintf("Computing history... (%d commits)", n), nil)
+		}
 		walker.OnProgress = func(n int) {
 			i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, fmt.Sprintf("Indexing... (%d files)", n), nil)
 		}
