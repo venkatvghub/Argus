@@ -121,6 +121,12 @@ type FileScore struct {
 	MarkerCount int                       `json:"marker_count"`
 }
 
+// RepoScore holds the aggregate health score for a repository.
+type RepoScore struct {
+	RepoID string  `json:"repo_id"`
+	Final  float64 `json:"final"` // clamped [1.0, 10.0]
+}
+
 type JobStatus string
 
 const (
@@ -176,4 +182,5 @@ type WikiPage struct {
 	Content   string    `json:"content"`    // generated markdown
 	Level     int       `json:"level"`      // generation level 0-7
 	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

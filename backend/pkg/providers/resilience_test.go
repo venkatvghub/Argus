@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -11,15 +12,18 @@ import (
 // stubProvider counts Chat calls and returns configurable error/response sequences.
 type stubProvider struct {
 	name    string
-	calls   int
+	calls   atomic.Int32
 	results []error // nil = success, non-nil = error
 	reply   string
 }
 
+func (s *stubProvider) callCount() int {
+	return int(s.calls.Load())
+}
+
 func (s *stubProvider) Name() string { return s.name }
 func (s *stubProvider) Chat(_ context.Context, _ string) (string, error) {
-	idx := s.calls
-	s.calls++
+	idx := int(s.calls.Add(1)) - 1
 	if idx < len(s.results) {
 		return s.reply, s.results[idx]
 	}
@@ -153,8 +157,8 @@ func TestRetryingProvider_SuccessOnFirstAttempt(t *testing.T) {
 	if out != "ok" {
 		t.Errorf("reply = %q, want ok", out)
 	}
-	if stub.calls != 1 {
-		t.Errorf("calls = %d, want 1", stub.calls)
+	if stub.callCount() != 1 {
+		t.Errorf("calls = %d, want 1", stub.callCount())
 	}
 }
 
@@ -174,8 +178,8 @@ func TestRetryingProvider_RetriesTransientThenSucceeds(t *testing.T) {
 	if out != "ok" {
 		t.Errorf("reply = %q, want ok", out)
 	}
-	if stub.calls != 3 {
-		t.Errorf("calls = %d, want 3 (2 failures + 1 success)", stub.calls)
+	if stub.callCount() != 3 {
+		t.Errorf("calls = %d, want 3 (2 failures + 1 success)", stub.callCount())
 	}
 }
 
@@ -191,8 +195,8 @@ func TestRetryingProvider_NoRetryOnPermanentError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if stub.calls != 1 {
-		t.Errorf("calls = %d, want 1 (no retry on 401)", stub.calls)
+	if stub.callCount() != 1 {
+		t.Errorf("calls = %d, want 1 (no retry on 401)", stub.callCount())
 	}
 }
 
@@ -208,8 +212,8 @@ func TestRetryingProvider_ExhaustsMaxRetries(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error after exhausting retries")
 	}
-	if stub.calls != 3 {
-		t.Errorf("calls = %d, want 3 (1 initial + 2 retries)", stub.calls)
+	if stub.callCount() != 3 {
+		t.Errorf("calls = %d, want 3 (1 initial + 2 retries)", stub.callCount())
 	}
 }
 
@@ -219,18 +223,34 @@ func TestRetryingProvider_ContextCancelStopsRetry(t *testing.T) {
 		name:    "stub",
 		results: []error{transient, transient, transient, transient, transient},
 	}
-	p := newRetryingProvider(stub, fastRetryCfg(10))
+	maxRetries := uint(10)
+	p := newRetryingProvider(stub, fastRetryCfg(maxRetries))
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Cancel after the first retry attempt starts so the test does not depend
+	// on a tight wall-clock timeout (which flakes under CI load).
+	const targetCalls = 2
+	go func() {
+		for {
+			if stub.callCount() >= targetCalls {
+				cancel()
+				return
+			}
+			time.Sleep(100 * time.Microsecond)
+		}
+	}()
 
 	_, err := p.Chat(ctx, "hello")
 	if err == nil {
 		t.Fatal("expected error due to context cancellation")
 	}
-	// Fewer attempts than MaxRetries because context fired first
-	if stub.calls > 10 {
-		t.Errorf("too many calls (%d) before context cancel", stub.calls)
+	if stub.callCount() >= int(maxRetries)+1 {
+		t.Errorf("calls = %d, want fewer than %d (context should stop retries)", stub.callCount(), maxRetries+1)
+	}
+	if stub.callCount() < targetCalls {
+		t.Errorf("calls = %d, want at least %d before cancel", stub.callCount(), targetCalls)
 	}
 }
 
@@ -246,8 +266,8 @@ func TestRetryingProvider_ZeroRetriesNoRetry(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if stub.calls != 1 {
-		t.Errorf("calls = %d, want 1 (retry disabled)", stub.calls)
+	if stub.callCount() != 1 {
+		t.Errorf("calls = %d, want 1 (retry disabled)", stub.callCount())
 	}
 }
 
@@ -275,13 +295,13 @@ func TestRetryingProvider_CircuitBreakerTrips(t *testing.T) {
 	}
 
 	// Next call should return ErrCircuitOpen without hitting the stub
-	callsBefore := stub.calls
+	callsBefore := stub.callCount()
 	_, err := p.Chat(context.Background(), "hello")
 	if !errors.Is(err, ErrCircuitOpen) {
 		t.Errorf("after %d failures: got %v, want ErrCircuitOpen", cfg.FailureThreshold, err)
 	}
-	if stub.calls != callsBefore {
-		t.Errorf("stub called after CB open (calls: %d → %d)", callsBefore, stub.calls)
+	if stub.callCount() != callsBefore {
+		t.Errorf("stub called after CB open (calls: %d → %d)", callsBefore, stub.callCount())
 	}
 }
 
@@ -346,7 +366,7 @@ func TestRetryingProvider_PermanentErrorDoesNotTripCB(t *testing.T) {
 	}
 
 	// The CB must still be closed — a subsequent call reaches the stub.
-	callsBefore := stub.calls
+	callsBefore := stub.callCount()
 	stub.results = append(stub.results, nil) // next call succeeds
 	out, err := p.Chat(context.Background(), "hello")
 	if err != nil {
@@ -355,8 +375,8 @@ func TestRetryingProvider_PermanentErrorDoesNotTripCB(t *testing.T) {
 	if out != stub.reply {
 		t.Errorf("reply = %q, want %q", out, stub.reply)
 	}
-	if stub.calls != callsBefore+1 {
-		t.Errorf("stub.calls = %d, want %d (CB should not have blocked)", stub.calls, callsBefore+1)
+	if stub.callCount() != callsBefore+1 {
+		t.Errorf("stub.calls = %d, want %d (CB should not have blocked)", stub.callCount(), callsBefore+1)
 	}
 }
 

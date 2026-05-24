@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -137,7 +138,7 @@ func computeHeuristics(files []models.FileNode) map[string]PageTokenHeuristic {
 
 	// module_page aggregates several files — scale by sqrt(files per module).
 	// Approximate: total files / modules gives avg files per module.
-	if counts := fileCount; counts > 0 {
+	if numFiles := fileCount; numFiles > 0 {
 		mp := h["module_page"]
 		mp.Input = avgTokens*3 + 1000
 		mp.Output = max(500, avgTokens/2)
@@ -145,14 +146,6 @@ func computeHeuristics(files []models.FileNode) map[string]PageTokenHeuristic {
 	}
 
 	return h
-}
-
-// max returns the larger of two ints (pre-Go-1.21 compatible).
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // estimateWithHeuristics computes page cost using repo-derived heuristics + dynamic pricing.
@@ -207,7 +200,45 @@ func CountPages(files []models.FileNode, symbolCount, communityCount int) PageCo
 // isCI returns true for common CI config file paths.
 func isCI(path string) bool {
 	base := filepath.Base(path)
-	return base == ".github" || strings.HasSuffix(path, ".github/workflows") ||
-		base == "Jenkinsfile" || base == ".circleci" ||
-		strings.HasSuffix(base, ".yml") && (strings.Contains(path, ".github") || strings.Contains(path, "ci"))
+	if base == "Jenkinsfile" {
+		return true
+	}
+
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext != ".yml" && ext != ".yaml" {
+		return false
+	}
+
+	return hasCIDirectory(pathSegments(path))
+}
+
+func pathSegments(path string) []string {
+	clean := filepath.Clean(path)
+	if clean == "." || clean == string(os.PathSeparator) {
+		return nil
+	}
+	return strings.Split(clean, string(os.PathSeparator))
+}
+
+func hasCIDirectory(segments []string) bool {
+	if len(segments) <= 1 {
+		return false
+	}
+	dirs := segments[:len(segments)-1]
+	for i, seg := range dirs {
+		switch {
+		case seg == ".github", seg == ".circleci", seg == "ci":
+			return true
+		case seg == "workflows" && i > 0 && dirs[i-1] == ".github":
+			return true
+		case isCINamedDirectory(seg):
+			return true
+		}
+	}
+	return false
+}
+
+func isCINamedDirectory(name string) bool {
+	lower := strings.ToLower(name)
+	return lower == "ci" || lower == ".circleci" || strings.HasSuffix(lower, "-ci")
 }

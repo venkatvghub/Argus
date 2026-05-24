@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -160,9 +161,17 @@ func fetchOpenRouterModels(ctx context.Context, cfg *config.Config, url string) 
 
 		models = append(models, m.ID)
 
-		// Parse pricing: OpenRouter returns cost-per-token; multiply by 1M for per-1M cost
-		promptF, _ := strconv.ParseFloat(promptStr, 64)
-		completionF, _ := strconv.ParseFloat(completionStr, 64)
+		// Parse pricing: OpenRouter returns cost-per-token; multiply by 1M for per-1M cost.
+		promptF, err := strconv.ParseFloat(promptStr, 64)
+		if err != nil {
+			log.Printf("openrouter discover: skip pricing for model %q: invalid prompt %q: %v", m.ID, promptStr, err)
+			continue
+		}
+		completionF, err := strconv.ParseFloat(completionStr, 64)
+		if err != nil {
+			log.Printf("openrouter discover: skip pricing for model %q: invalid completion %q: %v", m.ID, completionStr, err)
+			continue
+		}
 		pricing[m.ID] = [2]float64{promptF * 1_000_000, completionF * 1_000_000}
 	}
 

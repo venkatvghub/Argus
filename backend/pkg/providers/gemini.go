@@ -20,6 +20,7 @@ var geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta/models"
 type GeminiProvider struct {
 	apiKey string
 	model  string
+	client *http.Client
 }
 
 // NewGeminiProvider creates a new Gemini provider instance.
@@ -30,6 +31,7 @@ func NewGeminiProvider(cfg *config.Config) *GeminiProvider {
 	return &GeminiProvider{
 		apiKey: cfg.GeminiKey,
 		model:  cfg.GeminiModel,
+		client: llmHTTPClient(cfg),
 	}
 }
 
@@ -66,6 +68,18 @@ func (p *GeminiProvider) buildPayload(prompt string) ([]byte, error) {
 	return json.Marshal(payload)
 }
 
+func (p *GeminiProvider) newRequest(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("x-goog-api-key", p.apiKey)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	return req, nil
+}
+
 // Chat sends a prompt to the Gemini generateContent endpoint and returns the full response.
 func (p *GeminiProvider) Chat(ctx context.Context, prompt string) (string, error) {
 	if p.apiKey == "" {
@@ -77,14 +91,13 @@ func (p *GeminiProvider) Chat(ctx context.Context, prompt string) (string, error
 		return "", fmt.Errorf("gemini chat: marshal: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/%s:generateContent?key=%s", geminiBaseURL, p.model, p.apiKey)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	url := fmt.Sprintf("%s/%s:generateContent", geminiBaseURL, p.model)
+	req, err := p.newRequest(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("gemini chat: request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("gemini chat: http: %w", err)
 	}
@@ -116,14 +129,13 @@ func (p *GeminiProvider) ChatStream(ctx context.Context, repoID string, prompt s
 		return nil, nil, fmt.Errorf("gemini stream: marshal: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/%s:streamGenerateContent?alt=sse&key=%s", geminiBaseURL, p.model, p.apiKey)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	url := fmt.Sprintf("%s/%s:streamGenerateContent?alt=sse", geminiBaseURL, p.model)
+	req, err := p.newRequest(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, fmt.Errorf("gemini stream: request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("gemini stream: http: %w", err)
 	}
@@ -189,13 +201,12 @@ type geminiModelsResponse struct {
 // ListModels fetches all model IDs available to the configured API key.
 // The Gemini API returns names like "models/gemini-2.0-flash"; this strips the prefix.
 func (p *GeminiProvider) ListModels(ctx context.Context) ([]string, error) {
-	url := fmt.Sprintf("%s?key=%s", geminiBaseURL, p.apiKey)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := p.newRequest(ctx, http.MethodGet, geminiBaseURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("gemini list models: request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("gemini list models: http: %w", err)
 	}

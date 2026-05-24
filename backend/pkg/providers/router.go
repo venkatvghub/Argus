@@ -80,11 +80,11 @@ func retryConfigFromConfig(cfg *config.Config) RetryConfig {
 // ChatTier calls the appropriate provider for the given tier ("cheap", "medium", "premium").
 func (t *TieredRouter) ChatTier(ctx context.Context, tier, prompt string) (string, error) {
 	switch tier {
-	case "cheap":
+	case TierCheap:
 		return t.cheap.Chat(ctx, prompt)
-	case "medium":
+	case TierMedium:
 		return t.medium.Chat(ctx, prompt)
-	case "premium":
+	case TierPremium:
 		return t.premium.Chat(ctx, prompt)
 	default:
 		return "", fmt.Errorf("unknown tier %q", tier)
@@ -94,11 +94,11 @@ func (t *TieredRouter) ChatTier(ctx context.Context, tier, prompt string) (strin
 // ProviderForTier returns the Provider for a given tier (for direct use).
 func (t *TieredRouter) ProviderForTier(tier string) (Provider, error) {
 	switch tier {
-	case "cheap":
+	case TierCheap:
 		return t.cheap, nil
-	case "medium":
+	case TierMedium:
 		return t.medium, nil
-	case "premium":
+	case TierPremium:
 		return t.premium, nil
 	default:
 		return nil, fmt.Errorf("unknown tier %q", tier)

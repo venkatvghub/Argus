@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -40,8 +41,9 @@ func New(dbPath string) (*DB, error) {
 		return nil, fmt.Errorf("failed to open sqlite: %w", err)
 	}
 
-	// Single writer connection prevents intra-process lock contention from concurrent goroutines.
-	db.SetMaxOpenConns(1)
+	// WAL mode allows concurrent readers; cap idle connections to limit overhead.
+	db.SetMaxOpenConns(runtime.NumCPU())
+	db.SetMaxIdleConns(1)
 
 	if err := runMigrations(db); err != nil {
 		db.Close()
@@ -101,15 +103,15 @@ func (db *DB) UpsertMarkers(ctx context.Context, repoID string, markers []models
 	}
 
 	stmt, err := tx.PrepareContext(ctx,
-		`INSERT INTO markers (repo_id, file, type, severity, message, line, deduction, category)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+		`INSERT INTO markers (repo_id, file, type, severity, message, line, deduction, category, suggestion)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
 	for _, m := range markers {
-		if _, err := stmt.ExecContext(ctx, repoID, m.File, m.Type, m.Severity, m.Message, m.Line, m.Deduction, string(m.Category)); err != nil {
+		if _, err := stmt.ExecContext(ctx, repoID, m.File, m.Type, m.Severity, m.Message, m.Line, m.Deduction, string(m.Category), m.Suggestion); err != nil {
 			return err
 		}
 	}
@@ -119,7 +121,7 @@ func (db *DB) UpsertMarkers(ctx context.Context, repoID string, markers []models
 // LoadAllMarkers reads all persisted markers grouped by repo ID.
 func (db *DB) LoadAllMarkers(ctx context.Context) (map[string][]models.Marker, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT repo_id, file, type, severity, message, line, deduction, category FROM markers`)
+		`SELECT repo_id, file, type, severity, message, line, deduction, category, suggestion FROM markers`)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +132,7 @@ func (db *DB) LoadAllMarkers(ctx context.Context) (map[string][]models.Marker, e
 		var repoID string
 		var m models.Marker
 		var cat string
-		if err := rows.Scan(&repoID, &m.File, &m.Type, &m.Severity, &m.Message, &m.Line, &m.Deduction, &cat); err != nil {
+		if err := rows.Scan(&repoID, &m.File, &m.Type, &m.Severity, &m.Message, &m.Line, &m.Deduction, &cat, &m.Suggestion); err != nil {
 			return nil, err
 		}
 		m.Category = models.ScoreCategory(cat)
@@ -196,8 +198,13 @@ func (db *DB) GetWikiJob(ctx context.Context, jobID string) (models.WikiJob, err
 		return j, err
 	}
 	j.Status = models.WikiJobStatus(status)
-	j.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
-	j.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+	var parseErr error
+	if j.CreatedAt, parseErr = parseSQLiteTimestamp("created_at", createdAt); parseErr != nil {
+		return j, fmt.Errorf("wiki job %q: %w", jobID, parseErr)
+	}
+	if j.UpdatedAt, parseErr = parseSQLiteTimestamp("updated_at", updatedAt); parseErr != nil {
+		return j, fmt.Errorf("wiki job %q: %w", jobID, parseErr)
+	}
 	return j, nil
 }
 
@@ -218,8 +225,12 @@ func (db *DB) ListWikiJobs(ctx context.Context, repoID string) ([]models.WikiJob
 			return nil, err
 		}
 		j.Status = models.WikiJobStatus(status)
-		j.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
-		j.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+		if j.CreatedAt, err = parseSQLiteTimestamp("created_at", createdAt); err != nil {
+			return nil, fmt.Errorf("wiki job %q: %w", j.ID, err)
+		}
+		if j.UpdatedAt, err = parseSQLiteTimestamp("updated_at", updatedAt); err != nil {
+			return nil, fmt.Errorf("wiki job %q: %w", j.ID, err)
+		}
 		jobs = append(jobs, j)
 	}
 	return jobs, rows.Err()
@@ -228,11 +239,11 @@ func (db *DB) ListWikiJobs(ctx context.Context, repoID string) ([]models.WikiJob
 // UpsertWikiPage inserts or replaces a generated wiki page.
 func (db *DB) UpsertWikiPage(ctx context.Context, page models.WikiPage) error {
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO wiki_pages (id, repo_id, job_id, type, subject, content, level, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+		INSERT INTO wiki_pages (id, repo_id, job_id, type, subject, content, level, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 		ON CONFLICT(id) DO UPDATE SET
 			content = excluded.content,
-			created_at = datetime('now')`,
+			updated_at = datetime('now')`,
 		page.ID, page.RepoID, page.JobID, page.Type, page.Subject, page.Content, page.Level)
 	return err
 }
@@ -240,7 +251,7 @@ func (db *DB) UpsertWikiPage(ctx context.Context, page models.WikiPage) error {
 // ListWikiPages returns all wiki pages for a repository.
 func (db *DB) ListWikiPages(ctx context.Context, repoID string) ([]models.WikiPage, error) {
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, repo_id, job_id, type, subject, content, level, created_at
+		SELECT id, repo_id, job_id, type, subject, content, level, created_at, updated_at
 		FROM wiki_pages WHERE repo_id = ? ORDER BY level, type, subject`, repoID)
 	if err != nil {
 		return nil, err
@@ -249,11 +260,16 @@ func (db *DB) ListWikiPages(ctx context.Context, repoID string) ([]models.WikiPa
 	var pages []models.WikiPage
 	for rows.Next() {
 		var p models.WikiPage
-		var createdAt string
-		if err := rows.Scan(&p.ID, &p.RepoID, &p.JobID, &p.Type, &p.Subject, &p.Content, &p.Level, &createdAt); err != nil {
+		var createdAt, updatedAt string
+		if err := rows.Scan(&p.ID, &p.RepoID, &p.JobID, &p.Type, &p.Subject, &p.Content, &p.Level, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
-		p.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		if p.CreatedAt, err = parseSQLiteTimestamp("created_at", createdAt); err != nil {
+			return nil, fmt.Errorf("wiki page %q: %w", p.ID, err)
+		}
+		if p.UpdatedAt, err = parseSQLiteTimestamp("updated_at", updatedAt); err != nil {
+			return nil, fmt.Errorf("wiki page %q: %w", p.ID, err)
+		}
 		pages = append(pages, p)
 	}
 	return pages, rows.Err()
@@ -262,16 +278,31 @@ func (db *DB) ListWikiPages(ctx context.Context, repoID string) ([]models.WikiPa
 // GetWikiPage returns a single wiki page by ID.
 func (db *DB) GetWikiPage(ctx context.Context, pageID string) (models.WikiPage, error) {
 	var p models.WikiPage
-	var createdAt string
+	var createdAt, updatedAt string
 	err := db.QueryRowContext(ctx, `
-		SELECT id, repo_id, job_id, type, subject, content, level, created_at
+		SELECT id, repo_id, job_id, type, subject, content, level, created_at, updated_at
 		FROM wiki_pages WHERE id = ?`, pageID).
-		Scan(&p.ID, &p.RepoID, &p.JobID, &p.Type, &p.Subject, &p.Content, &p.Level, &createdAt)
+		Scan(&p.ID, &p.RepoID, &p.JobID, &p.Type, &p.Subject, &p.Content, &p.Level, &createdAt, &updatedAt)
 	if err != nil {
 		return p, err
 	}
-	p.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+	if p.CreatedAt, err = parseSQLiteTimestamp("created_at", createdAt); err != nil {
+		return p, fmt.Errorf("wiki page %q: %w", pageID, err)
+	}
+	if p.UpdatedAt, err = parseSQLiteTimestamp("updated_at", updatedAt); err != nil {
+		return p, fmt.Errorf("wiki page %q: %w", pageID, err)
+	}
 	return p, nil
+}
+
+const sqliteTimestampLayout = "2006-01-02 15:04:05"
+
+func parseSQLiteTimestamp(field, raw string) (time.Time, error) {
+	t, err := time.Parse(sqliteTimestampLayout, raw)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse %s timestamp %q: %w", field, raw, err)
+	}
+	return t, nil
 }
 
 func runMigrations(db *sql.DB) error {

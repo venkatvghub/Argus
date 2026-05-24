@@ -18,6 +18,7 @@ import (
 type AnthropicProvider struct {
 	apiKey string
 	model  string
+	client *http.Client
 }
 
 // NewAnthropicProvider creates a new Anthropic provider instance.
@@ -28,6 +29,7 @@ func NewAnthropicProvider(cfg *config.Config) *AnthropicProvider {
 	return &AnthropicProvider{
 		apiKey: cfg.AnthropicKey,
 		model:  cfg.AnthropicModel,
+		client: llmHTTPClient(cfg),
 	}
 }
 
@@ -93,7 +95,7 @@ func (p *AnthropicProvider) Chat(ctx context.Context, prompt string) (string, er
 		return "", fmt.Errorf("anthropic chat: request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("anthropic chat: http: %w", err)
 	}
@@ -136,7 +138,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, repoID string, promp
 		return nil, nil, fmt.Errorf("anthropic stream: request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("anthropic stream: http: %w", err)
 	}
@@ -221,7 +223,7 @@ func (p *AnthropicProvider) ListModels(ctx context.Context) ([]string, error) {
 	req.Header.Set("x-api-key", p.apiKey)
 	req.Header.Set("anthropic-version", anthropicVersion)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("anthropic list models: http: %w", err)
 	}

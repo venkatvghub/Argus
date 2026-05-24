@@ -332,7 +332,7 @@ func waitForJob(ctx context.Context, jobID string) error {
 			fmt.Fprintf(os.Stderr, "\r\033[K  \033[31m✗\033[0m  Failed: %s\n", job.Error)
 			return fmt.Errorf("analysis failed: %s", job.Error)
 		default:
-			line := renderProgressLine(spinner, current)
+			line := renderProgressLine(current)
 			fmt.Fprintf(os.Stderr, "\r\033[K  \033[33m%s\033[0m  %s", spinner, line)
 		}
 	}

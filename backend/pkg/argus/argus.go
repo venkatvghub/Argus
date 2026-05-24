@@ -60,8 +60,10 @@ func New(ctx context.Context, cfg *config.Config) (*Instance, error) {
 	markerMap := make(map[string][]models.Marker)
 	if loaded, err := db.LoadAllMarkers(ctx); err == nil {
 		for repoID, ms := range loaded {
-			for i := range ms {
+		for i := range ms {
+			if ms[i].Suggestion == "" {
 				ms[i].Suggestion = analysis.SuggestionFor(ms[i].Type)
+			}
 			}
 			loaded[repoID] = ms
 		}
@@ -123,6 +125,7 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 		i.log.Info("starting analysis", "repo_path", absPath, "repo_id", repoID)
 
 		walker := ingestion.NewGitWalker(absPath, i.parser)
+		walker.RecentAuthorCutoffDays = i.cfg.RecentAuthorCutoffDays
 		walker.OnHistoryProgress = func(n int) {
 			i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, fmt.Sprintf("Reading commit history... (%d commits)", n), nil)
 		}

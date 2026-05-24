@@ -2,6 +2,7 @@ package persistence_test
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -231,7 +232,7 @@ func TestWikiJobFullLifecycle(t *testing.T) {
 
 	// 4. Mark pages complete as we progress
 	for i := 1; i <= 10; i++ {
-		pageID := "page-" + string(rune('0'+byte(i)))
+		pageID := "page-" + strconv.Itoa(i)
 		err := db.MarkWikiPageComplete(ctx, jobID, pageID)
 		require.NoError(t, err)
 	}

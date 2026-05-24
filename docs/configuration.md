@@ -25,11 +25,20 @@ Copy `backend/.env.example` to `backend/.env` and adjust values for local develo
 | `ARGUS_GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model name |
 | `ARGUS_PII_PATTERNS` | `AADHAAR,PAN,UPI_ID,MOBILE,EMAIL` | Enabled compliance PII scans (wired to `MarkerEngine`) |
 | `ARGUS_TOKEN_BLOAT_THRESHOLD` | `50` | Max tokens/line before `token_bloat` marker |
+| `ARGUS_RECENT_AUTHOR_CUTOFF_DAYS` | `90` | Git history lookback (days) for distinct recent authors per file (`GitWalker`) |
+| `ARGUS_COVERAGE` | `0.20` | Fraction of repo to generate wiki pages for (`0.10`–`1.0`; used by `argus init`) |
 | `ARGUS_WORKER_COUNT` | `3` | JobManager worker goroutines |
 | `ARGUS_WORK_QUEUE_SIZE` | `32` | JobManager queue buffer |
 | `ARGUS_JOB_LISTENER_BUFFER` | `10` | Per-subscriber SSE job update buffer |
 | `ARGUS_MOCK_STREAM_TOKEN_DELAY_MS` | `50` | Stub LLM stream delay per token (ms) |
 | `ARGUS_CORS_ALLOWED_ORIGINS` | — | Comma-separated browser origins for SSE (empty = no CORS headers) |
+| `ARGUS_LLM_HTTP_TIMEOUT_S` | `120` | Per-request HTTP timeout (seconds) for LLM provider API calls |
+| `ARGUS_LLM_MAX_RETRIES` | `3` | Max retry attempts per LLM call (`0` disables retry) |
+| `ARGUS_LLM_RETRY_INITIAL_DELAY_MS` | `500` | First backoff interval (ms) |
+| `ARGUS_LLM_RETRY_MAX_DELAY_MS` | `30000` | Cap on exponential backoff (ms) |
+| `ARGUS_LLM_RETRY_MULTIPLIER` | `2.0` | Exponential backoff growth factor |
+| `ARGUS_LLM_CIRCUIT_FAILURE_THRESHOLD` | `5` | Consecutive failures before circuit breaker opens (`0` disables CB) |
+| `ARGUS_LLM_CIRCUIT_RESET_TIMEOUT_S` | `60` | Seconds before CB allows a half-open probe |
 
 ## Path resolution
 

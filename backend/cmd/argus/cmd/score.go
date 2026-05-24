@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/venkatvghub/argus/pkg/models"
 )
 
 var scoreFilePath string
@@ -44,7 +45,10 @@ var scoreRepoCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("get repo score: %w", err)
 		}
-		return json.NewEncoder(os.Stdout).Encode(map[string]float64{"score": score})
+		return json.NewEncoder(os.Stdout).Encode(models.RepoScore{
+			RepoID: rootRepoID,
+			Final:  score,
+		})
 	},
 }
 

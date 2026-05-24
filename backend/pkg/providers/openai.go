@@ -20,6 +20,7 @@ type OpenAIProvider struct {
 	baseURL      string
 	model        string
 	isOpenRouter bool // true when baseURL != openAIDefaultBaseURL
+	client       *http.Client
 }
 
 // NewOpenAIProvider creates a new OpenAI provider instance.
@@ -36,7 +37,15 @@ func NewOpenAIProvider(cfg *config.Config) *OpenAIProvider {
 		baseURL:      baseURL,
 		model:        cfg.OpenAIModel,
 		isOpenRouter: baseURL != openAIDefaultBaseURL,
+		client:       llmHTTPClient(cfg),
 	}
+}
+
+func (p *OpenAIProvider) httpClient() *http.Client {
+	if p.client != nil {
+		return p.client
+	}
+	return llmHTTPClient(&config.Config{})
 }
 
 // openAIChatRequest is the JSON body for chat completions.
@@ -105,7 +114,7 @@ func (p *OpenAIProvider) Chat(ctx context.Context, prompt string) (string, error
 		return "", fmt.Errorf("openai chat: request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient().Do(req)
 	if err != nil {
 		return "", fmt.Errorf("openai chat: http: %w", err)
 	}
@@ -147,7 +156,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, repoID string, prompt s
 		return nil, nil, fmt.Errorf("openai stream: request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient().Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("openai stream: http: %w", err)
 	}
@@ -226,7 +235,7 @@ func (p *OpenAIProvider) ListModels(ctx context.Context) ([]string, error) {
 		req.Header.Set("X-Title", openRouterTitle)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.httpClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("openai list models: http: %w", err)
 	}

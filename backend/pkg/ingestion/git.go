@@ -29,9 +29,10 @@ const (
 
 // GitWalker provides methods to traverse a Git repository and extract metadata and AST insights.
 type GitWalker struct {
-	repoPath          string
-	parser            *TreeSitterParser
-	Workers           int // concurrent file processors; 0 → runtime.NumCPU()
+	repoPath               string
+	parser                 *TreeSitterParser
+	RecentAuthorCutoffDays int // lookback for recent author count; 0 → 90 days
+	Workers                int // concurrent file processors; 0 → runtime.NumCPU()
 	OnTotalFiles      func(total int)
 	OnProgress        func(filesProcessed int)
 	OnHistoryProgress func(commitsProcessed int)
@@ -95,7 +96,7 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 	}
 
 	// Single native git log --numstat call — native C diff, much faster than go-git c.Stats().
-	metricsMap, err := buildFileMetricsMap(w.repoPath, w.OnHistoryProgress)
+	metricsMap, err := buildFileMetricsMap(w.repoPath, w.recentAuthorCutoffDays(), w.OnHistoryProgress)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build metrics: %w", err)
 	}
@@ -196,9 +197,16 @@ func (w *GitWalker) analyzeFile(ctx context.Context, f *object.File) ([]models.S
 	return symbols, nil
 }
 
+func (w *GitWalker) recentAuthorCutoffDays() int {
+	if w.RecentAuthorCutoffDays > 0 {
+		return w.RecentAuthorCutoffDays
+	}
+	return 90
+}
+
 // buildFileMetricsMap streams `git log --name-only` (no diff computation, ~25× faster than
 // --numstat) to accumulate per-file churn/ownership stats in a single pass.
-func buildFileMetricsMap(repoPath string, onProgress func(int)) (map[string]fileMetrics, error) {
+func buildFileMetricsMap(repoPath string, recentAuthorCutoffDays int, onProgress func(int)) (map[string]fileMetrics, error) {
 	// --name-only: file names only, no diff content computed → fast
 	// %x1e = record separator (safe in CLI args), %x1f = field separator
 	cmd := exec.Command("git", "log",
@@ -224,7 +232,7 @@ func buildFileMetricsMap(repoPath string, onProgress func(int)) (map[string]file
 
 	fileAuthorStats := make(map[string]map[string]*perFileAuthorStats)
 	fileRecentAuthors := make(map[string]map[string]bool)
-	cutoff := time.Now().AddDate(0, 0, -90)
+	cutoff := time.Now().AddDate(0, 0, -recentAuthorCutoffDays)
 
 	var email string
 	var commitTime time.Time

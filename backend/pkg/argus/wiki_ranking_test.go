@@ -1,6 +1,9 @@
 package argus
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/venkatvghub/argus/pkg/analysis"
@@ -337,5 +340,24 @@ func TestScoreAndRankNodes_StableTiebreaker(t *testing.T) {
 		if si == si1 && cur < prev {
 			t.Errorf("tiebreaker violated: %q should come before %q (alphabetical)", cur, prev)
 		}
+	}
+}
+
+func TestReadFileSnippet_TruncatesWithoutLoadingWholeFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sample.txt")
+	content := strings.Join([]string{"line1", "line2", "line3", "line4", "line5"}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := readFileSnippet(path, 3)
+	want := "line1\nline2\nline3\n... (2 more lines)"
+	if got != want {
+		t.Fatalf("readFileSnippet() = %q, want %q", got, want)
+	}
+
+	if readFileSnippet(filepath.Join(dir, "missing.txt"), 3) != "" {
+		t.Fatal("expected empty string for missing file")
 	}
 }

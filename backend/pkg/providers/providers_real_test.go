@@ -362,14 +362,8 @@ func TestAnthropicChat_Success(t *testing.T) {
 	p := &AnthropicProvider{
 		apiKey: "test-key",
 		model:  "claude-3-5-haiku-20241022",
+		client: &http.Client{Transport: &mockTransport{mockURL: server.URL}},
 	}
-
-	// Mock http.DefaultClient with a custom transport that redirects to our test server
-	oldClient := http.DefaultClient
-	http.DefaultClient = &http.Client{
-		Transport: &mockTransport{mockURL: server.URL},
-	}
-	defer func() { http.DefaultClient = oldClient }()
 
 	result, err := p.Chat(context.Background(), "test prompt")
 	require.NoError(t, err)
@@ -415,13 +409,8 @@ func TestAnthropicListModels_Success(t *testing.T) {
 	p := &AnthropicProvider{
 		apiKey: "test-key",
 		model:  "claude-3-5-haiku-20241022",
+		client: &http.Client{Transport: &mockTransport{mockURL: server.URL}},
 	}
-
-	oldClient := http.DefaultClient
-	http.DefaultClient = &http.Client{
-		Transport: &mockTransport{mockURL: server.URL},
-	}
-	defer func() { http.DefaultClient = oldClient }()
 
 	models, err := p.ListModels(context.Background())
 	require.NoError(t, err)
@@ -459,13 +448,8 @@ func TestAnthropicValidate_ModelNotFound(t *testing.T) {
 	p := &AnthropicProvider{
 		apiKey: "test-key",
 		model:  "nonexistent-claude-model",
+		client: &http.Client{Transport: &mockTransport{mockURL: server.URL}},
 	}
-
-	oldClient := http.DefaultClient
-	http.DefaultClient = &http.Client{
-		Transport: &mockTransport{mockURL: server.URL},
-	}
-	defer func() { http.DefaultClient = oldClient }()
 
 	err := p.Validate(context.Background())
 	require.Error(t, err)
@@ -481,8 +465,9 @@ func TestGeminiChat_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "POST", r.Method)
 
-		// Verify API key is passed as query parameter
-		require.NotEmpty(t, r.URL.Query().Get("key"))
+		// Verify API key is passed in header, not the URL query string.
+		require.Equal(t, "test-key", r.Header.Get("x-goog-api-key"))
+		require.Empty(t, r.URL.Query().Get("key"))
 
 		var req geminiRequest
 		err := json.NewDecoder(r.Body).Decode(&req)
@@ -521,13 +506,8 @@ func TestGeminiChat_Success(t *testing.T) {
 	p := &GeminiProvider{
 		apiKey: "test-key",
 		model:  "gemini-2.0-flash",
+		client: &http.Client{Transport: &mockTransport{mockURL: server.URL}},
 	}
-
-	oldClient := http.DefaultClient
-	http.DefaultClient = &http.Client{
-		Transport: &mockTransport{mockURL: server.URL},
-	}
-	defer func() { http.DefaultClient = oldClient }()
 
 	result, err := p.Chat(context.Background(), "test prompt")
 	require.NoError(t, err)
@@ -569,13 +549,8 @@ func TestGeminiListModels_Success(t *testing.T) {
 	p := &GeminiProvider{
 		apiKey: "test-key",
 		model:  "gemini-2.0-flash",
+		client: &http.Client{Transport: &mockTransport{mockURL: server.URL}},
 	}
-
-	oldClient := http.DefaultClient
-	http.DefaultClient = &http.Client{
-		Transport: &mockTransport{mockURL: server.URL},
-	}
-	defer func() { http.DefaultClient = oldClient }()
 
 	models, err := p.ListModels(context.Background())
 	require.NoError(t, err)
@@ -609,13 +584,8 @@ func TestGeminiValidate_ModelNotFound(t *testing.T) {
 	p := &GeminiProvider{
 		apiKey: "test-key",
 		model:  "nonexistent-gemini-model",
+		client: &http.Client{Transport: &mockTransport{mockURL: server.URL}},
 	}
-
-	oldClient := http.DefaultClient
-	http.DefaultClient = &http.Client{
-		Transport: &mockTransport{mockURL: server.URL},
-	}
-	defer func() { http.DefaultClient = oldClient }()
 
 	err := p.Validate(context.Background())
 	require.Error(t, err)

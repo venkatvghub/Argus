@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
+	"github.com/venkatvghub/argus/pkg/logger"
 	"github.com/venkatvghub/argus/pkg/models"
 )
 
@@ -240,7 +241,12 @@ func (p *TreeSitterParser) initBiomarkers() error {
 		for name, qStr := range queries {
 			q, err := sitter.NewQuery(lang, qStr)
 			if err != nil {
-				fmt.Printf("Warning: failed to compile query %s for %s: %v\n", name, langName, err)
+				logger.FromContext(context.Background()).Warn(
+					"failed to compile query",
+					"query", name,
+					"language", langName,
+					"error", err,
+				)
 				continue
 			}
 			p.queries[langName][name] = q

@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/venkatvghub/argus/pkg/constants"
 )
 
 func TestVersionCmd_IsNotNil(t *testing.T) {
@@ -36,160 +36,21 @@ func TestVersionCmd_OverridesPersistentPreRunE(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestVersionCmd_OutputsValidJSON(t *testing.T) {
-	// Create a new context for this test
-	ctx := context.Background()
-
-	// Capture stdout by redirecting to a buffer in the command
+func TestVersionCmd_RunE(t *testing.T) {
 	buf := new(bytes.Buffer)
+	versionCmd.SetOut(buf)
+	versionCmd.SetContext(context.Background())
 
-	// Create a test command that we can control
-	testCmd := &cobra.Command{
-		Use:   "version",
-		Short: "Print Argus version information",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return json.NewEncoder(buf).Encode(map[string]string{
-				"version": "1.0.0", // Use a known version for testing
-				"app":     "argus",
-			})
-		},
-	}
-	testCmd.SetContext(ctx)
+	err := versionCmd.RunE(versionCmd, []string{})
+	require.NoError(t, err)
 
-	// Execute the command
-	err := testCmd.RunE(testCmd, []string{})
-	require.NoError(t, err, "version command should execute without error")
-
-	// Verify output is not empty
 	output := buf.Bytes()
-	assert.NotEmpty(t, output, "version command should produce output")
-
-	// Parse JSON
-	var versionOutput map[string]string
-	err = json.Unmarshal(output, &versionOutput)
-	require.NoError(t, err, "version output should be valid JSON")
-
-	// Verify required fields
-	assert.Contains(t, versionOutput, "version", "output should contain 'version' field")
-	assert.Contains(t, versionOutput, "app", "output should contain 'app' field")
-}
-
-func TestVersionCmd_HasCorrectAppName(t *testing.T) {
-	ctx := context.Background()
-	buf := new(bytes.Buffer)
-
-	testCmd := &cobra.Command{
-		Use:   "version",
-		Short: "Print Argus version information",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return json.NewEncoder(buf).Encode(map[string]string{
-				"version": "1.0.0",
-				"app":     "argus",
-			})
-		},
-	}
-	testCmd.SetContext(ctx)
-
-	err := testCmd.RunE(testCmd, []string{})
-	require.NoError(t, err)
+	require.NotEmpty(t, output)
 
 	var versionOutput map[string]string
-	err = json.Unmarshal(buf.Bytes(), &versionOutput)
-	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(output, &versionOutput))
 
-	assert.Equal(t, "argus", versionOutput["app"], "app field should be 'argus'")
-}
-
-func TestVersionCmd_VersionFieldIsNonEmpty(t *testing.T) {
-	ctx := context.Background()
-	buf := new(bytes.Buffer)
-
-	testCmd := &cobra.Command{
-		Use:   "version",
-		Short: "Print Argus version information",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return json.NewEncoder(buf).Encode(map[string]string{
-				"version": "1.0.0",
-				"app":     "argus",
-			})
-		},
-	}
-	testCmd.SetContext(ctx)
-
-	err := testCmd.RunE(testCmd, []string{})
-	require.NoError(t, err)
-
-	var versionOutput map[string]string
-	err = json.Unmarshal(buf.Bytes(), &versionOutput)
-	require.NoError(t, err)
-
-	assert.NotEmpty(t, versionOutput["version"], "version field should not be empty")
-}
-
-func TestVersionCmd_JSONFormat(t *testing.T) {
-	// Test that the output is properly formatted JSON with trailing newline
-	ctx := context.Background()
-	buf := new(bytes.Buffer)
-
-	testCmd := &cobra.Command{
-		Use:   "version",
-		Short: "Print Argus version information",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return json.NewEncoder(buf).Encode(map[string]string{
-				"version": "1.0.0",
-				"app":     "argus",
-			})
-		},
-	}
-	testCmd.SetContext(ctx)
-
-	err := testCmd.RunE(testCmd, []string{})
-	require.NoError(t, err)
-
-	output := buf.String()
-
-	// json.Encoder adds a newline at the end
-	assert.True(t, len(output) > 0, "output should not be empty")
-
-	// The output should be parseable as JSON
-	var versionOutput map[string]string
-	err = json.Unmarshal([]byte(output), &versionOutput)
-	require.NoError(t, err, "output should be valid JSON")
-}
-
-func TestVersionCmd_OutputStructure(t *testing.T) {
-	// Comprehensive test of the version output structure
-	ctx := context.Background()
-	buf := new(bytes.Buffer)
-
-	testCmd := &cobra.Command{
-		Use:   "version",
-		Short: "Print Argus version information",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return json.NewEncoder(buf).Encode(map[string]string{
-				"version": "1.0.0",
-				"app":     "argus",
-			})
-		},
-	}
-	testCmd.SetContext(ctx)
-
-	err := testCmd.RunE(testCmd, []string{})
-	require.NoError(t, err)
-
-	var versionOutput map[string]string
-	err = json.Unmarshal(buf.Bytes(), &versionOutput)
-	require.NoError(t, err)
-
-	// Should have exactly 2 fields
-	assert.Equal(t, 2, len(versionOutput), "version output should have exactly 2 fields")
-
-	// Verify both fields exist and are strings
-	version, hasVersion := versionOutput["version"]
-	app, hasApp := versionOutput["app"]
-
-	assert.True(t, hasVersion, "should have 'version' field")
-	assert.True(t, hasApp, "should have 'app' field")
-	assert.NotEmpty(t, version, "'version' field should not be empty")
-	assert.NotEmpty(t, app, "'app' field should not be empty")
+	assert.Equal(t, constants.APIVersion, versionOutput["version"])
+	assert.Equal(t, "argus", versionOutput["app"])
+	assert.Len(t, versionOutput, 2)
 }

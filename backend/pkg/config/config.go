@@ -5,7 +5,9 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"sync"
+	"time"
 
 	"github.com/kelseyhightower/envconfig"
 )
@@ -68,9 +70,13 @@ type Config struct {
 	// Used by argus init. Default 0.20 (20%).
 	Coverage float64 `envconfig:"COVERAGE" default:"0.20"`
 
+	// RecentAuthorCutoffDays is the lookback window for counting distinct recent authors per file.
+	RecentAuthorCutoffDays int `envconfig:"RECENT_AUTHOR_CUTOFF_DAYS" default:"90"`
+
 	// LLM Retry & Circuit Breaker — applied per-tier in the TieredRouter.
 	// MaxRetries=0 disables retry (pass-through). CircuitFailureThreshold=0 disables CB.
-	LLMMaxRetries             uint    `envconfig:"LLM_MAX_RETRIES" default:"3"`
+	LLMHTTPTimeoutS             int     `envconfig:"LLM_HTTP_TIMEOUT_S" default:"120"`
+	LLMMaxRetries                 uint    `envconfig:"LLM_MAX_RETRIES" default:"3"`
 	LLMRetryInitialDelayMS    int     `envconfig:"LLM_RETRY_INITIAL_DELAY_MS" default:"500"`
 	LLMRetryMaxDelayMS        int     `envconfig:"LLM_RETRY_MAX_DELAY_MS" default:"30000"`
 	LLMRetryMultiplier        float64 `envconfig:"LLM_RETRY_MULTIPLIER" default:"2.0"`
@@ -91,9 +97,50 @@ func Load() (*Config, error) {
 	once.Do(func() {
 		cfg = &Config{}
 		initErr = envconfig.Process("ARGUS", cfg)
+		if initErr != nil {
+			return
+		}
+		initErr = validateConfig(cfg)
 	})
 	if initErr != nil {
 		return nil, fmt.Errorf("failed to process config: %w", initErr)
 	}
 	return cfg, nil
+}
+
+const defaultLLMHTTPTimeoutS = 120
+
+// LLMHTTPTimeout returns the HTTP client timeout for LLM provider requests.
+func (c *Config) LLMHTTPTimeout() time.Duration {
+	s := c.LLMHTTPTimeoutS
+	if s <= 0 {
+		s = defaultLLMHTTPTimeoutS
+	}
+	return time.Duration(s) * time.Second
+}
+
+func validateConfig(cfg *Config) error {
+	if cfg.Coverage < 0.10 || cfg.Coverage > 1.0 {
+		return fmt.Errorf("COVERAGE must be between 0.10 and 1.0, got %v", cfg.Coverage)
+	}
+	if cfg.LLMRetryInitialDelayMS < 0 {
+		return fmt.Errorf("LLM_RETRY_INITIAL_DELAY_MS must be >= 0, got %d", cfg.LLMRetryInitialDelayMS)
+	}
+	if cfg.LLMRetryMaxDelayMS < cfg.LLMRetryInitialDelayMS {
+		return fmt.Errorf("LLM_RETRY_MAX_DELAY_MS must be >= LLM_RETRY_INITIAL_DELAY_MS (%d), got %d",
+			cfg.LLMRetryInitialDelayMS, cfg.LLMRetryMaxDelayMS)
+	}
+	if math.IsNaN(cfg.LLMRetryMultiplier) || math.IsInf(cfg.LLMRetryMultiplier, 0) {
+		return fmt.Errorf("LLM_RETRY_MULTIPLIER must be finite, got %v", cfg.LLMRetryMultiplier)
+	}
+	if cfg.LLMRetryMultiplier <= 1.0 {
+		return fmt.Errorf("LLM_RETRY_MULTIPLIER must be > 1.0, got %v", cfg.LLMRetryMultiplier)
+	}
+	if cfg.LLMCircuitResetTimeoutS < 0 {
+		return fmt.Errorf("LLM_CIRCUIT_RESET_TIMEOUT_S must be >= 0, got %d", cfg.LLMCircuitResetTimeoutS)
+	}
+	if cfg.LLMHTTPTimeoutS < 0 {
+		return fmt.Errorf("LLM_HTTP_TIMEOUT_S must be >= 0, got %d", cfg.LLMHTTPTimeoutS)
+	}
+	return nil
 }

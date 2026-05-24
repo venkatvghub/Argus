@@ -247,6 +247,56 @@ func TestDiscoverOpenRouterModels_EmptyList(t *testing.T) {
 	}
 }
 
+func TestDiscoverOpenRouterModels_InvalidPricingSkipped(t *testing.T) {
+	srv := newOpenRouterTestServer(t, map[string]interface{}{
+		"data": []map[string]interface{}{
+			{
+				"id": "bad-prompt",
+				"pricing": map[string]string{
+					"prompt":     "not-a-number",
+					"completion": "0.000001",
+				},
+			},
+			{
+				"id": "bad-completion",
+				"pricing": map[string]string{
+					"prompt":     "0.000001",
+					"completion": "invalid",
+				},
+			},
+			{
+				"id": "good-model",
+				"pricing": map[string]string{
+					"prompt":     "0.000001",
+					"completion": "0.000002",
+				},
+			},
+		},
+	}, http.StatusOK)
+	defer srv.Close()
+
+	cfg := &config.Config{OpenAIKey: "test-key", OpenAIBaseURL: "https://openrouter.ai/api/v1"}
+	models, pricing, err := providers.DiscoverOpenRouterModelsFromURL(context.Background(), cfg, srv.URL+"/models")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(models) != 3 {
+		t.Errorf("expected all 3 models listed, got %d: %v", len(models), models)
+	}
+	if len(pricing) != 1 {
+		t.Errorf("expected 1 pricing entry (invalid skipped), got %d", len(pricing))
+	}
+	if _, ok := pricing["good-model"]; !ok {
+		t.Errorf("expected good-model in pricing map, got %v", pricing)
+	}
+	if _, ok := pricing["bad-prompt"]; ok {
+		t.Error("bad-prompt should not have pricing entry")
+	}
+	if _, ok := pricing["bad-completion"]; ok {
+		t.Error("bad-completion should not have pricing entry")
+	}
+}
+
 func TestDiscoverOpenRouterModels_Sorted(t *testing.T) {
 	srv := newOpenRouterTestServer(t, map[string]interface{}{
 		"data": []map[string]interface{}{

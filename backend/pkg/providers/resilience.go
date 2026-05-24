@@ -116,18 +116,18 @@ func (r *retryingProvider) callWithRetry(ctx context.Context, fn func() error) e
 		return fn()
 	}
 
+	eb := &backoff.ExponentialBackOff{
+		InitialInterval:     r.cfg.InitialInterval,
+		RandomizationFactor: 0.25,
+		Multiplier:          r.cfg.Multiplier,
+		MaxInterval:         r.cfg.MaxInterval,
+		MaxElapsedTime:      0, // rely on MaxRetries + context
+		Clock:               backoff.SystemClock,
+	}
+	eb.Reset()
+
 	bo := backoff.WithContext(
-		backoff.WithMaxRetries(
-			&backoff.ExponentialBackOff{
-				InitialInterval:     r.cfg.InitialInterval,
-				RandomizationFactor: 0.25,
-				Multiplier:          r.cfg.Multiplier,
-				MaxInterval:         r.cfg.MaxInterval,
-				MaxElapsedTime:      0, // rely on MaxRetries + context
-				Clock:               backoff.SystemClock,
-			},
-			uint64(r.cfg.MaxRetries),
-		),
+		backoff.WithMaxRetries(eb, uint64(r.cfg.MaxRetries)),
 		ctx,
 	)
 

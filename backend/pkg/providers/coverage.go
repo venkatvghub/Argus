@@ -18,8 +18,9 @@ type CoverageOption struct {
 }
 
 // scaleCounts returns a PageCounts scaled to the given fraction of fullCounts.
-// RepoOverview, ArchitectureDiagram, and Onboarding are always clamped to 1 (singletons).
-// All other scalable fields are floored at 1 if the original was > 0.
+// RepoOverview, ArchitectureDiagram, and Onboarding are preserved as-is from
+// fullCounts (not scaled; each may be 0 or 1). All other PageCounts numeric
+// fields are scaled by pct and floored to 1 when the original fullCounts value was > 0.
 func scaleCounts(fullCounts PageCounts, pct float64) PageCounts {
 	clamp := func(full int) int {
 		if full == 0 {

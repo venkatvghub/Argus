@@ -109,7 +109,7 @@ Select a provider and model via environment variables. Argus supports a **cheap*
 | **OpenAI** | Cheap | `gpt-4o-mini` | `ARGUS_LLM_PROVIDER=openai`<br>`ARGUS_OPENAI_API_KEY=sk-…`<br>`ARGUS_OPENAI_MODEL=gpt-4o-mini` |
 | **OpenAI** | Premium | `gpt-4o` | `ARGUS_LLM_PROVIDER=openai`<br>`ARGUS_OPENAI_API_KEY=sk-…`<br>`ARGUS_OPENAI_MODEL=gpt-4o` |
 | **Anthropic** | Cheap | `claude-3-5-haiku-20241022` | `ARGUS_LLM_PROVIDER=anthropic`<br>`ARGUS_ANTHROPIC_API_KEY=sk-ant-…`<br>`ARGUS_ANTHROPIC_MODEL=claude-3-5-haiku-20241022` |
-| **Anthropic** | Premium | `claude-sonnet-4-5` | `ARGUS_LLM_PROVIDER=anthropic`<br>`ARGUS_ANTHROPIC_API_KEY=sk-ant-…`<br>`ARGUS_ANTHROPIC_MODEL=claude-sonnet-4-5` |
+| **Anthropic** | Premium | `claude-sonnet-4-6` | `ARGUS_LLM_PROVIDER=anthropic`<br>`ARGUS_ANTHROPIC_API_KEY=sk-ant-…`<br>`ARGUS_ANTHROPIC_MODEL=claude-sonnet-4-6` |
 | **Gemini** | Cheap | `gemini-2.0-flash` | `ARGUS_LLM_PROVIDER=gemini`<br>`ARGUS_GEMINI_API_KEY=AIza…`<br>`ARGUS_GEMINI_MODEL=gemini-2.0-flash` |
 | **Gemini** | Premium | `gemini-1.5-pro` | `ARGUS_LLM_PROVIDER=gemini`<br>`ARGUS_GEMINI_API_KEY=AIza…`<br>`ARGUS_GEMINI_MODEL=gemini-1.5-pro` |
 | **OpenRouter** | Any | any model slug | `ARGUS_LLM_PROVIDER=openai`<br>`ARGUS_OPENAI_API_KEY=sk-or-…`<br>`ARGUS_OPENAI_MODEL=<slug>` ¹ |

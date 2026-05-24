@@ -76,7 +76,7 @@ var analyzeCmd = &cobra.Command{
 				fmt.Fprintf(os.Stderr, "\r\033[K  \033[31m✗\033[0m  Failed: %s\n", job.Error)
 				return fmt.Errorf("analysis failed: %s", job.Error)
 			default:
-				line := renderProgressLine(spinner, current)
+				line := renderProgressLine(current)
 				fmt.Fprintf(os.Stderr, "\r\033[K  \033[33m%s\033[0m  %s", spinner, line)
 			}
 		}
@@ -87,7 +87,7 @@ var analyzeCmd = &cobra.Command{
 // If current contains a "done/total" counter (e.g. "Parsing files... (12/478)"),
 // it renders a compact progress bar + percentage.
 // Otherwise it returns the label as-is.
-func renderProgressLine(spinner, current string) string {
+func renderProgressLine(current string) string {
 	done, total, label, ok := parseCounter(current)
 	if !ok || total == 0 {
 		return current

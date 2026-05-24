@@ -1,6 +1,7 @@
 package argus
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -182,13 +183,12 @@ func (i *Instance) GenerateWiki(
 		}
 		wg.Wait()
 
-		if errors.Is(firstErr, providers.ErrCircuitOpen) {
-			// Already paused in the goroutine; surface the error so the caller stops.
-			return fmt.Errorf("circuit breaker open at level %d: %w", level, firstErr)
-		}
-		if firstErr != nil && ctx.Err() != nil {
-			_ = i.db.UpdateWikiJobStatus(context.Background(), jobID, models.WikiJobPaused)
-			return fmt.Errorf("wiki generation interrupted at level %d: %w", level, firstErr)
+		if firstErr != nil {
+			if !errors.Is(firstErr, providers.ErrCircuitOpen) {
+				// Use Background context — ctx may already be cancelled.
+				_ = i.db.UpdateWikiJobStatus(context.Background(), jobID, models.WikiJobPaused)
+			}
+			return fmt.Errorf("wiki generation stopped at level %d: %w", level, firstErr)
 		}
 	}
 
@@ -496,14 +496,27 @@ func buildPrompt(job wikiPageJob, repoPath string, engine *analysis.GraphEngine,
 
 // readFileSnippet reads at most maxLines lines from a file for use in prompts.
 func readFileSnippet(path string, maxLines int) string {
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return ""
 	}
-	lines := strings.Split(string(data), "\n")
-	if len(lines) > maxLines {
-		lines = lines[:maxLines]
-		lines = append(lines, fmt.Sprintf("... (%d more lines)", len(strings.Split(string(data), "\n"))-maxLines))
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	var lines []string
+	extra := 0
+	for scanner.Scan() {
+		if len(lines) < maxLines {
+			lines = append(lines, scanner.Text())
+			continue
+		}
+		extra++
+	}
+	if err := scanner.Err(); err != nil {
+		return ""
+	}
+	if extra > 0 {
+		lines = append(lines, fmt.Sprintf("... (%d more lines)", extra))
 	}
 	return strings.Join(lines, "\n")
 }
