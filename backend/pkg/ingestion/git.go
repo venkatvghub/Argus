@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-git/go-git/v5"
@@ -16,6 +19,7 @@ import (
 type GitWalker struct {
 	repoPath   string
 	parser     *TreeSitterParser
+	Workers    int // concurrent file processors; 0 → runtime.NumCPU()
 	OnProgress func(filesProcessed int)
 }
 
@@ -27,8 +31,16 @@ func NewGitWalker(repoPath string, parser *TreeSitterParser) *GitWalker {
 	}
 }
 
+// fileMetrics holds pre-computed git history metrics for a single file.
+type fileMetrics struct {
+	churn                   int
+	ownership               float64
+	authorCount             int
+	primaryAuthorLastCommit time.Time
+}
+
 // Walk traverses the repository's HEAD tree and returns metadata and biomarkers for each file.
-// Files matching .gitignore patterns are skipped. Progress is reported via OnProgress if set.
+// Files matching .gitignore patterns are skipped. AST parsing is parallelized across Workers goroutines.
 func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbol, error) {
 	repo, err := git.PlainOpen(w.repoPath)
 	if err != nil {
@@ -45,61 +57,99 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 		return nil, nil, fmt.Errorf("failed to get head commit: %w", err)
 	}
 
-	tree, err := headCommit.Tree()
+	gitTree, err := headCommit.Tree()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get tree: %w", err)
 	}
 
 	ignoreMatcher := loadGitignore(repo)
 
-	var nodes []models.FileNode
-	var allSymbols []models.Symbol
-	processed := 0
-
-	err = tree.Files().ForEach(func(f *object.File) error {
+	// Collect eligible files first (fast — only reads tree metadata, not content).
+	var files []*object.File
+	if err := gitTree.Files().ForEach(func(f *object.File) error {
 		if ignoreMatcher != nil && ignoreMatcher.Match(splitPath(f.Name), false) {
 			return nil
 		}
-
-		node := models.FileNode{
-			Path:   f.Name,
-			IsFile: true,
-			Size:   f.Size,
-		}
-
-		churn, ownership, authorCount, primaryLastCommit, err := calculateMetrics(repo, f.Name)
-		if err != nil {
-			return fmt.Errorf("metrics for %s: %w", f.Name, err)
-		}
-		node.Churn = churn
-		node.Ownership = ownership
-		node.AuthorCount = authorCount
-		node.PrimaryAuthorLastCommit = primaryLastCommit
-		nodes = append(nodes, node)
-
-		if w.parser != nil {
-			symbols, err := w.analyzeFile(ctx, f)
-			if err != nil {
-				return fmt.Errorf("analyze %s: %w", f.Name, err)
-			}
-			allSymbols = append(allSymbols, symbols...)
-		}
-
-		processed++
-		if w.OnProgress != nil && processed%50 == 0 {
-			w.OnProgress(processed)
-		}
-
+		files = append(files, f)
 		return nil
-	})
-
-	if err != nil {
+	}); err != nil {
 		return nil, nil, err
 	}
 
-	// Final progress update with actual total
-	if w.OnProgress != nil {
-		w.OnProgress(processed)
+	// Single history walk for all file metrics — O(commits) instead of O(files × commits).
+	metricsMap, err := buildFileMetricsMap(repo)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to build metrics: %w", err)
+	}
+
+	workers := w.Workers
+	if workers <= 0 {
+		workers = runtime.NumCPU()
+	}
+
+	type fileResult struct {
+		idx     int
+		node    models.FileNode
+		symbols []models.Symbol
+		err     error
+	}
+
+	results := make([]fileResult, len(files))
+	sem := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+	var processed atomic.Int64
+
+	for i, f := range files {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(idx int, f *object.File) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			m := metricsMap[f.Name]
+			node := models.FileNode{
+				Path:                    f.Name,
+				IsFile:                  true,
+				Size:                    f.Size,
+				Churn:                   m.churn,
+				Ownership:               m.ownership,
+				AuthorCount:             m.authorCount,
+				PrimaryAuthorLastCommit: m.primaryAuthorLastCommit,
+			}
+
+			var symbols []models.Symbol
+			if w.parser != nil {
+				var parseErr error
+				symbols, parseErr = w.analyzeFile(ctx, f)
+				if parseErr != nil {
+					results[idx] = fileResult{idx: idx, err: fmt.Errorf("analyze %s: %w", f.Name, parseErr)}
+					return
+				}
+			}
+
+			n := processed.Add(1)
+			if w.OnProgress != nil {
+				w.OnProgress(int(n))
+			}
+
+			results[idx] = fileResult{idx: idx, node: node, symbols: symbols}
+		}(i, f)
+	}
+	wg.Wait()
+
+	// Collect results in original order.
+	nodes := make([]models.FileNode, 0, len(files))
+	var allSymbols []models.Symbol
+	for _, r := range results {
+		if r.err != nil {
+			return nil, nil, r.err
+		}
+		// Skip zero-value results (gitignore-filtered slot would not appear here, but guard anyway).
+		if r.node.Path == "" {
+			continue
+		}
+		nodes = append(nodes, r.node)
+		allSymbols = append(allSymbols, r.symbols...)
 	}
 
 	return nodes, allSymbols, nil
@@ -129,6 +179,90 @@ func (w *GitWalker) analyzeFile(ctx context.Context, f *object.File) ([]models.S
 	}
 
 	return symbols, nil
+}
+
+// buildFileMetricsMap walks the entire commit history once and accumulates per-file stats.
+// This is O(commits × avg_files_changed) rather than O(files × commits).
+func buildFileMetricsMap(repo *git.Repository) (map[string]fileMetrics, error) {
+	cIter, err := repo.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})
+	if err != nil {
+		return nil, err
+	}
+
+	type perFileAuthorStats struct {
+		totalCommits int
+		lastCommit   time.Time
+	}
+
+	fileAuthorStats := make(map[string]map[string]*perFileAuthorStats)
+	fileRecentAuthors := make(map[string]map[string]bool)
+	cutoff := time.Now().AddDate(0, 0, -90)
+
+	_ = cIter.ForEach(func(c *object.Commit) error {
+		email := c.Author.Email
+		isRecent := c.Author.When.After(cutoff)
+
+		stats, err := c.Stats()
+		if err != nil {
+			return nil // skip commits where diff fails (e.g. merge conflicts, binary)
+		}
+
+		for _, s := range stats {
+			path := s.Name
+			if _, ok := fileAuthorStats[path]; !ok {
+				fileAuthorStats[path] = make(map[string]*perFileAuthorStats)
+				fileRecentAuthors[path] = make(map[string]bool)
+			}
+			as, ok := fileAuthorStats[path][email]
+			if !ok {
+				as = &perFileAuthorStats{}
+				fileAuthorStats[path][email] = as
+			}
+			as.totalCommits++
+			if c.Author.When.After(as.lastCommit) {
+				as.lastCommit = c.Author.When
+			}
+			if isRecent {
+				fileRecentAuthors[path][email] = true
+			}
+		}
+		return nil
+	})
+
+	result := make(map[string]fileMetrics, len(fileAuthorStats))
+	for path, authorMap := range fileAuthorStats {
+		totalCommits := 0
+		for _, as := range authorMap {
+			totalCommits += as.totalCommits
+		}
+		if totalCommits == 0 {
+			continue
+		}
+
+		maxCommits := 0
+		var primaryEmail string
+		for email, as := range authorMap {
+			if as.totalCommits > maxCommits {
+				maxCommits = as.totalCommits
+				primaryEmail = email
+			} else if as.totalCommits == maxCommits && (primaryEmail == "" || email < primaryEmail) {
+				primaryEmail = email
+			}
+		}
+
+		var primaryLastCommit time.Time
+		if primaryEmail != "" {
+			primaryLastCommit = authorMap[primaryEmail].lastCommit
+		}
+
+		result[path] = fileMetrics{
+			churn:                   totalCommits,
+			ownership:               float64(maxCommits) / float64(totalCommits),
+			authorCount:             len(fileRecentAuthors[path]),
+			primaryAuthorLastCommit: primaryLastCommit,
+		}
+	}
+	return result, nil
 }
 
 // loadGitignore reads .gitignore patterns from the repository worktree.
@@ -161,71 +295,4 @@ func splitPath(p string) []string {
 		parts = append(parts, p[start:])
 	}
 	return parts
-}
-
-// calculateMetrics computes churn, top-author ownership, distinct author count (last 90 days),
-// and the last commit time of the primary author (highest total commit count).
-func calculateMetrics(repo *git.Repository, filePath string) (churn int, ownership float64, authorCount int, primaryAuthorLastCommit time.Time, err error) {
-	cIter, err := repo.Log(&git.LogOptions{
-		FileName: &filePath,
-	})
-	if err != nil {
-		return 0, 0, 0, time.Time{}, err
-	}
-
-	type authorStats struct {
-		totalCommits int
-		lastCommit   time.Time
-	}
-
-	allAuthorStats := make(map[string]*authorStats)
-	recentAuthors := make(map[string]bool)
-	cutoff := time.Now().AddDate(0, 0, -90)
-	totalCommits := 0
-
-	err = cIter.ForEach(func(c *object.Commit) error {
-		email := c.Author.Email
-		totalCommits++
-
-		if _, ok := allAuthorStats[email]; !ok {
-			allAuthorStats[email] = &authorStats{}
-		}
-		st := allAuthorStats[email]
-		st.totalCommits++
-		if c.Author.When.After(st.lastCommit) {
-			st.lastCommit = c.Author.When
-		}
-
-		if c.Author.When.After(cutoff) {
-			recentAuthors[email] = true
-		}
-		return nil
-	})
-	if err != nil {
-		return 0, 0, 0, time.Time{}, err
-	}
-
-	if totalCommits == 0 {
-		return 0, 0, 0, time.Time{}, nil
-	}
-
-	maxCommits := 0
-	var primaryEmail string
-	for email, st := range allAuthorStats {
-		if st.totalCommits > maxCommits {
-			maxCommits = st.totalCommits
-			primaryEmail = email
-		} else if st.totalCommits == maxCommits && (primaryEmail == "" || email < primaryEmail) {
-			primaryEmail = email
-		}
-	}
-
-	ownership = float64(maxCommits) / float64(totalCommits)
-	authorCount = len(recentAuthors)
-
-	if primaryEmail != "" {
-		primaryAuthorLastCommit = allAuthorStats[primaryEmail].lastCommit
-	}
-
-	return totalCommits, ownership, authorCount, primaryAuthorLastCommit, nil
 }
