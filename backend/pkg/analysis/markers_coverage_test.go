@@ -166,6 +166,10 @@ func TestIsTestFilename(t *testing.T) {
 		{name: "ts test", base: "config.test.ts", isTest: true},
 		{name: "tsx spec", base: "Button.spec.tsx", isTest: true},
 		{name: "kotlin test", base: "UserRepositoryTest.kt", isTest: true},
+		{name: "ruby rspec", base: "user_spec.rb", isTest: true},
+		{name: "ruby spec", base: "user.spec.rb", isTest: true},
+		{name: "ruby test", base: "user_test.rb", isTest: true},
+		{name: "ruby source", base: "app.rb", isTest: false},
 		{name: "dart test", base: "widget_test.dart", isTest: true},
 		{name: "terraform test tf", base: "main_test.tf", isTest: true},
 		{name: "terraform test hcl", base: "network.tftest.hcl", isTest: true},
@@ -267,9 +271,14 @@ func TestCheckCoverageMarkers_SkipNonGoTestFiles(t *testing.T) {
 
 	for _, path := range testFiles {
 		t.Run(path, func(t *testing.T) {
-			files := []models.FileNode{{Path: path, IsFile: true, Churn: 15}}
+			files := []models.FileNode{{Path: path, IsFile: true, Churn: coverageUntestedChurnThreshold}}
 			coverage := map[string]float64{path: 10.0}
-			markers := me.checkCoverageMarkers(files, coverage, nil, 0.9)
+			ge := NewGraphEngine()
+			require.NoError(t, ge.BuildGraph(files, nil, nil))
+			node, ok := ge.GetNodeByPath(path)
+			require.True(t, ok)
+			node.PageRank = 1.0
+			markers := me.checkCoverageMarkers(files, coverage, ge, 0.9)
 			for _, m := range markers {
 				assert.NotEqual(t, "coverage_gap", m.Type, "test file %q should not get coverage_gap", path)
 				assert.NotEqual(t, "untested_hotspot", m.Type, "test file %q should not get untested_hotspot", path)
@@ -393,5 +402,11 @@ func TestLookupCoverage(t *testing.T) {
 		cov, ok := lookupCoverage(coverage, "pkg/app.go")
 		assert.True(t, ok)
 		assert.InDelta(t, 40.0, cov, 0.01)
+	})
+
+	t.Run("normalizes path separators", func(t *testing.T) {
+		cov, ok := lookupCoverage(map[string]float64{`repo\pkg\app.go`: 55.0}, "pkg/app.go")
+		assert.True(t, ok)
+		assert.InDelta(t, 55.0, cov, 0.01)
 	})
 }

@@ -249,6 +249,8 @@ func isTestFilename(base string) bool {
 		return strings.HasSuffix(name, "Test") || strings.HasSuffix(name, "Tests")
 	case ".py":
 		return strings.HasPrefix(name, "test_") || strings.HasSuffix(name, "_test")
+	case ".rb":
+		return strings.HasSuffix(name, "_spec") || strings.HasSuffix(name, ".spec") || strings.HasSuffix(name, "_test")
 	case ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx":
 		return strings.HasSuffix(name, ".test") || strings.HasSuffix(name, ".spec")
 	case ".kt", ".kts":
@@ -297,13 +299,15 @@ func lookupCoverage(coverage map[string]float64, filePath string) (float64, bool
 // coveragePathMatches reports whether a coverage map key corresponds to filePath.
 // Basename-only keys (no path separator) require an exact path match.
 func coveragePathMatches(coverageKey, filePath string) bool {
+	coverageKey = strings.ReplaceAll(filepath.ToSlash(coverageKey), `\`, `/`)
+	filePath = strings.ReplaceAll(filepath.ToSlash(filePath), `\`, `/`)
 	if len(coverageKey) > len(filePath) && strings.HasSuffix(coverageKey, filePath) {
 		prefixLen := len(coverageKey) - len(filePath)
-		return prefixLen == 0 || coverageKey[prefixLen-1] == filepath.Separator
+		return coverageKey[prefixLen-1] == '/'
 	}
-	if len(filePath) > len(coverageKey) && strings.Contains(coverageKey, string(filepath.Separator)) && strings.HasSuffix(filePath, coverageKey) {
+	if len(filePath) > len(coverageKey) && strings.Contains(coverageKey, "/") && strings.HasSuffix(filePath, coverageKey) {
 		prefixLen := len(filePath) - len(coverageKey)
-		return prefixLen > 0 && filePath[prefixLen-1] == filepath.Separator
+		return filePath[prefixLen-1] == '/'
 	}
 	return false
 }
