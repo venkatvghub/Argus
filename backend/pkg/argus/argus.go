@@ -246,6 +246,64 @@ func (i *Instance) GetRepoMarkers(ctx context.Context, repoID string) ([]models.
 	return markers, nil
 }
 
+// GetFileScore returns the computed health score for a single file.
+func (i *Instance) GetFileScore(repoID, filePath string) (models.FileScore, error) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+
+	markers, ok := i.markers[repoID]
+	if !ok {
+		return models.FileScore{}, ErrRepoNotFound
+	}
+
+	var fileMarkers []models.Marker
+	for _, m := range markers {
+		if m.File == filePath {
+			fileMarkers = append(fileMarkers, m)
+		}
+	}
+
+	return analysis.ComputeFileScore(filePath, fileMarkers), nil
+}
+
+// GetRepoScore returns the aggregate health score for a repository.
+func (i *Instance) GetRepoScore(repoID string) (float64, error) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+
+	markers, ok := i.markers[repoID]
+	if !ok {
+		return 0, ErrRepoNotFound
+	}
+
+	// Group markers by file.
+	byFile := make(map[string][]models.Marker)
+	for _, m := range markers {
+		byFile[m.File] = append(byFile[m.File], m)
+	}
+
+	// Build per-file scores.
+	fileScores := make([]models.FileScore, 0, len(byFile))
+	for file, fm := range byFile {
+		fileScores = append(fileScores, analysis.ComputeFileScore(file, fm))
+	}
+
+	// Build PageRank map from file nodes in the graph.
+	var pageRanks map[string]float64
+	if engine, ok := i.engines[repoID]; ok {
+		pageRanks = make(map[string]float64)
+		for _, n := range engine.GetNodes() {
+			if n.InternalType() == analysis.NodeTypeFile {
+				if f := n.File(); f != nil {
+					pageRanks[f.Path] = n.PageRank
+				}
+			}
+		}
+	}
+
+	return analysis.ComputeRepoScore(fileScores, pageRanks), nil
+}
+
 // Run starts the default pipeline.
 
 func (i *Instance) Run(ctx context.Context) error {

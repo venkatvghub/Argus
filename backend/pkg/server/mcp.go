@@ -50,6 +50,17 @@ func (s *MCPServer) Run() error {
 		mcp.WithNumber("community_id", mcp.Required(), mcp.Description("ID of the community")),
 	), s.getCommunityGraphHandler)
 
+	mcpSrv.AddTool(mcp.NewTool("get_file_score",
+		mcp.WithDescription("Retrieve the computed health score for a specific file"),
+		mcp.WithString("repo_id", mcp.Required(), mcp.Description("ID of the repository")),
+		mcp.WithString("path", mcp.Required(), mcp.Description("Path to the file relative to repo root")),
+	), s.getFileScoreHandler)
+
+	mcpSrv.AddTool(mcp.NewTool("get_repo_score",
+		mcp.WithDescription("Retrieve the aggregate health score for a repository"),
+		mcp.WithString("repo_id", mcp.Required(), mcp.Description("ID of the repository")),
+	), s.getRepoScoreHandler)
+
 	return server.ServeStdio(mcpSrv)
 }
 
@@ -98,4 +109,23 @@ func (s *MCPServer) getCommunityGraphHandler(ctx context.Context, req mcp.CallTo
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultText(fmt.Sprintf("%v", nodes)), nil
+}
+
+func (s *MCPServer) getFileScoreHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	repoID := req.GetString("repo_id", "")
+	filePath := req.GetString("path", "")
+	score, err := s.argus.GetFileScore(repoID, filePath)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(fmt.Sprintf("%v", score)), nil
+}
+
+func (s *MCPServer) getRepoScoreHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	repoID := req.GetString("repo_id", "")
+	score, err := s.argus.GetRepoScore(repoID)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(fmt.Sprintf(`{"score": %v}`, score)), nil
 }
