@@ -50,6 +50,149 @@
 | `internal/models` | Domain entities: FileNode, Symbol, Deduction, HealthMarker |
 | `cmd/argus` | CLI entrypoint (cobra) |
 
+## Cobra CLI (Phase 4.1)
+
+### Entry Point
+
+The CLI entrypoint is `cmd/argus/main.go`, which delegates all command execution to `cmd/argus/cmd/`.
+
+### Root Persistent Flags
+
+Available on all subcommands via cobra's `PersistentFlags`:
+- `--data-dir` — Path to externalized SQLite storage and state (env: `ARGUS_DATA_DIR`, default: `./data`)
+- `--log-level` — Logging verbosity: `debug`, `info`, `warn`, `error` (env: `ARGUS_LOG_LEVEL`, default: `info`)
+- `--repo-id` — Optional repository identifier for multi-repo workflows (env: `ARGUS_REPO_ID`)
+
+### Command Tree
+
+#### Ingestion & Analysis
+
+- **`argus analyze <path> [--wait]`**
+  - Trigger full repository analysis (git walk, parsing, graph, biomarkers)
+  - `<path>` — target repository directory
+  - `--wait` — block until analysis completes; without it, returns job ID immediately
+  - Output: JSON object with analysis summary (files analyzed, symbols found, markers detected)
+
+#### Repository Management
+
+- **`argus repos list`**
+  - List all registered repositories in the SQLite database
+  - Output: JSON array of repo records with metadata (path, ingestion time, last update)
+
+#### Symbol Queries
+
+- **`argus symbols search [--query] [--type]`**
+  - Search registry for symbols by name pattern
+  - `--query` — symbol name substring to match
+  - `--type` — filter by kind (function, class, type, variable)
+  - Output: JSON array of matching symbols with file, line, signature
+
+- **`argus symbols list`**
+  - List all symbols in the repository
+  - Output: JSON array of all registered symbols with full metadata
+
+#### Marker & Compliance Queries
+
+- **`argus markers file --file <path>`**
+  - Get all biomarkers for a specific file
+  - `--file` — file path (relative to repo root)
+  - Output: JSON object with markers grouped by category (Structural, Size, Concurrency, DPDP, AppSec, etc.)
+
+- **`argus markers repo`**
+  - Get biomarker summary for the entire repository
+  - Output: JSON object with total marker count by category and critical findings
+
+#### Scoring
+
+- **`argus score file --file <path>`**
+  - Compute health score for a single file
+  - `--file` — file path
+  - Output: JSON object with final score (1.0–10.0), category breakdowns, deductions
+
+- **`argus score repo`**
+  - Compute health score for the entire repository
+  - Output: JSON object with repo score, weighted average method, file-level scores
+
+#### Community & Graph
+
+- **`argus community show --community-id <int>`**
+  - Display community cluster details (members, cohesion, size)
+  - `--community-id` — numeric ID from Leiden clustering
+  - Output: JSON object with cluster metadata and member files/symbols
+
+#### Server Modes
+
+- **`argus serve rest [--addr]`**
+  - Launch REST API server (chi router)
+  - `--addr` — listen address (default: `:8080`)
+  - Output: Server startup logs; serves `GET /health`, `GET /graph/summary`, REST endpoints for dashboard
+
+- **`argus serve mcp`**
+  - Launch MCP server (stdio mode)
+  - No `--addr` flag (uses stdin/stdout)
+  - Output: MCP protocol messages on stdout; accepts tool invocations from Claude Code
+
+#### Versioning
+
+- **`argus version`**
+  - Display CLI version and build metadata
+  - Output: JSON object with version string, build time, Go runtime
+
+### Instance Lifecycle Management
+
+All subcommands except `version` follow this lifecycle pattern via cobra hooks:
+
+1. **PersistentPreRunE** — Called before command execution
+   - Load configuration from env vars and flags
+   - Initialize logger (`pkg/logger`)
+   - Open SQLite connection from `--data-dir`
+   - Instantiate `argus.Instance` (loads graph, community data, marker registry)
+   - Inject Instance into command context
+
+2. **Command Execution** — Run the actual business logic
+   - Read from Instance's public API (graph queries, symbol registry, biomarker cache)
+   - Marshal results to JSON
+   - Write to stdout
+
+3. **PersistentPostRunE** — Called after command execution (even on error)
+   - Close SQLite connection gracefully
+   - Flush logger buffers
+   - Return non-zero exit code on error
+
+### Output Format
+
+All commands emit **JSON to stdout** for machine parsing and scripting:
+
+```bash
+argus analyze /path/to/repo --wait | jq '.files_analyzed'
+argus symbols search --query payment --type function | jq '.[0].signature'
+argus score repo | jq '.score'
+```
+
+Errors and logs go to **stderr** (via zap logger), allowing stdout to remain parseable JSON.
+
+### Examples
+
+```bash
+# Initialize a new repo and wait for completion
+argus analyze /home/user/project --wait
+
+# Query the dependency graph
+argus symbols search --query handlePayment --type function
+
+# Score a file
+argus score file --file internal/payment/processor.go
+
+# Check compliance markers
+argus markers repo | jq '.DPDP'
+
+# Start the REST server for the web dashboard
+argus serve rest --addr :3001
+
+# Connect to Claude Code via MCP
+argus serve mcp
+```
+
 ## Analysis Pipeline
 
 1. **Git Walk** — Extract commits, authors, timestamps, file change frequency
@@ -195,7 +338,40 @@ Key endpoints:
 - `POST /compliance/report` — DPDP compliance findings
 - `POST /health/markers` — All biomarkers for a file or symbol
 
-## LLM Provider Tiers
+## LLM Providers
+
+Argus integrates with real HTTP-based LLM providers via the `Router` and `ModelValidator` interfaces in `internal/providers`. Providers are selected via `ARGUS_LLM_PROVIDER` (values: `openai`, `anthropic`, `gemini`).
+
+### ModelValidator Interface
+
+Every provider implements `ModelValidator`:
+
+- `Validate(ctx)` — Checks API key existence and verifies the configured model exists on the provider's API. Returns an actionable error if validation fails.
+- `ListModels(ctx)` — Fetches and returns the list of available models for the provider.
+
+### Provider Details
+
+**OpenAI**
+- API Endpoint: `https://api.openai.com/v1` (overridable via `ARGUS_OPENAI_BASE_URL`)
+- Chat: `POST /chat/completions`
+- List Models: `GET /models`
+- Supports OpenRouter: Set `ARGUS_OPENAI_BASE_URL=https://openrouter.ai/api/v1` and any supported model slug as `ARGUS_OPENAI_MODEL`
+
+**Anthropic**
+- API Endpoint: `https://api.anthropic.com`
+- Chat: `POST /v1/messages` with required header `anthropic-version: 2023-06-01`
+- List Models: `GET /v1/models`
+
+**Gemini**
+- API Endpoint: `https://generativelanguage.googleapis.com`
+- Chat: `POST /v1beta/models/{model}:generateContent`
+- List Models: `GET /v1beta/models`
+
+### Provider Validation on Startup
+
+`Router.ValidateProvider(ctx)` runs automatically on `serve rest` and `serve mcp` startup. It validates the configured LLM provider's API key and model existence. If validation fails, the server lists available models for the provider and exits with a descriptive error message, helping users quickly identify misconfiguration.
+
+### LLM Provider Tiers
 
 | Tier | Providers | Use Case | Example |
 |---|---|---|---|

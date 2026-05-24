@@ -106,7 +106,7 @@ All markers are executed concurrently via `errgroup` and Tree-sitter AST queries
 - [x] **3.4 SSE & Jobs:** Async chat streaming and worker-pool job execution.
 
 ### Phase 4: CLI & Final Distribution (Weeks 15-18)
-- [ ] **4.1 Cobra CLI:** Implement all 20 subcommands with decoupled pathing.
+- [x] **4.1 Cobra CLI:** Implement all 20 subcommands with decoupled pathing.
 - [ ] **4.2 Frontend Integration:** Connect Next.js `web/` to the Go REST server.
 - [ ] **4.3 Hardening:** Cross-repo analysis and single-binary CI/CD pipelines.
 

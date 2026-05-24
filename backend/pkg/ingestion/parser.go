@@ -2,11 +2,16 @@ package ingestion
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
+	"github.com/venkatvghub/argus/pkg/logger"
 	"github.com/venkatvghub/argus/pkg/models"
 )
+
+// ErrUnsupportedLanguage is returned by Parse when no grammar is registered for the file extension.
+var ErrUnsupportedLanguage = errors.New("unsupported language")
 
 // TreeSitterParser provides AST parsing and querying capabilities.
 type TreeSitterParser struct {
@@ -33,7 +38,7 @@ func NewTreeSitterParser() (*TreeSitterParser, error) {
 func (p *TreeSitterParser) Parse(ctx context.Context, content []byte, path string) (*sitter.Tree, string, error) {
 	lang, langName := p.registry.GetLanguageForPath(path)
 	if lang == nil {
-		return nil, "", fmt.Errorf("unsupported language for path: %s", path)
+		return nil, "", fmt.Errorf("%w for path: %s", ErrUnsupportedLanguage, path)
 	}
 
 	parser := sitter.NewParser()
@@ -143,36 +148,31 @@ func (p *TreeSitterParser) initBiomarkers() error {
 	jsAppSec["redis_empty_password_auth"] = `(object (pair key: (property_identifier) @prop_name (#eq? @prop_name "password") value: (string) @prop_val (#eq? @prop_val "\"\"")))`
 
 	// --- Kotlin biomarkers ---
-	const kotlinGoroutineSharedState = `(call_expression
-  (navigation_expression
-    (call_expression) @scope (#match? @scope "GlobalScope|viewModelScope|lifecycleScope"))
-  (call_suffix
-    (value_arguments
-      (lambda_literal
-        (statements
-          (assignment
-            (navigation_expression) @mutation))))) @marker)`
-
+	// Node types verified against tree-sitter-kotlin v1.1.0:
+	// navigation_expression → identifier "." identifier; value_arguments wraps value_argument(s)
 	const kotlinBrokenCrypto = `(call_expression
   (navigation_expression
-    (simple_identifier) @cls (#match? @cls "MessageDigest|Cipher|SecretKeyFactory")
-    (simple_identifier) @method (#eq? @method "getInstance"))
-  (call_suffix
-    (value_arguments
-      (value_argument
-        (string_literal) @algo (#match? @algo "MD5|SHA1|DES|RC4|DES/ECB"))))) @marker`
+    (identifier) @cls (#match? @cls "MessageDigest|Cipher|SecretKeyFactory")
+    (identifier) @method (#eq? @method "getInstance"))
+  (value_arguments
+    (value_argument
+      (string_literal) @algo (#match? @algo "MD5|SHA1|DES|RC4")))) @marker`
+
+	const kotlinGoroutineSharedState = `(call_expression
+  (navigation_expression
+    (identifier) @scope (#match? @scope "GlobalScope|viewModelScope|lifecycleScope")
+    (identifier) @launch (#match? @launch "launch|async"))
+  (value_arguments)) @marker`
 
 	const kotlinTaintedSQL = `(call_expression
   (navigation_expression
-    (simple_identifier) @method (#match? @method "execSQL|rawQuery|query"))
-  (call_suffix
-    (value_arguments
-      (value_argument
-        (string_template) @sql)))) @marker`
+    (identifier) @method (#match? @method "execSQL|rawQuery|query"))
+  (value_arguments
+    (value_argument))) @marker`
 
 	const kotlinHardcodedSecret = `(property_declaration
   (variable_declaration
-    (simple_identifier) @name (#match? @name "(?i)(password|secret|api_key|token|apikey)"))
+    (identifier) @name (#match? @name "(?i)(password|secret|api_key|token|apikey)"))
   (string_literal) @value) @marker`
 
 	// Kotlin biomarker queries detect coroutine races, broken crypto, SQL injection, and hardcoded secrets.
@@ -184,30 +184,35 @@ func (p *TreeSitterParser) initBiomarkers() error {
 	}
 
 	// --- Terraform/HCL biomarkers ---
+	// Node types verified against tree-sitter-hcl v1.2.0:
+	// block → identifier (string_lit)* body; attribute → identifier "=" expression
 	const tfOpenIngress = `(block
-  (block_type) @type (#eq? @type "resource")
-  (block_labels
-    (string_lit) @res_type (#match? @res_type "aws_security_group"))
+  (identifier) @type (#eq? @type "resource")
+  (string_lit)
   (body
     (block
-      (block_type) @ingress (#match? @ingress "ingress")
+      (identifier) @ingress (#match? @ingress "ingress")
       (body
         (attribute
           (identifier) @attr (#eq? @attr "cidr_blocks")
           (expression
-            (tuple_for_expr
-              (string_lit) @cidr (#match? @cidr "0\\.0\\.0\\.0/0")))))))) @marker`
+            (collection_value
+              (tuple
+                (expression
+                  (literal_value
+                    (string_lit
+                      (template_literal) @cidr (#match? @cidr "0\\.0\\.0\\.0/0")))))))))))) @marker`
 
 	const tfHardcodedSecret = `(attribute
   (identifier) @key (#match? @key "(?i)(password|secret|token|api_key)")
   (expression
     (literal_value
-      (string_lit) @val (#not-match? @val "^\\$\\{|^var\\.")))) @marker`
+      (string_lit) @val (#not-match? @val "^var\\.")))) @marker`
 
 	const tfUnencryptedS3 = `(block
-  (block_type) @type (#eq? @type "resource")
-  (block_labels
-    (string_lit) @res (#match? @res "aws_s3_bucket"))
+  (identifier) @type (#eq? @type "resource")
+  (string_lit
+    (template_literal) @res (#match? @res "aws_s3_bucket"))
   (body) @body) @marker`
 
 	// Terraform biomarker queries detect open ingress rules, hardcoded secrets, and unencrypted storage.
@@ -236,7 +241,12 @@ func (p *TreeSitterParser) initBiomarkers() error {
 		for name, qStr := range queries {
 			q, err := sitter.NewQuery(lang, qStr)
 			if err != nil {
-				fmt.Printf("Warning: failed to compile query %s for %s: %v\n", name, langName, err)
+				logger.FromContext(context.Background()).Warn(
+					"failed to compile query",
+					"query", name,
+					"language", langName,
+					"error", err,
+				)
 				continue
 			}
 			p.queries[langName][name] = q

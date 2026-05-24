@@ -1,16 +1,19 @@
 package providers
 
-import (
-	"time"
+const (
+	openAIDefaultBaseURL = "https://api.openai.com/v1"
+	anthropicAPIURL      = "https://api.anthropic.com/v1/messages"
+	anthropicModelsURL   = "https://api.anthropic.com/v1/models"
+	anthropicVersion     = "2023-06-01"
+	defaultMaxTokens     = 4096
 
-	"github.com/venkatvghub/argus/pkg/config"
+	openRouterReferer = "https://github.com/venkatvghub/argus"
+	openRouterTitle   = "Argus"
 )
 
-const defaultMockStreamTokenDelay = 50 * time.Millisecond
-
-func mockStreamDelay(cfg *config.Config) time.Duration {
-	if cfg != nil && cfg.MockStreamTokenDelayMS > 0 {
-		return time.Duration(cfg.MockStreamTokenDelayMS) * time.Millisecond
-	}
-	return defaultMockStreamTokenDelay
-}
+// Tier names used for generation routing.
+const (
+	TierCheap   = "cheap"
+	TierMedium  = "medium"
+	TierPremium = "premium"
+)

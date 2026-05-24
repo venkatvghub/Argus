@@ -24,9 +24,11 @@ type Instance struct {
 	parser *ingestion.TreeSitterParser
 	Jobs   *JobManager
 
-	mu      sync.RWMutex
-	engines map[string]*analysis.GraphEngine
-	markers map[string][]models.Marker
+	mu           sync.RWMutex
+	engines      map[string]*analysis.GraphEngine
+	markers      map[string][]models.Marker
+	changedFiles map[string][]string // repoID → files changed since last analysis (nil = unknown/all)
+	upToDate     map[string]bool     // repoID → true when HEAD unchanged, analysis skipped
 }
 
 // New creates and initializes a new Argus instance.
@@ -57,19 +59,35 @@ func New(ctx context.Context, cfg *config.Config) (*Instance, error) {
 		log.Warn("failed to initialize tree-sitter parser", "error", err)
 	}
 
+	markerMap := make(map[string][]models.Marker)
+	if loaded, err := db.LoadAllMarkers(ctx); err == nil {
+		for repoID, ms := range loaded {
+		for i := range ms {
+			if ms[i].Suggestion == "" {
+				ms[i].Suggestion = analysis.SuggestionFor(ms[i].Type)
+			}
+			}
+			loaded[repoID] = ms
+		}
+		markerMap = loaded
+	} else {
+		log.Warn("failed to load markers from db", "error", err)
+	}
+
 	return &Instance{
-		cfg:     cfg,
-		db:      db,
-		log:     log,
-		parser:  parser,
-		Jobs:    NewJobManager(cfg),
-		engines: make(map[string]*analysis.GraphEngine),
-		markers: make(map[string][]models.Marker),
+		cfg:          cfg,
+		db:           db,
+		log:          log,
+		parser:       parser,
+		Jobs:         NewJobManager(cfg),
+		engines:      make(map[string]*analysis.GraphEngine),
+		markers:      markerMap,
+		changedFiles: make(map[string][]string),
+		upToDate:     make(map[string]bool),
 	}, nil
 }
 
 // Config returns the instance's configuration.
-
 func (i *Instance) Config() *config.Config {
 	return i.cfg
 }
@@ -89,6 +107,8 @@ func (i *Instance) Close() error {
 }
 
 // Analyze traverses the repository at the given path and performs deep analysis.
+// If the repo was previously indexed and HEAD has not changed, the job completes
+// immediately with status "Up-to-date" and no re-analysis occurs.
 func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error) {
 	job := i.Jobs.CreateJob(jobTypeAnalysis)
 
@@ -98,7 +118,7 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 	i.Jobs.Submit(job.ID, func() {
 		defer cancel()
 
-		i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, "Indexing...", nil)
+		i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, "Reading commit history...", nil)
 
 		absPath, err := filepath.Abs(repoPath)
 		if err != nil {
@@ -110,7 +130,54 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 
 		i.log.Info("starting analysis", "repo_path", absPath, "repo_id", repoID)
 
+		// Check whether HEAD has changed since the last analysis.
+		headCommit, headErr := ingestion.GitHEAD(absPath)
+		if headErr != nil {
+			i.log.Warn("could not read git HEAD; forcing full analysis", "error", headErr)
+		} else {
+			existing, dbErr := i.db.GetRepository(jobCtx, repoID)
+			if dbErr == nil && existing.LastCommit == headCommit {
+				// Nothing changed. Reload markers from DB so in-memory state is warm.
+				i.log.Info("repo HEAD unchanged; skipping re-analysis", "repo_id", repoID, "commit", headCommit)
+				if loaded, mErr := i.db.LoadAllMarkers(jobCtx); mErr == nil {
+					i.mu.Lock()
+					if ms, ok := loaded[repoID]; ok {
+						i.markers[repoID] = ms
+					}
+					i.mu.Unlock()
+				}
+				i.mu.Lock()
+				i.upToDate[repoID] = true
+				i.mu.Unlock()
+				i.Jobs.UpdateStatus(job.ID, models.JobStatusCompleted, "Up-to-date", nil)
+				return
+			}
+
+			// Compute changed files for use by downstream wiki generation.
+			if dbErr == nil && existing.LastCommit != "" {
+				changed, chErr := ingestion.GitChangedFiles(absPath, existing.LastCommit, headCommit)
+				if chErr != nil {
+					i.log.Warn("could not determine changed files; regenerating all wiki pages", "error", chErr)
+				} else {
+					i.mu.Lock()
+					i.changedFiles[repoID] = changed
+					i.mu.Unlock()
+				}
+			}
+		}
+
 		walker := ingestion.NewGitWalker(absPath, i.parser)
+		walker.RecentAuthorCutoffDays = i.cfg.RecentAuthorCutoffDays
+		walker.OnHistoryProgress = func(n int) {
+			i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, fmt.Sprintf("Reading commit history... (%d commits)", n), nil)
+		}
+		var totalFiles int
+		walker.OnTotalFiles = func(total int) {
+			totalFiles = total
+		}
+		walker.OnProgress = func(n int) {
+			i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, fmt.Sprintf("Parsing files... (%d/%d)", n, totalFiles), nil)
+		}
 		nodes, symbols, err := walker.Walk(jobCtx)
 		if err != nil {
 			i.Jobs.UpdateStatus(job.ID, models.JobStatusFailed, "Failed", err)
@@ -133,12 +200,16 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 
 		// Persist
 		repo := models.Repository{
-			ID:   repoID,
-			Name: repoName,
-			Path: absPath,
+			ID:         repoID,
+			Name:       repoName,
+			Path:       absPath,
+			LastCommit: headCommit, // empty string if gitHEAD failed (safe; never matches future HEAD)
 		}
 		if err := i.db.UpsertRepository(jobCtx, repo); err != nil {
 			i.log.Warn("failed to persist repo", "error", err)
+		}
+		if err := i.db.UpsertMarkers(jobCtx, repoID, markers); err != nil {
+			i.log.Warn("failed to persist markers", "error", err)
 		}
 
 		i.mu.Lock()
@@ -150,6 +221,22 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 	})
 
 	return job.ID, nil
+}
+
+// GetChangedFiles returns the set of files changed since the last analysis for a repo.
+// Returns nil when there is no incremental change info (fresh index or HEAD unchanged).
+func (i *Instance) GetChangedFiles(repoID string) []string {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.changedFiles[repoID]
+}
+
+// IsRepoUpToDate reports whether the last Analyze call determined the repo HEAD
+// was unchanged and skipped re-analysis.
+func (i *Instance) IsRepoUpToDate(repoID string) bool {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.upToDate[repoID]
 }
 
 // ListRepositories returns all indexed repositories.
@@ -313,8 +400,82 @@ func (i *Instance) GetRepoScore(ctx context.Context, repoID string) (float64, er
 	return analysis.ComputeRepoScore(fileScores, pageRanks), nil
 }
 
-// Run starts the default pipeline.
+// CreateWikiJob creates a new wiki generation job checkpoint in the database.
+func (i *Instance) CreateWikiJob(ctx context.Context, repoID string, totalPages int) (string, error) {
+	return i.db.CreateWikiJob(ctx, repoID, totalPages)
+}
 
+// UpdateWikiJobStatus updates the status of a wiki generation job.
+func (i *Instance) UpdateWikiJobStatus(ctx context.Context, jobID string, status models.WikiJobStatus) error {
+	return i.db.UpdateWikiJobStatus(ctx, jobID, status)
+}
+
+// MarkWikiPageComplete records a page as completed in a wiki generation job.
+func (i *Instance) MarkWikiPageComplete(ctx context.Context, jobID, pageID string) error {
+	return i.db.MarkWikiPageComplete(ctx, jobID, pageID)
+}
+
+// GetCompletedWikiPages returns the set of completed page IDs for a job.
+func (i *Instance) GetCompletedWikiPages(ctx context.Context, jobID string) (map[string]struct{}, error) {
+	return i.db.GetCompletedWikiPages(ctx, jobID)
+}
+
+// GetWikiJob returns a wiki job by ID.
+func (i *Instance) GetWikiJob(ctx context.Context, jobID string) (models.WikiJob, error) {
+	return i.db.GetWikiJob(ctx, jobID)
+}
+
+// ListWikiJobs returns all wiki jobs for a repository, most recent first.
+func (i *Instance) ListWikiJobs(ctx context.Context, repoID string) ([]models.WikiJob, error) {
+	return i.db.ListWikiJobs(ctx, repoID)
+}
+
+// ListWikiPages returns all generated wiki pages for a repository.
+func (i *Instance) ListWikiPages(ctx context.Context, repoID string) ([]models.WikiPage, error) {
+	return i.db.ListWikiPages(ctx, repoID)
+}
+
+// GetWikiPage returns a single wiki page by ID.
+func (i *Instance) GetWikiPage(ctx context.Context, pageID string) (models.WikiPage, error) {
+	return i.db.GetWikiPage(ctx, pageID)
+}
+
+// GetRepoFiles returns all file nodes for a repository from the in-memory graph engine.
+// Returns ErrRepoNotFound if the repo has not been analyzed in this session.
+func (i *Instance) GetRepoFiles(ctx context.Context, repoID string) ([]models.FileNode, error) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	engine, ok := i.engines[repoID]
+	if !ok {
+		return nil, ErrRepoNotFound
+	}
+	var files []models.FileNode
+	for _, n := range engine.GetNodes() {
+		if n.InternalType() == analysis.NodeTypeFile {
+			if f := n.File(); f != nil {
+				files = append(files, *f)
+			}
+		}
+	}
+	return files, nil
+}
+
+// GetCommunityCount returns the number of distinct communities detected for a repository.
+func (i *Instance) GetCommunityCount(ctx context.Context, repoID string) (int, error) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	engine, ok := i.engines[repoID]
+	if !ok {
+		return 0, ErrRepoNotFound
+	}
+	seen := make(map[int]struct{})
+	for _, n := range engine.GetNodes() {
+		seen[n.CommunityID] = struct{}{}
+	}
+	return len(seen), nil
+}
+
+// Run starts the default pipeline.
 func (i *Instance) Run(ctx context.Context) error {
 	_, err := i.Analyze(ctx, defaultAnalyzePath)
 	return err
