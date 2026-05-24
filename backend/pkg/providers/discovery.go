@@ -94,6 +94,9 @@ func BucketByTier(models []string) map[string][]string {
 // Returns (models []string, pricingMap map[string][2]float64, err error)
 // pricingMap keys are model IDs; values are [inputPer1M, outputPer1M].
 func DiscoverModels(ctx context.Context, cfg *config.Config) ([]string, map[string][2]float64, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("DiscoverModels: cfg must not be nil")
+	}
 	variantName, _ := openaiVariant(cfg.OpenAIBaseURL)
 
 	switch variantName {

@@ -61,19 +61,30 @@ func (db *DB) Close() error {
 // UpsertRepository inserts or updates a repository record.
 func (db *DB) UpsertRepository(ctx context.Context, repo models.Repository) error {
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO repositories (id, name, local_path, updated_at) 
-		VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(id) DO UPDATE SET 
-			name=excluded.name, 
+		INSERT INTO repositories (id, name, local_path, last_commit, updated_at)
+		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(id) DO UPDATE SET
+			name=excluded.name,
 			local_path=excluded.local_path,
+			last_commit=excluded.last_commit,
 			updated_at=CURRENT_TIMESTAMP`,
-		repo.ID, repo.Name, repo.Path)
+		repo.ID, repo.Name, repo.Path, repo.LastCommit)
 	return err
+}
+
+// GetRepository returns a single repository by ID. Returns sql.ErrNoRows if not found.
+func (db *DB) GetRepository(ctx context.Context, repoID string) (models.Repository, error) {
+	var r models.Repository
+	err := db.QueryRowContext(ctx,
+		"SELECT id, name, local_path, last_commit, created_at FROM repositories WHERE id = ?",
+		repoID,
+	).Scan(&r.ID, &r.Name, &r.Path, &r.LastCommit, &r.CreatedAt)
+	return r, err
 }
 
 // ListRepositories returns all indexed repositories.
 func (db *DB) ListRepositories(ctx context.Context) ([]models.Repository, error) {
-	rows, err := db.QueryContext(ctx, "SELECT id, name, local_path, created_at FROM repositories")
+	rows, err := db.QueryContext(ctx, "SELECT id, name, local_path, last_commit, created_at FROM repositories")
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +93,7 @@ func (db *DB) ListRepositories(ctx context.Context) ([]models.Repository, error)
 	var repos []models.Repository = []models.Repository{}
 	for rows.Next() {
 		var r models.Repository
-		if err := rows.Scan(&r.ID, &r.Name, &r.Path, &r.CreatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.Name, &r.Path, &r.LastCommit, &r.CreatedAt); err != nil {
 			return nil, err
 		}
 		repos = append(repos, r)

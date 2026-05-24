@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/venkatvghub/argus/pkg/models"
@@ -30,7 +29,7 @@ var scoreFileCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("get file score: %w", err)
 		}
-		return json.NewEncoder(os.Stdout).Encode(fs)
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(fs)
 	},
 }
 
@@ -45,7 +44,7 @@ var scoreRepoCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("get repo score: %w", err)
 		}
-		return json.NewEncoder(os.Stdout).Encode(models.RepoScore{
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(models.RepoScore{
 			RepoID: rootRepoID,
 			Final:  score,
 		})

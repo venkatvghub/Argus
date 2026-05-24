@@ -81,6 +81,10 @@ func (i *Instance) GenerateWiki(
 	markers := i.markers[repoID]
 	i.mu.RUnlock()
 
+	if engine == nil {
+		return fmt.Errorf("no graph engine for repo %s: run analysis first", repoID)
+	}
+
 	// Build jobs list from plan entries
 	var jobs []wikiPageJob
 	for _, entry := range plan.Entries {
@@ -171,6 +175,16 @@ func (i *Instance) GenerateWiki(
 				}
 				if err := i.db.UpsertWikiPage(ctx, page); err != nil {
 					i.log.Warn("failed to persist wiki page", "page_id", job.id, "error", err)
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					mu.Unlock()
+					done.Add(1)
+					if onProgress != nil {
+						onProgress(int(done.Load()), total)
+					}
+					return
 				}
 				if err := i.db.MarkWikiPageComplete(ctx, jobID, job.id); err != nil {
 					i.log.Warn("failed to checkpoint wiki page", "page_id", job.id, "error", err)

@@ -43,6 +43,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	repoPath := args[0]
 
+	if initCoverage != 0 && (initCoverage < 0.10 || initCoverage > 1.0) {
+		return fmt.Errorf("--coverage must be between 0.10 and 1.0, got %.2f", initCoverage)
+	}
+
 	// ── Step 1: Analyze ────────────────────────────────────────────────────
 	fmt.Fprintf(os.Stderr, "\n  Analyzing %s\n\n", repoPath)
 
@@ -62,6 +66,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolve path: %w", err)
 	}
 	repoID := fmt.Sprintf("%x", sha256.Sum256([]byte(absPath)))[:constants.RepoIDLength]
+
+	// ── Incremental short-circuit ────────────────────────────────────────
+	if instance.IsRepoUpToDate(repoID) {
+		fmt.Fprintf(os.Stderr, "  Repository is up-to-date (HEAD unchanged). Nothing to regenerate.\n\n")
+		return nil
+	}
 
 	// ── Step 2: Score ─────────────────────────────────────────────────────
 	score, err := instance.GetRepoScore(ctx, repoID)
@@ -95,8 +105,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 		coveragePct = initCoverage
 	}
 
-	fi, _ := os.Stdin.Stat()
-	isTTY := (fi.Mode() & os.ModeCharDevice) != 0
+	fi, statErr := os.Stdin.Stat()
+	isTTY := statErr == nil && (fi.Mode()&os.ModeCharDevice) != 0
 
 	if isTTY && initCoverage == 0 && !initYes {
 		// Use DefaultTieredConfig for cost estimates in the table.
@@ -364,8 +374,8 @@ func resolveProviderConfig(ctx context.Context, cfg *config.Config) (providers.T
 	}
 
 	// Check if running interactively (tty)
-	fi, _ := os.Stdin.Stat()
-	isTTY := (fi.Mode() & os.ModeCharDevice) != 0
+	fi, statErr := os.Stdin.Stat()
+	isTTY := statErr == nil && (fi.Mode()&os.ModeCharDevice) != 0
 
 	statuses := providers.DetectProviders(cfg)
 
@@ -530,7 +540,17 @@ func pickTierModel(_ context.Context, label, override, fallbackDefault string, c
 	if n >= 1 && n <= len(shown) {
 		return shown[n-1]
 	}
-	// Last option = "type a model name" or any non-numeric → treat as literal model name
+	if n == len(shown)+1 {
+		// User selected the "type a model name" option.
+		fmt.Fprintf(os.Stderr, "    Model name: ")
+		var custom string
+		fmt.Fscanln(os.Stdin, &custom)
+		if custom != "" {
+			return custom
+		}
+		return shown[0]
+	}
+	// Non-numeric input → treat as literal model name
 	if input != "" {
 		return input
 	}

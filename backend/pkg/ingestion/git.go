@@ -383,3 +383,32 @@ func splitPath(p string) []string {
 	}
 	return parts
 }
+
+// GitHEAD returns the full SHA of the HEAD commit for the git repo at repoPath.
+func GitHEAD(repoPath string) (string, error) {
+	out, err := exec.Command("git", "-C", repoPath, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse HEAD: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// GitChangedFiles returns paths changed between fromCommit and toCommit (exclusive..inclusive).
+// Both commits must be full or abbreviated SHAs. Returns an empty slice if commits are equal.
+func GitChangedFiles(repoPath, fromCommit, toCommit string) ([]string, error) {
+	if fromCommit == toCommit {
+		return nil, nil
+	}
+	out, err := exec.Command("git", "-C", repoPath, "diff", "--name-only", fromCommit+".."+toCommit).Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff --name-only: %w", err)
+	}
+	var files []string
+	sc := bufio.NewScanner(strings.NewReader(string(out)))
+	for sc.Scan() {
+		if line := strings.TrimSpace(sc.Text()); line != "" {
+			files = append(files, line)
+		}
+	}
+	return files, nil
+}

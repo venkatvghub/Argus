@@ -24,9 +24,11 @@ type Instance struct {
 	parser *ingestion.TreeSitterParser
 	Jobs   *JobManager
 
-	mu      sync.RWMutex
-	engines map[string]*analysis.GraphEngine
-	markers map[string][]models.Marker
+	mu           sync.RWMutex
+	engines      map[string]*analysis.GraphEngine
+	markers      map[string][]models.Marker
+	changedFiles map[string][]string // repoID → files changed since last analysis (nil = unknown/all)
+	upToDate     map[string]bool     // repoID → true when HEAD unchanged, analysis skipped
 }
 
 // New creates and initializes a new Argus instance.
@@ -73,13 +75,15 @@ func New(ctx context.Context, cfg *config.Config) (*Instance, error) {
 	}
 
 	return &Instance{
-		cfg:     cfg,
-		db:      db,
-		log:     log,
-		parser:  parser,
-		Jobs:    NewJobManager(cfg),
-		engines: make(map[string]*analysis.GraphEngine),
-		markers: markerMap,
+		cfg:          cfg,
+		db:           db,
+		log:          log,
+		parser:       parser,
+		Jobs:         NewJobManager(cfg),
+		engines:      make(map[string]*analysis.GraphEngine),
+		markers:      markerMap,
+		changedFiles: make(map[string][]string),
+		upToDate:     make(map[string]bool),
 	}, nil
 }
 
@@ -103,6 +107,8 @@ func (i *Instance) Close() error {
 }
 
 // Analyze traverses the repository at the given path and performs deep analysis.
+// If the repo was previously indexed and HEAD has not changed, the job completes
+// immediately with status "Up-to-date" and no re-analysis occurs.
 func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error) {
 	job := i.Jobs.CreateJob(jobTypeAnalysis)
 
@@ -123,6 +129,42 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 		repoID := fmt.Sprintf("%x", sha256.Sum256([]byte(absPath)))[:constants.RepoIDLength]
 
 		i.log.Info("starting analysis", "repo_path", absPath, "repo_id", repoID)
+
+		// Check whether HEAD has changed since the last analysis.
+		headCommit, headErr := ingestion.GitHEAD(absPath)
+		if headErr != nil {
+			i.log.Warn("could not read git HEAD; forcing full analysis", "error", headErr)
+		} else {
+			existing, dbErr := i.db.GetRepository(jobCtx, repoID)
+			if dbErr == nil && existing.LastCommit == headCommit {
+				// Nothing changed. Reload markers from DB so in-memory state is warm.
+				i.log.Info("repo HEAD unchanged; skipping re-analysis", "repo_id", repoID, "commit", headCommit)
+				if loaded, mErr := i.db.LoadAllMarkers(jobCtx); mErr == nil {
+					i.mu.Lock()
+					if ms, ok := loaded[repoID]; ok {
+						i.markers[repoID] = ms
+					}
+					i.mu.Unlock()
+				}
+				i.mu.Lock()
+				i.upToDate[repoID] = true
+				i.mu.Unlock()
+				i.Jobs.UpdateStatus(job.ID, models.JobStatusCompleted, "Up-to-date", nil)
+				return
+			}
+
+			// Compute changed files for use by downstream wiki generation.
+			if dbErr == nil && existing.LastCommit != "" {
+				changed, chErr := ingestion.GitChangedFiles(absPath, existing.LastCommit, headCommit)
+				if chErr != nil {
+					i.log.Warn("could not determine changed files; regenerating all wiki pages", "error", chErr)
+				} else {
+					i.mu.Lock()
+					i.changedFiles[repoID] = changed
+					i.mu.Unlock()
+				}
+			}
+		}
 
 		walker := ingestion.NewGitWalker(absPath, i.parser)
 		walker.RecentAuthorCutoffDays = i.cfg.RecentAuthorCutoffDays
@@ -158,9 +200,10 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 
 		// Persist
 		repo := models.Repository{
-			ID:   repoID,
-			Name: repoName,
-			Path: absPath,
+			ID:         repoID,
+			Name:       repoName,
+			Path:       absPath,
+			LastCommit: headCommit, // empty string if gitHEAD failed (safe; never matches future HEAD)
 		}
 		if err := i.db.UpsertRepository(jobCtx, repo); err != nil {
 			i.log.Warn("failed to persist repo", "error", err)
@@ -178,6 +221,22 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 	})
 
 	return job.ID, nil
+}
+
+// GetChangedFiles returns the set of files changed since the last analysis for a repo.
+// Returns nil when there is no incremental change info (fresh index or HEAD unchanged).
+func (i *Instance) GetChangedFiles(repoID string) []string {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.changedFiles[repoID]
+}
+
+// IsRepoUpToDate reports whether the last Analyze call determined the repo HEAD
+// was unchanged and skipped re-analysis.
+func (i *Instance) IsRepoUpToDate(repoID string) bool {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.upToDate[repoID]
 }
 
 // ListRepositories returns all indexed repositories.

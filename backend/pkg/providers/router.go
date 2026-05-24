@@ -28,6 +28,9 @@ type TieredRouter struct {
 // NewTieredRouter creates a TieredRouter by constructing three Provider instances
 // from the same config, each overriding the model field for its tier.
 func NewTieredRouter(cfg *config.Config, tc TieredConfig) (*TieredRouter, error) {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
 	makeProvider := func(model string) (Provider, error) {
 		c := *cfg // copy
 		switch tc.ProviderName {

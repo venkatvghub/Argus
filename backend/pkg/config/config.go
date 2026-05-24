@@ -142,5 +142,8 @@ func validateConfig(cfg *Config) error {
 	if cfg.LLMHTTPTimeoutS < 0 {
 		return fmt.Errorf("LLM_HTTP_TIMEOUT_S must be >= 0, got %d", cfg.LLMHTTPTimeoutS)
 	}
+	if cfg.RecentAuthorCutoffDays <= 0 {
+		return fmt.Errorf("ARGUS_RECENT_AUTHOR_CUTOFF_DAYS must be > 0, got %d", cfg.RecentAuthorCutoffDays)
+	}
 	return nil
 }

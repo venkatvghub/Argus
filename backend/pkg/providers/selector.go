@@ -42,6 +42,9 @@ func openaiVariant(baseURL string) (name, endpoint string) {
 // DetectProviders returns the status of all known providers, distinguishing
 // OpenAI direct from OpenRouter (or other custom base URLs).
 func DetectProviders(cfg *config.Config) []ProviderStatus {
+	if cfg == nil {
+		return nil
+	}
 	var out []ProviderStatus
 
 	// Anthropic

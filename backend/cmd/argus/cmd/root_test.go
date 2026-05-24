@@ -59,6 +59,9 @@ func TestRootCmd_AllSubcommandsRegistered(t *testing.T) {
 		{"score command", "score", "score"},
 		{"community command", "community", "community"},
 		{"serve command", "serve", "serve"},
+		{"init command", "init", "init <repo-path>"},
+		{"jobs command", "jobs", "jobs"},
+		{"wiki command", "wiki", "wiki"},
 	}
 
 	for _, tt := range tests {
@@ -103,8 +106,8 @@ func TestSymbolsCmd_HasSearchAndListChildren(t *testing.T) {
 
 func TestMarkersCmd_HasFileAndRepoChildren(t *testing.T) {
 	expectedChildren := map[string]string{
-		"file": "Get markers for a specific file",
-		"repo": "Get all markers for a repository",
+		"file": "Get biomarkers for a specific file",
+		"repo": "Get all biomarkers for a repository",
 	}
 
 	actualChildren := make(map[string]string)

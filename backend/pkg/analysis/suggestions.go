@@ -39,8 +39,24 @@ func SuggestionFor(markerType string) string {
 		return "Validate and allowlist external URLs before making HTTP calls. Use a proxy with an egress policy."
 	case "token_bloat":
 		return "Reduce file verbosity: split large files, remove commented-out code, consolidate repetitive patterns. Large token density degrades AI context quality."
+	case "dead_code":
+		return "Remove unreachable or unused code paths. Dead code increases maintenance burden and can mislead future readers."
 	case "zombie_export":
 		return "Remove unused exported symbols or make them unexported. Dead exports confuse tooling and bloat public API surface."
+	case "pii_mobile_exposure":
+		return "Remove mobile number literals from source. Store them in secure config or a secrets manager to comply with data-protection requirements."
+	case "dart_setstate_after_await":
+		return "Avoid calling setState after an async gap without checking mounted. Guard with 'if (!mounted) return;' before setState to prevent use-after-dispose errors."
+	case "dart_context_after_await":
+		return "Do not use BuildContext across async gaps. Capture context-dependent values before the await, or use a mounted check and a Navigator/ScaffoldMessenger ref."
+	case "dart_broken_crypto":
+		return "Replace deprecated or weak Dart/Flutter crypto with modern alternatives. Use package:cryptography with AES-GCM or ChaCha20-Poly1305."
+	case "sql_injection_risk":
+		return "Use parameterized queries or a query builder. Never interpolate user input directly into SQL strings."
+	case "sql_select_star":
+		return "Replace SELECT * with explicit column lists. Overly broad queries fetch unnecessary data and break when schema changes."
+	case "sql_hardcoded_credential":
+		return "Remove hardcoded database credentials from source. Use environment variables or a secrets manager and rotate the leaked credential immediately."
 	case "phantom_coupling":
 		return "Investigate why these files co-change without a structural dependency. Extract a shared abstraction or document the coupling explicitly."
 	case "hallucination_bait":

@@ -1,127 +1,129 @@
 # Argus — Codebase Intelligence for AI Agents
 
-Argus is a high-performance Go structural intelligence engine for AI coding agents. It parses source repositories into dependency graphs, detects architectural patterns, identifies health risks, and enforces compliance markers—delivering 27× fewer tokens per query and 36% lower LLM costs than baseline approaches.
+Go structural intelligence engine: parses repos into dependency graphs, detects architectural risks, enforces compliance markers. Serves as a standalone CLI and embedded library. 27× fewer tokens per query vs baseline.
 
-Inspired from repowise, Argus achieves 5–15ms startup and a 15–25MB memory footprint as a single static binary. It serves as both a standalone CLI and an embedded programmatic engine for Go applications.
+## Quick Start (5 min)
 
-## What Argus Adds
-
-| Capability | Languages & Detail |
-|---|---|
-| **Concurrency Risk Detection** | Go goroutines, Java threads, Kotlin coroutines, Dart/Flutter async, Python asyncio, Node.js closures — race conditions and await-boundary violations |
-| **Indian Regulatory Compliance** | DPDP-Act enforcement: Aadhaar, PAN, UPI_ID, mobile, email detection with AST-level tracking |
-| **AI-Agent Efficiency Markers** | Token bloat detection, hallucination-prone code patterns, zombie exports, phantom coupling, cyclomatic complexity hotspots |
-| **AppSec Biomarkers** | SQL injection sinks, SSRF vectors, broken crypto, RBAC bypasses, hardcoded secrets |
-| **Dual Server Architecture** | MCP (stdio, 20 tools for Claude) + REST (Gin, SSE streaming, Cognee webhook export) |
-| **Tiered LLM Routing** | Gemini Flash for bulk analysis, Claude Sonnet for deep review — cost-aware provider selection |
-
-## Quick Start
-
-### Prerequisites
-
-- Go 1.24+
-- Git
-- (Optional) Docker for Cognee integration
-
-### Clone & Build
+**Prerequisites:** Go 1.24+, Git
 
 ```bash
 git clone git@github.com:venkatvghub/Argus.git
 cd Argus/backend
 go build -o argus ./cmd/argus
+
+# Set API key (pick any one provider)
+export ARGUS_ANTHROPIC_API_KEY=sk-ant-...   # or OPENAI / GEMINI
+export ARGUS_DATA_DIR=./data
+
+# Analyze a repo and generate wiki docs
+./argus init /path/to/target/repo
 ```
 
-### Configure
+`init` analyzes the repo, scores it, and generates wiki documentation with your LLM. Use `--index-only` to skip the LLM step.
 
-Copy `.env.example` to `.env`:
+## Commands
 
-```bash
-cp .env.example .env
-```
+Global flags available on every command: `--data-dir`, `--repo-id`, `--log-level`.
 
-Edit `.env` and set your API keys and preferences. See **[Configuration](docs/configuration.md)** for the full list of `ARGUS_*` variables and defaults.
+### Analysis
 
-### Analyse a Repository
+| Command | Flags | Description |
+|---|---|---|
+| `argus init <repo-path>` | `--index-only`, `--yes`, `--coverage 0.20`, `--concurrency 5`, `--provider`, `--cheap-model`, `--medium-model`, `--premium-model`, `--resume <job-id>` | Full analysis + wiki generation |
+| `argus analyze <repo-path>` | `--wait` | Analyze only (no LLM); returns job ID |
 
-Trigger deep analysis on any local repo (non-blocking — returns a job ID):
+### Repositories
 
-```bash
-./argus analyze /path/to/target/repo --data-dir ./data
-# {"job_id":"abc123","message":"analysis started"}
-```
+| Command | Flags | Description |
+|---|---|---|
+| `argus repos list` | `--json` | List indexed repos (ID, name, path) |
 
-Wait for completion and stream progress:
+### Health Scores
 
-```bash
-./argus analyze /path/to/target/repo --data-dir ./data --wait
-```
+| Command | Flags | Description |
+|---|---|---|
+| `argus score repo` | `--repo-id` | Aggregate health score (1–10) |
+| `argus score file` | `--repo-id`, `--file <path>` | Per-file health score with category breakdown |
 
-### Query Results
+### Biomarkers
 
-Once analysis completes, use `--repo-id` (printed or from `repos list`) to query:
+| Command | Flags | Description |
+|---|---|---|
+| `argus markers repo` | `--repo-id`, `--type`, `--severity`, `--category`, `--format json\|table` | All biomarker findings for a repo |
+| `argus markers file` | `--repo-id`, `--file <path>`, `--type`, `--severity`, `--category`, `--format json\|table` | Findings for a specific file |
+| `argus markers summary` | `--repo-id`, `--type`, `--severity`, `--category`, `--format json\|table` | Counts by severity / type / category |
+| `argus markers top-files` | `--repo-id`, `--top 20`, `--type`, `--severity`, `--category`, `--format json\|table` | Files ranked by total deduction |
 
-```bash
-# List all indexed repositories
-./argus repos list --data-dir ./data
+### Symbols
 
-# Aggregate health score for a repo
-./argus score repo --repo-id <id> --data-dir ./data
+| Command | Flags | Description |
+|---|---|---|
+| `argus symbols search` | `--query <name>`, `--type function\|class\|variable\|import` | Search symbols across all repos |
+| `argus symbols list` | `--repo-id` | List all symbols for a repo |
 
-# File-level health score
-./argus score file --file pkg/server/rest.go --repo-id <id> --data-dir ./data
+### Communities (graph clusters)
 
-# All biomarker findings for a file
-./argus markers file --file pkg/server/rest.go --repo-id <id> --data-dir ./data
+| Command | Flags | Description |
+|---|---|---|
+| `argus community show` | `--repo-id`, `--community-id <n>` | Nodes in a community cluster |
 
-# All markers across a repo
-./argus markers repo --repo-id <id> --data-dir ./data
+### Wiki
 
-# Search symbols
-./argus symbols search --query ComputeFileScore --type function --data-dir ./data
-```
+| Command | Flags | Description |
+|---|---|---|
+| `argus wiki list` | `--repo-id` | List generated wiki pages |
+| `argus wiki get <page-id>` | — | Get a wiki page by ID |
+| `argus wiki export <repo-id> <output-dir>` | — | Export all pages as `<type>/<subject>.md` files |
 
-### Run (MCP Mode)
+### Jobs
 
-For use with Claude Code / Claude Desktop:
+| Command | Flags | Description |
+|---|---|---|
+| `argus jobs list` | `--repo-id` | List wiki generation jobs |
+| `argus jobs get <job-id>` | — | Get job status and details |
 
-```bash
-./argus serve mcp --data-dir ./data
-```
+### Servers
 
-Starts an MCP server on stdin/stdout exposing 20 tools for structured codebase queries.
+| Command | Flags | Description |
+|---|---|---|
+| `argus serve mcp` | — | Start MCP stdio server (20 tools for Claude Code / Desktop) |
+| `argus serve rest` | `--addr :8080` | Start REST HTTP server (SSE, score endpoints) |
 
-### Run (REST Mode)
+### Misc
 
-For web dashboard and Cognee integration:
+| Command | Description |
+|---|---|
+| `argus version` | Print version |
 
-```bash
-./argus serve rest --addr :8080 --data-dir ./data
-```
+## Configuration
 
-Starts a REST server on `:8080`. Score endpoints: `GET /api/score/file?path=<file>&repo_id=<id>`, `GET /api/score/repo?repo_id=<id>`.
+All settings use `ARGUS_` env vars. Copy `backend/.env.example` to `backend/.env` and edit.
 
-### LLM Provider & Model Tiers
+Key variables:
 
-Select a provider and model via environment variables. Argus supports a **cheap** tier for bulk analysis and a **premium** tier for deep review.
+| Variable | Default | Purpose |
+|---|---|---|
+| `ARGUS_DATA_DIR` | `data` | Base directory for DB and state |
+| `ARGUS_LLM_PROVIDER` | `openai` | Active LLM backend |
+| `ARGUS_OPENAI_API_KEY` | — | OpenAI or OpenRouter key |
+| `ARGUS_ANTHROPIC_API_KEY` | — | Anthropic key |
+| `ARGUS_GEMINI_API_KEY` | — | Gemini key |
+| `ARGUS_COVERAGE` | `0.20` | Fraction of repo to generate wiki pages (0.10–1.0) |
+| `ARGUS_LLM_MAX_RETRIES` | `3` | Retry attempts per LLM call |
 
-| Provider | Tier | Model | Environment Variables |
-|---|---|---|---|
-| **OpenAI** | Cheap | `gpt-4o-mini` | `ARGUS_LLM_PROVIDER=openai`<br>`ARGUS_OPENAI_API_KEY=sk-…`<br>`ARGUS_OPENAI_MODEL=gpt-4o-mini` |
-| **OpenAI** | Premium | `gpt-4o` | `ARGUS_LLM_PROVIDER=openai`<br>`ARGUS_OPENAI_API_KEY=sk-…`<br>`ARGUS_OPENAI_MODEL=gpt-4o` |
-| **Anthropic** | Cheap | `claude-3-5-haiku-20241022` | `ARGUS_LLM_PROVIDER=anthropic`<br>`ARGUS_ANTHROPIC_API_KEY=sk-ant-…`<br>`ARGUS_ANTHROPIC_MODEL=claude-3-5-haiku-20241022` |
-| **Anthropic** | Premium | `claude-sonnet-4-6` | `ARGUS_LLM_PROVIDER=anthropic`<br>`ARGUS_ANTHROPIC_API_KEY=sk-ant-…`<br>`ARGUS_ANTHROPIC_MODEL=claude-sonnet-4-6` |
-| **Gemini** | Cheap | `gemini-2.0-flash` | `ARGUS_LLM_PROVIDER=gemini`<br>`ARGUS_GEMINI_API_KEY=AIza…`<br>`ARGUS_GEMINI_MODEL=gemini-2.0-flash` |
-| **Gemini** | Premium | `gemini-1.5-pro` | `ARGUS_LLM_PROVIDER=gemini`<br>`ARGUS_GEMINI_API_KEY=AIza…`<br>`ARGUS_GEMINI_MODEL=gemini-1.5-pro` |
-| **OpenRouter** | Any | any model slug | `ARGUS_LLM_PROVIDER=openai`<br>`ARGUS_OPENAI_API_KEY=sk-or-…`<br>`ARGUS_OPENAI_MODEL=<slug>` ¹ |
+Full reference: [docs/configuration.md](docs/configuration.md)
 
-> ¹ OpenRouter exposes an OpenAI-compatible API. Set `ARGUS_OPENAI_BASE_URL=https://openrouter.ai/api/v1` alongside `ARGUS_OPENAI_API_KEY=sk-or-…` and any [supported model slug](https://openrouter.ai/models) as `ARGUS_OPENAI_MODEL`.
+LLM provider setup and model tiers: [docs/providers.md](docs/providers.md)
 
 ## Documentation
 
-- **[Configuration](docs/configuration.md)** — `ARGUS_*` environment variables, defaults, and path resolution
-- **[Philosophy & Why Go](docs/PHILOSOPHY.md)** — Problem statement, rewrite rationale, foundational mandates, and biomarker categories
-- **[Architecture](docs/architecture.md)** — System diagram, package responsibilities, analysis pipeline, server modes, LLM tiers
-- **[Implementation Plan](docs/plan.md)** — Phase-wise roadmap (Weeks 1–18), structural design, Cognee integration
+| Doc | Contents |
+|---|---|
+| [docs/configuration.md](docs/configuration.md) | All `ARGUS_*` env vars, defaults, path resolution |
+| [docs/providers.md](docs/providers.md) | Provider setup, model tiers, OpenRouter |
+| [docs/architecture.md](docs/architecture.md) | System diagram, package layout, pipeline, server modes |
+| [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) | Problem statement, rewrite rationale, biomarker categories |
+| [docs/plan.md](docs/plan.md) | Phase-wise roadmap |
 
 ## License
 

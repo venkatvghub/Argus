@@ -1,6 +1,7 @@
 package providers_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/venkatvghub/argus/pkg/providers"
@@ -22,11 +23,11 @@ func TestModelCostPer1M_Exact(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.model, func(t *testing.T) {
 			inCost, outCost := providers.ModelCostPer1M(tt.model)
-			if inCost < 0 || inCost > tt.wantIn+tt.wantDelta {
-				t.Errorf("input cost mismatch: got %f, want %f", inCost, tt.wantIn)
+			if math.Abs(inCost-tt.wantIn) > tt.wantDelta {
+				t.Errorf("input cost mismatch: got %f, want %f (delta %f)", inCost, tt.wantIn, tt.wantDelta)
 			}
-			if outCost < 0 || outCost > tt.wantOut+tt.wantDelta {
-				t.Errorf("output cost mismatch: got %f, want %f", outCost, tt.wantOut)
+			if math.Abs(outCost-tt.wantOut) > tt.wantDelta {
+				t.Errorf("output cost mismatch: got %f, want %f (delta %f)", outCost, tt.wantOut, tt.wantDelta)
 			}
 		})
 	}

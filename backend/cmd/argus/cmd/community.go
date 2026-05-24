@@ -18,6 +18,7 @@ var communityCmd = &cobra.Command{
 var communityShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Show nodes for a community",
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if rootRepoID == "" {
 			return fmt.Errorf("--repo-id is required")

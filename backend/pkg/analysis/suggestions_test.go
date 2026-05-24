@@ -107,6 +107,38 @@ func TestSuggestionFor_KnownTypes(t *testing.T) {
 			name:       "data_sovereignty_leak",
 			markerType: "data_sovereignty_leak",
 		},
+		{
+			name:       "dead_code",
+			markerType: "dead_code",
+		},
+		{
+			name:       "pii_mobile_exposure",
+			markerType: "pii_mobile_exposure",
+		},
+		{
+			name:       "dart_setstate_after_await",
+			markerType: "dart_setstate_after_await",
+		},
+		{
+			name:       "dart_context_after_await",
+			markerType: "dart_context_after_await",
+		},
+		{
+			name:       "dart_broken_crypto",
+			markerType: "dart_broken_crypto",
+		},
+		{
+			name:       "sql_injection_risk",
+			markerType: "sql_injection_risk",
+		},
+		{
+			name:       "sql_select_star",
+			markerType: "sql_select_star",
+		},
+		{
+			name:       "sql_hardcoded_credential",
+			markerType: "sql_hardcoded_credential",
+		},
 	}
 
 	for _, tt := range tests {
