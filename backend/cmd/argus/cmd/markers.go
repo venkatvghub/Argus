@@ -96,7 +96,7 @@ func applyMarkerFilters(markers []models.Marker) []models.Marker {
 	if markersFilterType == "" && markersFilterSev == "" && markersFilterCat == "" {
 		return markers
 	}
-	out := markers[:0:0]
+	out := markers[:0]
 	for _, m := range markers {
 		if markersFilterType != "" && !strings.EqualFold(m.Type, markersFilterType) {
 			continue
