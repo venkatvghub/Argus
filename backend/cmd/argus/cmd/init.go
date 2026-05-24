@@ -208,7 +208,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	onProgress(0, estimatedTotal) // show initial bar
 
-	if err := instance.GenerateWiki(ctx, repoID, wikiJobID, plan, router, completedPageIDs, initConcurrency, coveragePct, onProgress); err != nil {
+	if err := instance.GenerateWiki(ctx, repoID, wikiJobID, plan, router, completedPageIDs, initConcurrency, onProgress); err != nil {
 		fmt.Fprintf(os.Stderr, "\n  ⚠  Generation interrupted: %v\n", err)
 		fmt.Fprintf(os.Stderr, "  Resume with: argus init %s --resume %s\n", repoPath, wikiJobID)
 		return err

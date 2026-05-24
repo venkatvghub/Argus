@@ -42,7 +42,7 @@ type wikiPageJob struct {
 // GenerateWiki runs the wiki generation pipeline for a repository.
 // It assembles context per page type, calls the tiered LLM, and checkpoints progress.
 // If completedPageIDs is non-nil, pages in the set are skipped (resume mode).
-// coveragePct selects the top fraction of pages by graph importance; use 1.0 for all pages.
+// Coverage is applied at plan-build time (BuildPlan); plan.Entries already encodes the page budget.
 // OnProgress is called after each page completes with (done, total) counts; may be nil.
 func (i *Instance) GenerateWiki(
 	ctx context.Context,
@@ -52,7 +52,6 @@ func (i *Instance) GenerateWiki(
 	router *providers.TieredRouter,
 	completedPageIDs map[string]struct{},
 	concurrency int,
-	coveragePct float64,
 	onProgress func(done, total int),
 ) error {
 	if concurrency <= 0 {
