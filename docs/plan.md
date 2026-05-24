@@ -145,7 +145,7 @@ Computed from git log during ingestion; stored in `FileNode.AuthorCount` and `Fi
 Extends the existing `zombie_exports` marker to cover internal (unexported) symbols.
 - **dead_code / unreferenced_symbols**: Walk all symbols in the graph; flag any function, type, or variable with zero incoming edges regardless of export visibility. Replaces `zombie_exports` which only covers exported names. Deduction: per unreferenced symbol, capped at −1.0 total.
 
-#### 5.7 Scorer Engine (`pkg/analysis/scorer.go`)
+#### [x] 5.7 Scorer Engine (`pkg/analysis/scorer.go`)
 - `ComputeFileScore(file string, markers []models.Marker) models.FileScore` — group markers by category, apply caps, clamp to [1.0, 10.0].
 - `ComputeRepoScore(scores []models.FileScore) float64` — weighted average (weight = file centrality from PageRank; fallback: uniform).
 - REST endpoint: `GET /api/score/file?path=<file>`, `GET /api/score/repo`.

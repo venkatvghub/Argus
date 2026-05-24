@@ -140,6 +140,32 @@ The `MarkerEngine.Run()` executes a two-pass structural analysis over the ingest
 
 - **dry_violation** — Clone pair detected via rolling hash with Jaccard similarity ≥ 80%. Active clones (both files modified in last 90 days per git log) receive 1.5× weight. Deduction: up to −1.5
 
+### Phase 5.4–5.6: Test Coverage, Organizational Risk, Dead Code
+
+See plan.md §5.4–5.6 for complete marker definitions.
+
+### Phase 5.7: Scorer Engine
+
+`pkg/analysis/scorer.go` implements deterministic file and repo health scoring.
+
+#### ComputeFileScore
+- Base score: 10.0
+- Groups markers by `ScoreCategory`
+- Applies per-category caps from `models.CategoryCaps` (Structural: −3.5, Size: −2.0, Duplication: −1.5, TestCoverage: −2.0, Org: −1.0, DeadCode: −1.0)
+- Compliance and AI-Efficiency categories are uncapped
+- Final score clamped to [1.0, 10.0]
+
+#### ComputeRepoScore
+- Weighted average of file scores
+- Weights: PageRank centrality from graph engine; fallback to uniform if no PageRank data
+- Result clamped to [1.0, 10.0]
+
+#### API Surface
+- REST: `GET /api/score/file?path=<file>&repo_id=<id>` → `FileScore`
+- REST: `GET /api/score/repo?repo_id=<id>` → `{"score": float64}`
+- MCP tool: `get_file_score(path, repo_id)`
+- MCP tool: `get_repo_score(repo_id)`
+
 ### Configuration & Constants
 
 All threshold values are stored as constants in `pkg/analysis/defaults.go`. The PageRank threshold for `brain_method` (90th percentile) is computed at runtime during the biomarker pass, taking into account the centrality distribution of the entire file-dependency graph.

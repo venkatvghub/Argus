@@ -246,6 +246,73 @@ func (i *Instance) GetRepoMarkers(ctx context.Context, repoID string) ([]models.
 	return markers, nil
 }
 
+// GetFileScore returns the computed health score for a single file.
+func (i *Instance) GetFileScore(ctx context.Context, repoID, filePath string) (models.FileScore, error) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+
+	markers, ok := i.markers[repoID]
+	if !ok {
+		return models.FileScore{}, ErrRepoNotFound
+	}
+
+	var fileMarkers []models.Marker
+	for _, m := range markers {
+		if m.File == filePath {
+			fileMarkers = append(fileMarkers, m)
+		}
+	}
+
+	return analysis.ComputeFileScore(filePath, fileMarkers), nil
+}
+
+// GetRepoScore returns the aggregate health score for a repository.
+func (i *Instance) GetRepoScore(ctx context.Context, repoID string) (float64, error) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+
+	markers, ok := i.markers[repoID]
+	if !ok {
+		return 0, ErrRepoNotFound
+	}
+
+	// Group markers by file.
+	byFile := make(map[string][]models.Marker)
+	for _, m := range markers {
+		byFile[m.File] = append(byFile[m.File], m)
+	}
+
+	// Build PageRank map and collect all file paths from the graph so that
+	// files with zero markers (perfect score 10.0) are included in the average.
+	var pageRanks map[string]float64
+	allFilePaths := make(map[string]struct{})
+	if engine, ok := i.engines[repoID]; ok {
+		pageRanks = make(map[string]float64)
+		for _, n := range engine.GetNodes() {
+			if n.InternalType() == analysis.NodeTypeFile {
+				if f := n.File(); f != nil {
+					pageRanks[f.Path] = n.PageRank
+					allFilePaths[f.Path] = struct{}{}
+				}
+			}
+		}
+	}
+
+	// Score every file: marker-bearing files get actual deductions; others score 10.0.
+	fileScores := make([]models.FileScore, 0, len(allFilePaths))
+	for path := range allFilePaths {
+		fileScores = append(fileScores, analysis.ComputeFileScore(path, byFile[path]))
+	}
+	// Fall back to marker-only files if graph has no file nodes (e.g. analysis not run).
+	if len(fileScores) == 0 {
+		for file, fm := range byFile {
+			fileScores = append(fileScores, analysis.ComputeFileScore(file, fm))
+		}
+	}
+
+	return analysis.ComputeRepoScore(fileScores, pageRanks), nil
+}
+
 // Run starts the default pipeline.
 
 func (i *Instance) Run(ctx context.Context) error {

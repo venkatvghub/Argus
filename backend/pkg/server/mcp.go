@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"math"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -49,6 +51,17 @@ func (s *MCPServer) Run() error {
 		mcp.WithString("repo_id", mcp.Required(), mcp.Description("ID of the repository")),
 		mcp.WithNumber("community_id", mcp.Required(), mcp.Description("ID of the community")),
 	), s.getCommunityGraphHandler)
+
+	mcpSrv.AddTool(mcp.NewTool("get_file_score",
+		mcp.WithDescription("Retrieve the computed health score for a specific file"),
+		mcp.WithString("repo_id", mcp.Required(), mcp.Description("ID of the repository")),
+		mcp.WithString("path", mcp.Required(), mcp.Description("Path to the file relative to repo root")),
+	), s.getFileScoreHandler)
+
+	mcpSrv.AddTool(mcp.NewTool("get_repo_score",
+		mcp.WithDescription("Retrieve the aggregate health score for a repository"),
+		mcp.WithString("repo_id", mcp.Required(), mcp.Description("ID of the repository")),
+	), s.getRepoScoreHandler)
 
 	return server.ServeStdio(mcpSrv)
 }
@@ -98,4 +111,38 @@ func (s *MCPServer) getCommunityGraphHandler(ctx context.Context, req mcp.CallTo
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultText(fmt.Sprintf("%v", nodes)), nil
+}
+
+func (s *MCPServer) getFileScoreHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	repoID := req.GetString("repo_id", "")
+	filePath := req.GetString("path", "")
+	score, err := s.argus.GetFileScore(ctx, repoID, filePath)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	b, err := json.Marshal(score)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(b)), nil
+}
+
+type repoScoreResponse struct {
+	Score float64 `json:"score"`
+}
+
+func (s *MCPServer) getRepoScoreHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	repoID := req.GetString("repo_id", "")
+	score, err := s.argus.GetRepoScore(ctx, repoID)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if math.IsNaN(score) || math.IsInf(score, 0) {
+		return mcp.NewToolResultError("repository score is not finite"), nil
+	}
+	result, err := mcp.NewToolResultJSON(repoScoreResponse{Score: score})
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return result, nil
 }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -39,6 +40,8 @@ func (s *RESTServer) Routes() chi.Router {
 		r.Post("/repos/index", s.indexRepo)
 		r.Get("/repos/{repoID}/symbols", s.getSymbols)
 		r.Get("/repos/{repoID}/markers", s.getMarkers)
+		r.Get("/score/file", s.getFileScore)
+		r.Get("/score/repo", s.getRepoScore)
 		r.Get("/export/cognee", s.exportCognee)
 		r.Get("/events", s.sseHandler)
 		r.Get("/chat/stream", s.chatStreamHandler)
@@ -97,6 +100,47 @@ func (s *RESTServer) getMarkers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.json(w, http.StatusOK, markers)
+}
+
+func (s *RESTServer) getFileScore(w http.ResponseWriter, r *http.Request) {
+	repoID := r.URL.Query().Get("repo_id")
+	filePath := r.URL.Query().Get("path")
+	if repoID == "" {
+		s.error(w, http.StatusBadRequest, "repo_id is required")
+		return
+	}
+	if filePath == "" {
+		s.error(w, http.StatusBadRequest, "path is required")
+		return
+	}
+	score, err := s.argus.GetFileScore(r.Context(), repoID, filePath)
+	if err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	s.json(w, http.StatusOK, score)
+}
+
+func (s *RESTServer) getRepoScore(w http.ResponseWriter, r *http.Request) {
+	repoID := r.URL.Query().Get("repo_id")
+	if repoID == "" {
+		s.error(w, http.StatusBadRequest, "repo_id is required")
+		return
+	}
+	score, err := s.argus.GetRepoScore(r.Context(), repoID)
+	if err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	s.json(w, http.StatusOK, map[string]float64{"score": score})
 }
 
 func (s *RESTServer) exportCognee(w http.ResponseWriter, r *http.Request) {
