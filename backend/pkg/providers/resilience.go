@@ -83,10 +83,24 @@ func (r *retryingProvider) ChatStream(ctx context.Context, repoID, prompt string
 }
 
 // callWithCB wraps fn in the circuit breaker then the retry loop.
+// Permanent errors (bad API key, 400/401/403) are returned directly without
+// incrementing the CB's failure counter — they indicate caller misconfiguration,
+// not provider instability.
 func (r *retryingProvider) callWithCB(ctx context.Context, fn func() error) error {
+	var permErr error
 	_, err := r.cb.Execute(func() (interface{}, error) {
-		return nil, r.callWithRetry(ctx, fn)
+		retryErr := r.callWithRetry(ctx, fn)
+		if errors.Is(retryErr, ErrPermanent) {
+			// Signal success to gobreaker so it doesn't count this as a CB failure,
+			// then surface the error after Execute returns.
+			permErr = retryErr
+			return nil, nil
+		}
+		return nil, retryErr
 	})
+	if permErr != nil {
+		return permErr
+	}
 	if err != nil {
 		if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
 			return ErrCircuitOpen
@@ -116,7 +130,6 @@ func (r *retryingProvider) callWithRetry(ctx context.Context, fn func() error) e
 		),
 		ctx,
 	)
-	bo.Reset()
 
 	var lastErr error
 	operation := func() error {
@@ -167,7 +180,8 @@ func classifyError(err error) error {
 	if strings.Contains(msg, ": http: ") ||
 		strings.Contains(msg, "connection refused") ||
 		strings.Contains(msg, "i/o timeout") ||
-		strings.Contains(msg, "EOF") {
+		strings.Contains(msg, ": EOF") ||
+		strings.Contains(msg, "unexpected EOF") {
 		return fmt.Errorf("%w: %s", ErrTransient, msg)
 	}
 

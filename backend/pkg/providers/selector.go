@@ -21,7 +21,7 @@ type ProviderStatus struct {
 // For openrouter, sensible cross-provider defaults are used.
 var defaultTierModels = map[string][3]string{
 	"anthropic":  {"claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-7"},
-	"openai":     {"gpt-4o-mini", "gpt-4o", "gpt-4"},
+	"openai":     {"gpt-4o-mini", "gpt-4o", "gpt-4-turbo"},
 	"openrouter": {"mistralai/mistral-7b-instruct", "openai/gpt-4o", "anthropic/claude-opus-4"},
 	"gemini":     {"gemini-2.0-flash", "gemini-1.5-pro", "gemini-ultra"},
 }

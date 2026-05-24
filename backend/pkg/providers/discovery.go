@@ -9,9 +9,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/venkatvghub/argus/pkg/config"
 )
+
+// openRouterHTTPClient is used for model discovery calls; 15 s prevents indefinite hangs.
+var openRouterHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 // OpenRouterModel holds model metadata returned by OpenRouter's /models endpoint.
 type OpenRouterModel struct {
@@ -27,10 +31,6 @@ type OpenRouterModel struct {
 // Returns "" if the model doesn't match any tier.
 // Priority when multiple match: premium > medium > cheap.
 func ClassifyTier(model string) string {
-	return classifyTier(model)
-}
-
-func classifyTier(model string) string {
 	lower := strings.ToLower(model)
 
 	isPremium := strings.Contains(lower, "opus") ||
@@ -80,7 +80,7 @@ func BucketByTier(models []string) map[string][]string {
 		"premium": {},
 	}
 	for _, m := range models {
-		tier := classifyTier(m)
+		tier := ClassifyTier(m)
 		if tier != "" {
 			buckets[tier] = append(buckets[tier], m)
 		}
@@ -128,7 +128,7 @@ func fetchOpenRouterModels(ctx context.Context, cfg *config.Config, url string) 
 	req.Header.Set("HTTP-Referer", openRouterReferer)
 	req.Header.Set("X-Title", openRouterTitle)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := openRouterHTTPClient.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("openrouter discover: http: %w", err)
 	}

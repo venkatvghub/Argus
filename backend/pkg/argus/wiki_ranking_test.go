@@ -258,3 +258,84 @@ func TestBuildPageJobs_ZeroCount(t *testing.T) {
 		t.Errorf("Count=0: expected all 3 files, got %d", len(jobs))
 	}
 }
+
+func TestBuildPageJobs_ModulePageStableOrder(t *testing.T) {
+	// Calling buildPageJobs twice on the same engine must produce identical
+	// job IDs in the same order (i.e. sort is deterministic across calls).
+	ge := buildTestEngine(t, []models.FileNode{
+		{Path: "pkg/alpha/a.go", IsFile: true},
+		{Path: "pkg/beta/b.go", IsFile: true},
+		{Path: "pkg/gamma/c.go", IsFile: true},
+		{Path: "pkg/delta/d.go", IsFile: true},
+	}, nil)
+
+	entry := providers.PlanEntry{PageType: "module_page", Count: 3}
+
+	first := buildPageJobs(entry, ge)
+	second := buildPageJobs(entry, ge)
+
+	if len(first) != len(second) {
+		t.Fatalf("call 1 returned %d jobs, call 2 returned %d", len(first), len(second))
+	}
+	for i := range first {
+		if first[i].id != second[i].id {
+			t.Errorf("job[%d] id mismatch: %q vs %q (non-deterministic order)", i, first[i].id, second[i].id)
+		}
+	}
+}
+
+func TestBuildPageJobs_SCCPageStableOrder(t *testing.T) {
+	// Same determinism guarantee for scc_page.
+	ge := buildTestEngine(t, []models.FileNode{
+		{Path: "a.go", IsFile: true},
+		{Path: "b.go", IsFile: true},
+		{Path: "c.go", IsFile: true},
+	}, nil)
+
+	entry := providers.PlanEntry{PageType: "scc_page", Count: 2}
+
+	first := buildPageJobs(entry, ge)
+	second := buildPageJobs(entry, ge)
+
+	if len(first) != len(second) {
+		t.Fatalf("call 1 returned %d jobs, call 2 returned %d", len(first), len(second))
+	}
+	for i := range first {
+		if first[i].id != second[i].id {
+			t.Errorf("job[%d] id mismatch: %q vs %q (non-deterministic order)", i, first[i].id, second[i].id)
+		}
+	}
+}
+
+func TestScoreAndRankNodes_StableTiebreaker(t *testing.T) {
+	// When multiple files have equal importance scores (equal PageRank + churn),
+	// the tiebreaker must order them by path — deterministic across calls.
+	ge := buildTestEngine(t, []models.FileNode{
+		{Path: "z.go", IsFile: true, Churn: 0},
+		{Path: "a.go", IsFile: true, Churn: 0},
+		{Path: "m.go", IsFile: true, Churn: 0},
+	}, nil)
+
+	first := scoreAndRankNodes(ge.GetNodes())
+	second := scoreAndRankNodes(ge.GetNodes())
+
+	if len(first) != len(second) {
+		t.Fatalf("call 1 returned %d nodes, call 2 returned %d", len(first), len(second))
+	}
+	for i := range first {
+		if first[i].File().Path != second[i].File().Path {
+			t.Errorf("node[%d] path mismatch: %q vs %q (non-deterministic tiebreaker)", i, first[i].File().Path, second[i].File().Path)
+		}
+	}
+
+	// Also verify paths are in ascending order (alphabetic tiebreaker).
+	for i := 1; i < len(first); i++ {
+		prev := first[i-1].File().Path
+		cur := first[i].File().Path
+		si := nodeImportanceScore(first[i], 0)
+		si1 := nodeImportanceScore(first[i-1], 0)
+		if si == si1 && cur < prev {
+			t.Errorf("tiebreaker violated: %q should come before %q (alphabetical)", cur, prev)
+		}
+	}
+}

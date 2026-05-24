@@ -149,7 +149,12 @@ func (i *Instance) GenerateWiki(
 					mu.Unlock()
 					if errors.Is(err, providers.ErrCircuitOpen) {
 						// Circuit breaker open: pause immediately so --resume can retry later.
-						_ = i.db.UpdateWikiJobStatus(ctx, jobID, models.WikiJobPaused)
+						// Use Background context — ctx may already be cancelled.
+						_ = i.db.UpdateWikiJobStatus(context.Background(), jobID, models.WikiJobPaused)
+					}
+					done.Add(1) // count attempt regardless of outcome for accurate progress
+					if onProgress != nil {
+						onProgress(int(done.Load()), total)
 					}
 					return
 				}
@@ -177,8 +182,12 @@ func (i *Instance) GenerateWiki(
 		}
 		wg.Wait()
 
+		if errors.Is(firstErr, providers.ErrCircuitOpen) {
+			// Already paused in the goroutine; surface the error so the caller stops.
+			return fmt.Errorf("circuit breaker open at level %d: %w", level, firstErr)
+		}
 		if firstErr != nil && ctx.Err() != nil {
-			_ = i.db.UpdateWikiJobStatus(ctx, jobID, models.WikiJobPaused)
+			_ = i.db.UpdateWikiJobStatus(context.Background(), jobID, models.WikiJobPaused)
 			return fmt.Errorf("wiki generation interrupted at level %d: %w", level, firstErr)
 		}
 	}
@@ -338,15 +347,13 @@ func buildPageJobs(entry providers.PlanEntry, engine *analysis.GraphEngine) []wi
 		}
 
 	case "module_page", "scc_page":
-		seen := make(map[string]bool)
 		if engine == nil {
 			return nil
 		}
-		count := 0
+		// Collect unique keys first, then sort for deterministic page IDs across runs.
+		seen := make(map[string]bool)
+		var keys []string
 		for _, n := range engine.GetNodes() {
-			if entry.Count > 0 && count >= entry.Count {
-				break
-			}
 			if n.InternalType() != analysis.NodeTypeFile {
 				continue
 			}
@@ -354,7 +361,7 @@ func buildPageJobs(entry providers.PlanEntry, engine *analysis.GraphEngine) []wi
 			if f == nil {
 				continue
 			}
-			key := ""
+			var key string
 			if entry.PageType == "module_page" {
 				key = filepath.Dir(f.Path)
 			} else {
@@ -364,6 +371,14 @@ func buildPageJobs(entry providers.PlanEntry, engine *analysis.GraphEngine) []wi
 				continue
 			}
 			seen[key] = true
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		count := 0
+		for _, key := range keys {
+			if entry.Count > 0 && count >= entry.Count {
+				break
+			}
 			jobs = append(jobs, wikiPageJob{
 				id:      entry.PageType + ":" + key,
 				pgType:  entry.PageType,
