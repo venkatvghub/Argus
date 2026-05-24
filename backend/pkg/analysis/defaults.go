@@ -40,4 +40,22 @@ const (
 	dryHashMinSimilarity         = 0.80
 	dryActiveDaysThreshold       = 90
 	dryActiveDeductionMultiplier = 1.5
+
+	// Phase 5.4 — Test Coverage
+	coverageUntestedChurnThreshold = 10
+	coverageUntestedPageRankTopPct = 0.20
+	coverageUntestedThreshold      = 20.0
+	coverageGapThreshold           = 60.0
+	coverageDeductionUntested      = 1.5
+	coverageDeductionGapMax        = 0.5
+
+	// Phase 5.5 — Organizational Risk
+	devCongestionAuthorThreshold = 5
+	knowledgeLossDays            = 180
+	knowledgeLossChurnThreshold  = 5
+	devCongestionDeduction       = 0.5
+	knowledgeLossDeduction       = 0.5
+
+	// Phase 5.6 — Dead Code
+	deadCodeDeductionPerSymbol = 0.1
 )

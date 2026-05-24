@@ -128,13 +128,13 @@ func TestMarkerEngine_ZombieExports(t *testing.T) {
 
 	zombies := 0
 	for _, m := range markers {
-		if m.Type == "zombie_exports" {
+		if m.Type == "dead_code" {
 			if strings.Contains(m.Message, "ZombieFunc") {
 				zombies++
 			}
 		}
 	}
-	assert.Equal(t, 1, zombies, "Should have found exactly one zombie export (ZombieFunc)")
+	assert.Equal(t, 1, zombies, "Should have found exactly one dead_code marker (ZombieFunc)")
 }
 
 // ============ detectPhantomCoupling Tests ============

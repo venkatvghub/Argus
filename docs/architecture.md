@@ -74,9 +74,9 @@ Argus runs a **23-biomarker** pipeline concurrently via `errgroup`. Every file s
 | **Structural Complexity** | −3.5 | brain_method, nested_complexity, bumpy_road | Cyclomatic ≥ 15 + centrality; nesting ≥ 4; sequential same-depth branches |
 | **Size & API Complexity** | −2.0 | complex_method, large_method, primitive_obsession | Cyclomatic ≥ 9; NLOC > threshold; ≥ 6 primitives in signature |
 | **Duplication** | −1.5 | dry_violation | Rabin–Karp rolling hash over Tree-sitter tokens; co-change weighted |
-| **Test Coverage** | −2.0 | untested_hotspot, coverage_gap | LCOV/Cobertura: high-churn file + zero coverage; low coverage surface |
-| **Organizational Risk** | −1.0 | developer_congestion, knowledge_loss | ≥ 5 active authors/file; primary author inactive in last 90 days |
-| **Dead Code** | −1.0 | dead_code, unreferenced_symbols, zombie_exports | Zero incoming call edges (internal + exported) |
+| **Test Coverage** | −2.0 | untested_hotspot, coverage_gap | High-churn file + low/zero coverage; coverage < 60% on business logic |
+| **Organizational Risk** | −1.0 | developer_congestion, knowledge_loss | ≥ 5 active authors/file; primary author inactive ≥ 180 days + churn ≥ 5 |
+| **Dead Code** | −1.0 | dead_code, unreferenced_symbols | Zero incoming call edges (internal + exported symbols) |
 
 ### Argus-Native Biomarkers (11 — compliance, AppSec, AI-agent efficiency)
 

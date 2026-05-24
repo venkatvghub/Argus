@@ -13,6 +13,7 @@ Copy `backend/.env.example` to `backend/.env` and adjust values for local develo
 | `ARGUS_LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
 | `ARGUS_DB_PATH` | `argus.db` (under `ARGUS_DATA_DIR`) | SQLite file name or path |
 | `ARGUS_DATA_DIR` | `data` | Base directory for DB and externalized state |
+| `ARGUS_COVERAGE_FILE` | `""` | Path to coverage artifact (`lcov.info`, `coverage.xml`, `clover.xml`). Auto-detected if empty. |
 | `ARGUS_DOCS_DIR` | `docs` | Generated documentation output root |
 | `ARGUS_LLM_PROVIDER` | `openai` | Active LLM (`openai`, `anthropic`, `gemini`) |
 | `ARGUS_OPENAI_API_KEY` | — | Required for OpenAI |

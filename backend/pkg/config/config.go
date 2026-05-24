@@ -50,6 +50,10 @@ type Config struct {
 
 	// CORSAllowedOrigins lists origins permitted for browser SSE access (comma-separated).
 	CORSAllowedOrigins []string `envconfig:"CORS_ALLOWED_ORIGINS"`
+
+	// CoverageFile is the path to the coverage report file (lcov.info, coverage.xml, or clover.xml).
+	// If empty, Argus auto-discovers coverage files in the repository root.
+	CoverageFile string `envconfig:"COVERAGE_FILE"`
 }
 
 var (

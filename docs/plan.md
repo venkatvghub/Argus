@@ -127,21 +127,21 @@ Implements the **12 foundational structural biomarkers** that form the determini
 #### [x] 5.3 Duplication (cap −1.5)
 - **dry_violation**: Rabin–Karp rolling hash over Tree-sitter token sequences (window: 6 tokens, stride: 3). Clone pairs with similarity ≥ 80% across different files are flagged. Active clones (both files modified in last 90 days via git log) receive 1.5× deduction weight. Deduction: up to −1.5.
 
-#### 5.4 Test Coverage Intelligence (cap −2.0)
+#### [x] 5.4 Test Coverage Intelligence (cap −2.0)
 Coverage data loaded from standard artifact formats; if no coverage file is present, markers are skipped (not penalized).
 - **untested_hotspot**: File with churn ≥ 10 commits AND PageRank centrality top 20% AND line coverage < 20%. Deduction: up to −1.5.
 - **coverage_gap**: File with line coverage < 60% (business logic files; test files excluded). Deduction scaled by (60 − coverage) / 60 × 0.5. Max deduction: −0.5.
 
 Coverage artifact loading priority: `lcov.info` → `coverage.xml` (Cobertura) → `clover.xml`. Path configurable via `ARGUS_COVERAGE_FILE`.
 
-#### 5.5 Organizational Risk via Git Analytics (cap −1.0)
+#### [x] 5.5 Organizational Risk via Git Analytics (cap −1.0)
 Computed from git log during ingestion; stored in `FileNode.AuthorCount` and `FileNode.PrimaryAuthorLastCommit`.
 - **developer_congestion**: ≥ 5 distinct authors touching the file in the last 90 days. Deduction: −0.5.
 - **knowledge_loss**: Primary author (highest commit count) has not committed in ≥ 180 days AND file has churn ≥ 5. Deduction: −0.5.
 
 **Model extension required:** Add `AuthorCount int`, `PrimaryAuthorLastCommit time.Time`, `LineCoverage float64` to `models.FileNode`.
 
-#### 5.6 Dead Code Completion (cap −1.0)
+#### [x] 5.6 Dead Code Completion (cap −1.0)
 Extends the existing `zombie_exports` marker to cover internal (unexported) symbols.
 - **dead_code / unreferenced_symbols**: Walk all symbols in the graph; flag any function, type, or variable with zero incoming edges regardless of export visibility. Replaces `zombie_exports` which only covers exported names. Deduction: per unreferenced symbol, capped at −1.0 total.
 

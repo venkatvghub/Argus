@@ -2,11 +2,11 @@ package analysis
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"unicode"
 
 	"github.com/pkoukk/tiktoken-go"
 	"github.com/venkatvghub/argus/pkg/config"
@@ -47,6 +47,7 @@ var (
 // MarkerEngine performs regulatory and efficiency analysis.
 type MarkerEngine struct {
 	repoPath            string
+	cfg                 *config.Config
 	piiEnabled          map[string]bool
 	tokenBloatThreshold float64
 }
@@ -66,6 +67,7 @@ func NewMarkerEngine(repoPath string, cfg *config.Config) *MarkerEngine {
 	}
 	return &MarkerEngine{
 		repoPath:            repoPath,
+		cfg:                 cfg,
 		piiEnabled:          patterns,
 		tokenBloatThreshold: threshold,
 	}
@@ -102,8 +104,9 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 
 	tkm, _ := tiktoken.GetEncoding(tiktokenEncoding)
 
-	// Pre-compute PageRank threshold for brain_method (top 10% of file nodes).
+	// Pre-compute PageRank thresholds for structural and coverage markers.
 	prThreshold := computePageRankThreshold(graph, brainMethodPageRankTopPct)
+	coveragePRThreshold := computePageRankThreshold(graph, coverageUntestedPageRankTopPct)
 
 	fileContents := make(map[string]string)
 
@@ -159,6 +162,16 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 
 	// 5.3: DRY violation — cross-file Rabin–Karp rolling hash
 	markers = append(markers, me.checkDRYViolations(files, fileContents)...)
+
+	// 5.4: Coverage markers
+	coverage, coverageErr := loadCoverage(me.repoPath, me.cfg)
+	if coverageErr != nil {
+		log.Printf("argus: %v", coverageErr)
+	}
+	markers = append(markers, me.checkCoverageMarkers(files, coverage, graph, coveragePRThreshold)...)
+
+	// 5.5: Organizational risk
+	markers = append(markers, me.checkGitOrgMarkers(files)...)
 
 	return markers
 }
@@ -353,6 +366,16 @@ func (me *MarkerEngine) detectHallucinationBait(symbols []models.Symbol) []model
 	return markers
 }
 
+func hasIncomingCallEdges(graph *GraphEngine, nodeID int64) bool {
+	it := graph.g.To(nodeID)
+	for it.Next() {
+		if e, ok := graph.g.Edge(it.Node().ID(), nodeID).(TypedEdge); ok && e.Type() == "calls" {
+			return true
+		}
+	}
+	return false
+}
+
 func (me *MarkerEngine) detectZombieExports(graph *GraphEngine) []models.Marker {
 	var markers []models.Marker
 	nodes := graph.GetNodes()
@@ -360,17 +383,18 @@ func (me *MarkerEngine) detectZombieExports(graph *GraphEngine) []models.Marker 
 		if node.InternalType() != NodeTypeSymbol {
 			continue
 		}
-		// Only flag exported symbols (uppercase first letter — covers Go and common conventions).
-		if len(node.Name) == 0 || !unicode.IsUpper(rune(node.Name[0])) {
+		if len(node.Name) == 0 {
 			continue
 		}
-		if graph.g.To(node.ID()).Len() == 0 {
+		if !hasIncomingCallEdges(graph, node.ID()) {
 			markers = append(markers, models.Marker{
-				Type:     "zombie_exports",
-				Severity: "low",
-				Message:  fmt.Sprintf("Exported symbol '%s' has zero incoming call edges", node.Name),
-				File:     node.Symbol().FilePath,
-				Line:     node.Symbol().Line,
+				Type:      "dead_code",
+				Severity:  "low",
+				Message:   fmt.Sprintf("Symbol '%s' has zero incoming call edges", node.Name),
+				File:      node.Symbol().FilePath,
+				Line:      node.Symbol().Line,
+				Deduction: deadCodeDeductionPerSymbol,
+				Category:  models.ScoreCatDeadCode,
 			})
 		}
 	}
