@@ -41,25 +41,80 @@ cp .env.example .env
 
 Edit `.env` and set your API keys and preferences. See **[Configuration](docs/configuration.md)** for the full list of `ARGUS_*` variables and defaults.
 
+### Analyse a Repository
+
+Trigger deep analysis on any local repo (non-blocking — returns a job ID):
+
+```bash
+./argus analyze /path/to/target/repo --data-dir ./data
+# {"job_id":"abc123","message":"analysis started"}
+```
+
+Wait for completion and stream progress:
+
+```bash
+./argus analyze /path/to/target/repo --data-dir ./data --wait
+```
+
+### Query Results
+
+Once analysis completes, use `--repo-id` (printed or from `repos list`) to query:
+
+```bash
+# List all indexed repositories
+./argus repos list --data-dir ./data
+
+# Aggregate health score for a repo
+./argus score repo --repo-id <id> --data-dir ./data
+
+# File-level health score
+./argus score file --file pkg/server/rest.go --repo-id <id> --data-dir ./data
+
+# All biomarker findings for a file
+./argus markers file --file pkg/server/rest.go --repo-id <id> --data-dir ./data
+
+# All markers across a repo
+./argus markers repo --repo-id <id> --data-dir ./data
+
+# Search symbols
+./argus symbols search --query ComputeFileScore --type function --data-dir ./data
+```
+
 ### Run (MCP Mode)
 
 For use with Claude Code / Claude Desktop:
 
 ```bash
-./argus mcp --repo-path /path/to/target/repo --data-dir ./data
+./argus serve mcp --data-dir ./data
 ```
 
-This starts an MCP server listening on stdin/stdout, exposing 20 tools for structured codebase queries.
+Starts an MCP server on stdin/stdout exposing 20 tools for structured codebase queries.
 
 ### Run (REST Mode)
 
 For web dashboard and Cognee integration:
 
 ```bash
-./argus server --port 8080 --repo-path /path/to/target/repo --data-dir ./data
+./argus serve rest --addr :8080 --data-dir ./data
 ```
 
-Starts a Gin REST server on `:8080`. Health check: `curl http://localhost:8080/health`
+Starts a REST server on `:8080`. Score endpoints: `GET /api/score/file?path=<file>&repo_id=<id>`, `GET /api/score/repo?repo_id=<id>`.
+
+### LLM Provider & Model Tiers
+
+Select a provider and model via environment variables. Argus supports a **cheap** tier for bulk analysis and a **premium** tier for deep review.
+
+| Provider | Tier | Model | Environment Variables |
+|---|---|---|---|
+| **OpenAI** | Cheap | `gpt-4o-mini` | `ARGUS_LLM_PROVIDER=openai`<br>`ARGUS_OPENAI_API_KEY=sk-…`<br>`ARGUS_OPENAI_MODEL=gpt-4o-mini` |
+| **OpenAI** | Premium | `gpt-4o` | `ARGUS_LLM_PROVIDER=openai`<br>`ARGUS_OPENAI_API_KEY=sk-…`<br>`ARGUS_OPENAI_MODEL=gpt-4o` |
+| **Anthropic** | Cheap | `claude-3-5-haiku-20241022` | `ARGUS_LLM_PROVIDER=anthropic`<br>`ARGUS_ANTHROPIC_API_KEY=sk-ant-…`<br>`ARGUS_ANTHROPIC_MODEL=claude-3-5-haiku-20241022` |
+| **Anthropic** | Premium | `claude-sonnet-4-5` | `ARGUS_LLM_PROVIDER=anthropic`<br>`ARGUS_ANTHROPIC_API_KEY=sk-ant-…`<br>`ARGUS_ANTHROPIC_MODEL=claude-sonnet-4-5` |
+| **Gemini** | Cheap | `gemini-2.0-flash` | `ARGUS_LLM_PROVIDER=gemini`<br>`ARGUS_GEMINI_API_KEY=AIza…`<br>`ARGUS_GEMINI_MODEL=gemini-2.0-flash` |
+| **Gemini** | Premium | `gemini-1.5-pro` | `ARGUS_LLM_PROVIDER=gemini`<br>`ARGUS_GEMINI_API_KEY=AIza…`<br>`ARGUS_GEMINI_MODEL=gemini-1.5-pro` |
+| **OpenRouter** | Any | any model slug | `ARGUS_LLM_PROVIDER=openai`<br>`ARGUS_OPENAI_API_KEY=sk-or-…`<br>`ARGUS_OPENAI_MODEL=<slug>` ¹ |
+
+> ¹ OpenRouter exposes an OpenAI-compatible API. Point the OpenAI provider at `https://openrouter.ai/api/v1` and set any [supported model slug](https://openrouter.ai/models) as `ARGUS_OPENAI_MODEL`.
 
 ## Documentation
 
