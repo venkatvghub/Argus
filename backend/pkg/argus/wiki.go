@@ -2,11 +2,14 @@ package argus
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/venkatvghub/argus/pkg/analysis"
 	"github.com/venkatvghub/argus/pkg/models"
@@ -38,6 +41,8 @@ type wikiPageJob struct {
 // GenerateWiki runs the wiki generation pipeline for a repository.
 // It assembles context per page type, calls the tiered LLM, and checkpoints progress.
 // If completedPageIDs is non-nil, pages in the set are skipped (resume mode).
+// coveragePct selects the top fraction of pages by graph importance; use 1.0 for all pages.
+// OnProgress is called after each page completes with (done, total) counts; may be nil.
 func (i *Instance) GenerateWiki(
 	ctx context.Context,
 	repoID string,
@@ -46,6 +51,8 @@ func (i *Instance) GenerateWiki(
 	router *providers.TieredRouter,
 	completedPageIDs map[string]struct{},
 	concurrency int,
+	coveragePct float64,
+	onProgress func(done, total int),
 ) error {
 	if concurrency <= 0 {
 		concurrency = 5
@@ -97,6 +104,8 @@ func (i *Instance) GenerateWiki(
 	}
 
 	sem := make(chan struct{}, concurrency)
+	total := len(jobs)
+	var done atomic.Int64
 
 	if err := i.db.UpdateWikiJobStatus(ctx, jobID, models.WikiJobRunning); err != nil {
 		i.log.Warn("failed to update wiki job status", "error", err)
@@ -138,6 +147,10 @@ func (i *Instance) GenerateWiki(
 						firstErr = err
 					}
 					mu.Unlock()
+					if errors.Is(err, providers.ErrCircuitOpen) {
+						// Circuit breaker open: pause immediately so --resume can retry later.
+						_ = i.db.UpdateWikiJobStatus(ctx, jobID, models.WikiJobPaused)
+					}
 					return
 				}
 
@@ -156,6 +169,10 @@ func (i *Instance) GenerateWiki(
 				if err := i.db.MarkWikiPageComplete(ctx, jobID, job.id); err != nil {
 					i.log.Warn("failed to checkpoint wiki page", "page_id", job.id, "error", err)
 				}
+				n := int(done.Add(1))
+				if onProgress != nil {
+					onProgress(n, total)
+				}
 			}()
 		}
 		wg.Wait()
@@ -169,7 +186,65 @@ func (i *Instance) GenerateWiki(
 	return i.db.UpdateWikiJobStatus(ctx, jobID, models.WikiJobCompleted)
 }
 
+// scoreAndRankNodes returns file nodes sorted descending by importance score.
+// Score = PageRank*0.7 + normalizedChurn*0.3.
+// Churn is normalized to [0,1] by dividing by the max churn across all file nodes.
+// If engine is nil, returns nil.
+func scoreAndRankNodes(nodes []*analysis.Node) []*analysis.Node {
+	if nodes == nil {
+		return nil
+	}
+
+	// Collect file nodes and compute max churn for normalization.
+	var fileNodes []*analysis.Node
+	maxChurn := 0
+	for _, n := range nodes {
+		if n.InternalType() != analysis.NodeTypeFile {
+			continue
+		}
+		f := n.File()
+		if f == nil || !f.IsFile {
+			continue
+		}
+		fileNodes = append(fileNodes, n)
+		if f.Churn > maxChurn {
+			maxChurn = f.Churn
+		}
+	}
+
+	sort.Slice(fileNodes, func(i, j int) bool {
+		si := nodeImportanceScore(fileNodes[i], maxChurn)
+		sj := nodeImportanceScore(fileNodes[j], maxChurn)
+		if si != sj {
+			return si > sj
+		}
+		return fileNodes[i].File().Path < fileNodes[j].File().Path
+	})
+
+	return fileNodes
+}
+
+// nodeImportanceScore computes PageRank*0.7 + normalizedChurn*0.3 for a file node.
+func nodeImportanceScore(n *analysis.Node, maxChurn int) float64 {
+	f := n.File()
+	if f == nil {
+		return n.PageRank * 0.7
+	}
+	churnNorm := 0.0
+	if maxChurn > 0 {
+		churn := f.Churn
+		if churn < 0 {
+			churn = 0
+		}
+		churnNorm = float64(churn) / float64(maxChurn)
+	}
+	return n.PageRank*0.7 + churnNorm*0.3
+}
+
 // buildPageJobs expands a PlanEntry into individual page jobs.
+// For file_page, api_contract, and infra_page: nodes are ranked by graph importance
+// and capped at entry.Count. For symbol_spotlight: symbols are ranked by parent file PageRank
+// and capped at entry.Count. Other types are not ranked (their counts are already small).
 func buildPageJobs(entry providers.PlanEntry, engine *analysis.GraphEngine) []wikiPageJob {
 	var jobs []wikiPageJob
 	level := pageLevel[entry.PageType]
@@ -179,15 +254,20 @@ func buildPageJobs(entry providers.PlanEntry, engine *analysis.GraphEngine) []wi
 		if engine == nil {
 			return nil
 		}
-		for _, n := range engine.GetNodes() {
-			if n.InternalType() != analysis.NodeTypeFile {
-				continue
+		// Get all nodes, filter for this page type, then rank.
+		allNodes := engine.GetNodes()
+		ranked := scoreAndRankNodes(allNodes)
+
+		count := 0
+		for _, n := range ranked {
+			if entry.Count > 0 && count >= entry.Count {
+				break
 			}
 			f := n.File()
-			if f == nil || !f.IsFile {
+			if entry.PageType == "infra_page" && !isInfraFile(f.Path) {
 				continue
 			}
-			if entry.PageType == "infra_page" && !isInfraFile(f.Path) {
+			if entry.PageType == "api_contract" && !isAPIContractFile(f.Path) {
 				continue
 			}
 			jobs = append(jobs, wikiPageJob{
@@ -196,12 +276,30 @@ func buildPageJobs(entry providers.PlanEntry, engine *analysis.GraphEngine) []wi
 				subject: f.Path,
 				level:   level,
 			})
+			count++
 		}
 
 	case "symbol_spotlight":
 		if engine == nil {
 			return nil
 		}
+		// Build a map of file path -> PageRank for scoring symbols by parent file.
+		filePageRank := make(map[string]float64)
+		for _, n := range engine.GetNodes() {
+			if n.InternalType() == analysis.NodeTypeFile {
+				f := n.File()
+				if f != nil {
+					filePageRank[f.Path] = n.PageRank
+				}
+			}
+		}
+
+		// Collect all symbol nodes.
+		type symWithScore struct {
+			node  *analysis.Node
+			score float64
+		}
+		var syms []symWithScore
 		for _, n := range engine.GetNodes() {
 			if n.InternalType() != analysis.NodeTypeSymbol {
 				continue
@@ -210,12 +308,33 @@ func buildPageJobs(entry providers.PlanEntry, engine *analysis.GraphEngine) []wi
 			if s == nil {
 				continue
 			}
+			pr := filePageRank[s.FilePath]
+			syms = append(syms, symWithScore{node: n, score: pr})
+		}
+		sort.Slice(syms, func(i, j int) bool {
+			if syms[i].score != syms[j].score {
+				return syms[i].score > syms[j].score
+			}
+			si, sj := syms[i].node.Symbol(), syms[j].node.Symbol()
+			if si.FilePath != sj.FilePath {
+				return si.FilePath < sj.FilePath
+			}
+			return si.Name < sj.Name
+		})
+
+		count := 0
+		for _, sw := range syms {
+			if entry.Count > 0 && count >= entry.Count {
+				break
+			}
+			s := sw.node.Symbol()
 			jobs = append(jobs, wikiPageJob{
 				id:      "symbol_spotlight:" + s.FilePath + ":" + s.Name,
 				pgType:  entry.PageType,
 				subject: s.FilePath + ":" + s.Name,
 				level:   level,
 			})
+			count++
 		}
 
 	case "module_page", "scc_page":
@@ -223,7 +342,11 @@ func buildPageJobs(entry providers.PlanEntry, engine *analysis.GraphEngine) []wi
 		if engine == nil {
 			return nil
 		}
+		count := 0
 		for _, n := range engine.GetNodes() {
+			if entry.Count > 0 && count >= entry.Count {
+				break
+			}
 			if n.InternalType() != analysis.NodeTypeFile {
 				continue
 			}
@@ -247,6 +370,7 @@ func buildPageJobs(entry providers.PlanEntry, engine *analysis.GraphEngine) []wi
 				subject: key,
 				level:   level,
 			})
+			count++
 		}
 
 	case "repo_overview", "architecture_diagram", "onboarding":
@@ -268,6 +392,12 @@ func isInfraFile(path string) bool {
 	return base == "Dockerfile" || ext == ".tf" || ext == ".hcl" ||
 		strings.Contains(path, ".github/workflows") ||
 		base == "Jenkinsfile" || base == "docker-compose.yml" || base == "docker-compose.yaml"
+}
+
+// isAPIContractFile returns true for files that are likely to contain exported API symbols.
+func isAPIContractFile(path string) bool {
+	ext := filepath.Ext(path)
+	return ext == ".go" || ext == ".ts" || ext == ".java" || ext == ".py"
 }
 
 // buildPrompt assembles a concise LLM prompt for a wiki page job.

@@ -144,7 +144,7 @@ func TestBuildPlan_NoPremium(t *testing.T) {
 		PremiumModel: "gpt-4",
 	}
 
-	plan := providers.BuildPlan(counts, tc)
+	plan := providers.BuildPlan(counts, tc, nil, nil)
 
 	// No premium pages, so plan should not include any with tier="premium"
 	for _, entry := range plan.Entries {
@@ -173,7 +173,7 @@ func TestBuildPlan_TotalCost(t *testing.T) {
 		PremiumModel: "gpt-4",
 	}
 
-	plan := providers.BuildPlan(counts, tc)
+	plan := providers.BuildPlan(counts, tc, nil, nil)
 
 	// TotalCost should be > 0 when counts are non-zero
 	if plan.TotalCost <= 0 {
@@ -206,7 +206,7 @@ func TestBuildPlan_EmptyCounts(t *testing.T) {
 		PremiumModel: "gpt-4",
 	}
 
-	plan := providers.BuildPlan(counts, tc)
+	plan := providers.BuildPlan(counts, tc, nil, nil)
 
 	if len(plan.Entries) > 0 {
 		t.Errorf("empty counts should produce empty plan, got %d entries", len(plan.Entries))
@@ -233,7 +233,7 @@ func TestBuildPlan_CorrectTierAssignment(t *testing.T) {
 		PremiumModel: "gpt-4",
 	}
 
-	plan := providers.BuildPlan(counts, tc)
+	plan := providers.BuildPlan(counts, tc, nil, nil)
 
 	// Verify tier assignments
 	tierMap := make(map[string]string)
@@ -266,7 +266,7 @@ func TestBuildPlan_ModelAssignment(t *testing.T) {
 		PremiumModel: "gpt-4",
 	}
 
-	plan := providers.BuildPlan(counts, tc)
+	plan := providers.BuildPlan(counts, tc, nil, nil)
 
 	// Verify model assignments match tiers
 	modelMap := make(map[string]string)

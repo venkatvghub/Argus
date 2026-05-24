@@ -33,10 +33,15 @@ func New(dbPath string) (*DB, error) {
 		return nil, fmt.Errorf("failed to create db directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", dbPath)
+	// WAL mode + busy timeout: allow concurrent readers, serialise writers, avoid SQLITE_BUSY.
+	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=10000&_synchronous=NORMAL"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite: %w", err)
 	}
+
+	// Single writer connection prevents intra-process lock contention from concurrent goroutines.
+	db.SetMaxOpenConns(1)
 
 	if err := runMigrations(db); err != nil {
 		db.Close()

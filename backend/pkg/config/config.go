@@ -48,6 +48,12 @@ type Config struct {
 	AnthropicModel string `envconfig:"ANTHROPIC_MODEL"`
 	GeminiModel    string `envconfig:"GEMINI_MODEL"`
 
+	// Wiki Generation Tier Models — override interactive discovery for that tier.
+	// If all three are set, argus init skips model discovery entirely.
+	CheapModel   string `envconfig:"CHEAP_MODEL"`
+	MediumModel  string `envconfig:"MEDIUM_MODEL"`
+	PremiumModel string `envconfig:"PREMIUM_MODEL"`
+
 	// MockStreamTokenDelayMS is the per-token delay for stub LLM streaming implementations.
 	MockStreamTokenDelayMS int `envconfig:"MOCK_STREAM_TOKEN_DELAY_MS" default:"50"`
 
@@ -57,6 +63,19 @@ type Config struct {
 	// CoverageFile is the path to the coverage report file (lcov.info, coverage.xml, or clover.xml).
 	// If empty, Argus auto-discovers coverage files in the repository root.
 	CoverageFile string `envconfig:"COVERAGE_FILE"`
+
+	// Coverage is the fraction of the repo to generate wiki pages for (0.10–1.0).
+	// Used by argus init. Default 0.20 (20%).
+	Coverage float64 `envconfig:"COVERAGE" default:"0.20"`
+
+	// LLM Retry & Circuit Breaker — applied per-tier in the TieredRouter.
+	// MaxRetries=0 disables retry (pass-through). CircuitFailureThreshold=0 disables CB.
+	LLMMaxRetries             uint    `envconfig:"LLM_MAX_RETRIES" default:"3"`
+	LLMRetryInitialDelayMS    int     `envconfig:"LLM_RETRY_INITIAL_DELAY_MS" default:"500"`
+	LLMRetryMaxDelayMS        int     `envconfig:"LLM_RETRY_MAX_DELAY_MS" default:"30000"`
+	LLMRetryMultiplier        float64 `envconfig:"LLM_RETRY_MULTIPLIER" default:"2.0"`
+	LLMCircuitFailureThreshold uint32 `envconfig:"LLM_CIRCUIT_FAILURE_THRESHOLD" default:"5"`
+	LLMCircuitResetTimeoutS   int     `envconfig:"LLM_CIRCUIT_RESET_TIMEOUT_S" default:"60"`
 }
 
 var (

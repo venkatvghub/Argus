@@ -51,7 +51,11 @@ func (tc TieredConfig) modelForTier(tier string) string {
 }
 
 // BuildPlan computes a GenerationPlan from page counts and tier model assignments.
-func BuildPlan(counts PageCounts, tc TieredConfig) GenerationPlan {
+// dynamic provides live pricing (e.g. from OpenRouter discovery); nil falls back to static table.
+// files is used to compute actual average token counts per file; nil uses default heuristics.
+func BuildPlan(counts PageCounts, tc TieredConfig, dynamic map[string][2]float64, files []models.FileNode) GenerationPlan {
+	heuristics := computeHeuristics(files)
+
 	entries := []struct {
 		pageType string
 		count    int
@@ -74,7 +78,7 @@ func BuildPlan(counts PageCounts, tc TieredConfig) GenerationPlan {
 		}
 		tier := TierForPageType(e.pageType)
 		model := tc.modelForTier(tier)
-		cost := EstimatePageCost(e.pageType, model, e.count)
+		cost := estimateWithHeuristics(e.pageType, model, e.count, dynamic, heuristics)
 		plan.Entries = append(plan.Entries, PlanEntry{
 			PageType: e.pageType,
 			Tier:     tier,
@@ -86,6 +90,81 @@ func BuildPlan(counts PageCounts, tc TieredConfig) GenerationPlan {
 		plan.TotalPages += e.count
 	}
 	return plan
+}
+
+// computeHeuristics derives token heuristics from actual repo files.
+// Falls back to package-level defaults for types not computable from files.
+func computeHeuristics(files []models.FileNode) map[string]PageTokenHeuristic {
+	// Start from defaults
+	h := make(map[string]PageTokenHeuristic, len(pageHeuristics))
+	for k, v := range pageHeuristics {
+		h[k] = v
+	}
+
+	if len(files) == 0 {
+		return h
+	}
+
+	// Estimate average tokens per file: bytes / 4 is a standard LLM approximation.
+	var totalBytes int64
+	var fileCount int
+	for _, f := range files {
+		if f.IsFile && f.Size > 0 {
+			totalBytes += f.Size
+			fileCount++
+		}
+	}
+	if fileCount == 0 {
+		return h
+	}
+
+	avgTokens := int(totalBytes/int64(fileCount)) / 4
+	if avgTokens < 200 {
+		avgTokens = 200 // floor: tiny files still need context prompt overhead
+	}
+
+	// file_page input = actual avg tokens + prompt overhead; output scales with it.
+	fp := h["file_page"]
+	fp.Input = avgTokens + 500              // +500 for system prompt / instructions
+	fp.Output = max(200, avgTokens/3)       // output ~1/3 of input
+	h["file_page"] = fp
+
+	// symbol_spotlight is a focused excerpt — cap at 1/4 of file avg.
+	sp := h["symbol_spotlight"]
+	sp.Input = max(300, avgTokens/4) + 300
+	sp.Output = max(100, avgTokens/12)
+	h["symbol_spotlight"] = sp
+
+	// module_page aggregates several files — scale by sqrt(files per module).
+	// Approximate: total files / modules gives avg files per module.
+	if counts := fileCount; counts > 0 {
+		mp := h["module_page"]
+		mp.Input = avgTokens*3 + 1000
+		mp.Output = max(500, avgTokens/2)
+		h["module_page"] = mp
+	}
+
+	return h
+}
+
+// max returns the larger of two ints (pre-Go-1.21 compatible).
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// estimateWithHeuristics computes page cost using repo-derived heuristics + dynamic pricing.
+func estimateWithHeuristics(pageType, model string, count int, dynamic map[string][2]float64, heuristics map[string]PageTokenHeuristic) float64 {
+	h, ok := heuristics[pageType]
+	if !ok {
+		return 0
+	}
+	inPer1M, outPer1M := DynamicModelCostPer1M(model, dynamic)
+	inputCost := float64(h.Input) * float64(count) * inPer1M / 1_000_000
+	outputCost := float64(h.Output) * float64(count) * outPer1M / 1_000_000
+	return inputCost + outputCost
 }
 
 // CountPages computes PageCounts from analysis results.

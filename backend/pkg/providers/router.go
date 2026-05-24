@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/venkatvghub/argus/pkg/config"
 )
@@ -55,7 +56,25 @@ func NewTieredRouter(cfg *config.Config, tc TieredConfig) (*TieredRouter, error)
 	if err != nil {
 		return nil, err
 	}
-	return &TieredRouter{cheap: cheap, medium: medium, premium: premium}, nil
+
+	retryCfg := retryConfigFromConfig(cfg)
+	return &TieredRouter{
+		cheap:   newRetryingProvider(cheap, retryCfg),
+		medium:  newRetryingProvider(medium, retryCfg),
+		premium: newRetryingProvider(premium, retryCfg),
+	}, nil
+}
+
+// retryConfigFromConfig converts config fields to a RetryConfig.
+func retryConfigFromConfig(cfg *config.Config) RetryConfig {
+	return RetryConfig{
+		MaxRetries:         cfg.LLMMaxRetries,
+		InitialInterval:    time.Duration(cfg.LLMRetryInitialDelayMS) * time.Millisecond,
+		MaxInterval:        time.Duration(cfg.LLMRetryMaxDelayMS) * time.Millisecond,
+		Multiplier:         cfg.LLMRetryMultiplier,
+		FailureThreshold:   cfg.LLMCircuitFailureThreshold,
+		ResetTimeout:       time.Duration(cfg.LLMCircuitResetTimeoutS) * time.Second,
+	}
 }
 
 // ChatTier calls the appropriate provider for the given tier ("cheap", "medium", "premium").
