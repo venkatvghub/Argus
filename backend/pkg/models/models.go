@@ -101,13 +101,14 @@ var CategoryCaps = map[ScoreCategory]float64{
 // Deduction is score points subtracted (0 = informational only).
 // Category determines which cap applies when aggregating deductions per file.
 type Marker struct {
-	Type      string        `json:"type"`
-	Severity  string        `json:"severity"`
-	Message   string        `json:"message"`
-	File      string        `json:"file"`
-	Line      int           `json:"line"`
-	Deduction float64       `json:"deduction,omitempty"`
-	Category  ScoreCategory `json:"category,omitempty"`
+	Type       string        `json:"type"`
+	Severity   string        `json:"severity"`
+	Message    string        `json:"message"`
+	File       string        `json:"file"`
+	Line       int           `json:"line"`
+	Deduction  float64       `json:"deduction,omitempty"`
+	Category   ScoreCategory `json:"category,omitempty"`
+	Suggestion string        `json:"suggestion,omitempty"`
 }
 
 // FileScore holds the computed health score for a single file.
@@ -137,4 +138,42 @@ type Job struct {
 	Error     string    `json:"error,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// WikiJobStatus represents the lifecycle state of a wiki generation job.
+type WikiJobStatus string
+
+const (
+	// WikiJobPending indicates the job is waiting to start.
+	WikiJobPending WikiJobStatus = "pending"
+	// WikiJobRunning indicates the job is actively generating pages.
+	WikiJobRunning WikiJobStatus = "running"
+	// WikiJobCompleted indicates the job finished successfully.
+	WikiJobCompleted WikiJobStatus = "completed"
+	// WikiJobFailed indicates the job encountered an error.
+	WikiJobFailed WikiJobStatus = "failed"
+	// WikiJobPaused indicates the job was paused and can be resumed.
+	WikiJobPaused WikiJobStatus = "paused"
+)
+
+// WikiJob represents a wiki generation job with checkpoint state.
+type WikiJob struct {
+	ID         string        `json:"id"`
+	RepoID     string        `json:"repo_id"`
+	Status     WikiJobStatus `json:"status"`
+	TotalPages int           `json:"total_pages"`
+	CreatedAt  time.Time     `json:"created_at"`
+	UpdatedAt  time.Time     `json:"updated_at"`
+}
+
+// WikiPage is a generated documentation page for a repo element.
+type WikiPage struct {
+	ID        string    `json:"id"`         // "{type}:{subject}", e.g. "file_page:src/main.go"
+	RepoID    string    `json:"repo_id"`
+	JobID     string    `json:"job_id"`
+	Type      string    `json:"type"`       // "file_page", "module_page", etc.
+	Subject   string    `json:"subject"`    // file path, module dir, symbol name, etc.
+	Content   string    `json:"content"`    // generated markdown
+	Level     int       `json:"level"`      // generation level 0-7
+	CreatedAt time.Time `json:"created_at"`
 }

@@ -173,6 +173,9 @@ func (me *MarkerEngine) Run(files []models.FileNode, symbols []models.Symbol, gr
 	// 5.5: Organizational risk
 	markers = append(markers, me.checkGitOrgMarkers(files)...)
 
+	for i := range markers {
+		markers[i].Suggestion = SuggestionFor(markers[i].Type)
+	}
 	return markers
 }
 

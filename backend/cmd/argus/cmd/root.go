@@ -61,6 +61,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&rootRepoID, "repo-id", "", "repository ID for query commands")
 
 	rootCmd.AddCommand(analyzeCmd)
+	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(reposCmd)
 	rootCmd.AddCommand(symbolsCmd)
 	rootCmd.AddCommand(markersCmd)
@@ -68,4 +69,6 @@ func init() {
 	rootCmd.AddCommand(communityCmd)
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(jobsCmd)
+	rootCmd.AddCommand(wikiCmd)
 }

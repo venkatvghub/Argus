@@ -10,3 +10,10 @@ const (
 	openRouterReferer = "https://github.com/venkatvghub/argus"
 	openRouterTitle   = "Argus"
 )
+
+// Tier names used for generation routing.
+const (
+	TierCheap   = "cheap"
+	TierMedium  = "medium"
+	TierPremium = "premium"
+)

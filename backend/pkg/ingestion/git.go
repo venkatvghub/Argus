@@ -32,6 +32,7 @@ type GitWalker struct {
 	repoPath          string
 	parser            *TreeSitterParser
 	Workers           int // concurrent file processors; 0 → runtime.NumCPU()
+	OnTotalFiles      func(total int)
 	OnProgress        func(filesProcessed int)
 	OnHistoryProgress func(commitsProcessed int)
 }
@@ -87,6 +88,10 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 		return nil
 	}); err != nil {
 		return nil, nil, err
+	}
+
+	if w.OnTotalFiles != nil {
+		w.OnTotalFiles(len(files))
 	}
 
 	// Single native git log --numstat call — native C diff, much faster than go-git c.Stats().

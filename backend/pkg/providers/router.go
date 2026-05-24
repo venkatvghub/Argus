@@ -9,6 +9,83 @@ import (
 	"github.com/venkatvghub/argus/pkg/config"
 )
 
+// TieredConfig holds the provider and model selections for each generation tier.
+type TieredConfig struct {
+	ProviderName   string
+	CheapModel     string
+	MediumModel    string
+	PremiumModel   string
+}
+
+// TieredRouter routes LLM calls to different models based on generation tier.
+type TieredRouter struct {
+	cheap   Provider
+	medium  Provider
+	premium Provider
+}
+
+// NewTieredRouter creates a TieredRouter by constructing three Provider instances
+// from the same config, each overriding the model field for its tier.
+func NewTieredRouter(cfg *config.Config, tc TieredConfig) (*TieredRouter, error) {
+	makeProvider := func(model string) (Provider, error) {
+		c := *cfg // copy
+		switch tc.ProviderName {
+		case "anthropic":
+			c.AnthropicModel = model
+			return NewAnthropicProvider(&c), nil
+		case "openai":
+			c.OpenAIModel = model
+			return NewOpenAIProvider(&c), nil
+		case "gemini":
+			c.GeminiModel = model
+			return NewGeminiProvider(&c), nil
+		default:
+			return nil, fmt.Errorf("unknown provider %q", tc.ProviderName)
+		}
+	}
+	cheap, err := makeProvider(tc.CheapModel)
+	if err != nil {
+		return nil, err
+	}
+	medium, err := makeProvider(tc.MediumModel)
+	if err != nil {
+		return nil, err
+	}
+	premium, err := makeProvider(tc.PremiumModel)
+	if err != nil {
+		return nil, err
+	}
+	return &TieredRouter{cheap: cheap, medium: medium, premium: premium}, nil
+}
+
+// ChatTier calls the appropriate provider for the given tier ("cheap", "medium", "premium").
+func (t *TieredRouter) ChatTier(ctx context.Context, tier, prompt string) (string, error) {
+	switch tier {
+	case "cheap":
+		return t.cheap.Chat(ctx, prompt)
+	case "medium":
+		return t.medium.Chat(ctx, prompt)
+	case "premium":
+		return t.premium.Chat(ctx, prompt)
+	default:
+		return "", fmt.Errorf("unknown tier %q", tier)
+	}
+}
+
+// ProviderForTier returns the Provider for a given tier (for direct use).
+func (t *TieredRouter) ProviderForTier(tier string) (Provider, error) {
+	switch tier {
+	case "cheap":
+		return t.cheap, nil
+	case "medium":
+		return t.medium, nil
+	case "premium":
+		return t.premium, nil
+	default:
+		return nil, fmt.Errorf("unknown tier %q", tier)
+	}
+}
+
 // Router handles selection and execution across multiple LLM providers.
 type Router struct {
 	providers map[string]Provider
@@ -31,6 +108,11 @@ func NewRouter(cfg *config.Config) *Router {
 	r.Register(NewGeminiProvider(cfg))
 
 	return r
+}
+
+// Active returns the name of the currently active provider.
+func (r *Router) Active() string {
+	return r.active
 }
 
 // Register adds a provider to the router.

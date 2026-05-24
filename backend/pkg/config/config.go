@@ -43,10 +43,10 @@ type Config struct {
 	// OpenAIBaseURL overrides the default OpenAI endpoint — use for OpenRouter or Azure.
 	OpenAIBaseURL string `envconfig:"OPENAI_BASE_URL" default:"https://api.openai.com/v1"`
 
-	// Model Names
-	OpenAIModel    string `envconfig:"OPENAI_MODEL" default:"gpt-4o-mini"`
-	AnthropicModel string `envconfig:"ANTHROPIC_MODEL" default:"claude-3-5-haiku-20241022"`
-	GeminiModel    string `envconfig:"GEMINI_MODEL" default:"gemini-2.0-flash"`
+	// Model Names — empty by default; set via env or selected interactively by argus init.
+	OpenAIModel    string `envconfig:"OPENAI_MODEL"`
+	AnthropicModel string `envconfig:"ANTHROPIC_MODEL"`
+	GeminiModel    string `envconfig:"GEMINI_MODEL"`
 
 	// MockStreamTokenDelayMS is the per-token delay for stub LLM streaming implementations.
 	MockStreamTokenDelayMS int `envconfig:"MOCK_STREAM_TOKEN_DELAY_MS" default:"50"`
