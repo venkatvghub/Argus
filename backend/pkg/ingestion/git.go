@@ -1,6 +1,7 @@
 package ingestion
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -190,23 +191,25 @@ func (w *GitWalker) analyzeFile(ctx context.Context, f *object.File) ([]models.S
 	return symbols, nil
 }
 
-// buildFileMetricsMap uses a single `git log --numstat` call (native C diff engine) to accumulate
-// per-file commit stats. This mirrors repowise's approach and is orders of magnitude faster than
-// go-git's c.Stats() which computes in-memory diffs for every commit.
+// buildFileMetricsMap streams `git log --name-only` (no diff computation, ~25× faster than
+// --numstat) to accumulate per-file churn/ownership stats in a single pass.
 func buildFileMetricsMap(repoPath string, onProgress func(int)) (map[string]fileMetrics, error) {
-	// %x1e = record separator, %x1f = field separator, %ae = author email, %ct = commit timestamp (unix)
-	logFormat := "%x1e%ae%x1f%ct"
+	// --name-only: file names only, no diff content computed → fast
+	// %x1e = record separator (safe in CLI args), %x1f = field separator
 	cmd := exec.Command("git", "log",
-		"--numstat",
+		"--name-only",
 		"--no-merges",
-		"--format="+logFormat,
+		"--format=%x1e%ae%x1f%ct",
 		"HEAD",
 	)
 	cmd.Dir = repoPath
 
-	out, err := cmd.Output()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("git log --numstat: %w", err)
+		return nil, fmt.Errorf("git log pipe: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("git log start: %w", err)
 	}
 
 	type perFileAuthorStats struct {
@@ -217,68 +220,64 @@ func buildFileMetricsMap(repoPath string, onProgress func(int)) (map[string]file
 	fileAuthorStats := make(map[string]map[string]*perFileAuthorStats)
 	fileRecentAuthors := make(map[string]map[string]bool)
 	cutoff := time.Now().AddDate(0, 0, -90)
+
+	var email string
+	var commitTime time.Time
+	var isRecent bool
 	commitCount := 0
 
-	// Output is split by the NUL record separator; first element is always empty.
-	for _, record := range strings.Split(string(out), commitRecordSep) {
-		if record == "" {
-			continue
-		}
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 512*1024), 512*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
 
-		// First line: "email\x1ftimestamp", rest: numstat lines
-		nl := strings.IndexByte(record, '\n')
-		if nl < 0 {
-			continue
-		}
-		header := record[:nl]
-		body := record[nl+1:]
-
-		parts := strings.SplitN(header, fieldSep, 2)
-		if len(parts) < 2 {
-			continue
-		}
-		email := parts[0]
-		ts, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
-		if err != nil {
-			continue
-		}
-		commitTime := time.Unix(ts, 0)
-		isRecent := commitTime.After(cutoff)
-
-		commitCount++
-		if onProgress != nil && commitCount%100 == 0 {
-			onProgress(commitCount)
-		}
-
-		for _, line := range strings.Split(body, "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" {
+		if strings.HasPrefix(line, commitRecordSep) {
+			// Commit header: \x1eemail\x1ftimestamp
+			parts := strings.SplitN(line[len(commitRecordSep):], fieldSep, 2)
+			if len(parts) < 2 {
+				email = ""
 				continue
 			}
-			// numstat format: "added\tdeleted\tpath"
-			cols := strings.SplitN(line, "\t", 3)
-			if len(cols) != 3 || cols[0] == "-" { // "-" = binary file
+			email = parts[0]
+			ts, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+			if err != nil {
+				email = ""
 				continue
 			}
-			path := normalizeRename(cols[2])
-
-			if _, ok := fileAuthorStats[path]; !ok {
-				fileAuthorStats[path] = make(map[string]*perFileAuthorStats)
-				fileRecentAuthors[path] = make(map[string]bool)
+			commitTime = time.Unix(ts, 0)
+			isRecent = commitTime.After(cutoff)
+			commitCount++
+			if onProgress != nil && commitCount%100 == 0 {
+				onProgress(commitCount)
 			}
-			as, ok := fileAuthorStats[path][email]
-			if !ok {
-				as = &perFileAuthorStats{}
-				fileAuthorStats[path][email] = as
-			}
-			as.totalCommits++
-			if commitTime.After(as.lastCommit) {
-				as.lastCommit = commitTime
-			}
-			if isRecent {
-				fileRecentAuthors[path][email] = true
-			}
+			continue
 		}
+
+		if line == "" || email == "" {
+			continue
+		}
+
+		path := normalizeRename(line)
+		if _, ok := fileAuthorStats[path]; !ok {
+			fileAuthorStats[path] = make(map[string]*perFileAuthorStats)
+			fileRecentAuthors[path] = make(map[string]bool)
+		}
+		as, ok := fileAuthorStats[path][email]
+		if !ok {
+			as = &perFileAuthorStats{}
+			fileAuthorStats[path][email] = as
+		}
+		as.totalCommits++
+		if commitTime.After(as.lastCommit) {
+			as.lastCommit = commitTime
+		}
+		if isRecent {
+			fileRecentAuthors[path][email] = true
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return nil, fmt.Errorf("git log: %w", err)
 	}
 
 	result := make(map[string]fileMetrics, len(fileAuthorStats))

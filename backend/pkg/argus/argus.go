@@ -98,7 +98,7 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 	i.Jobs.Submit(job.ID, func() {
 		defer cancel()
 
-		i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, "Indexing... (0 files)", nil)
+		i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, "Reading commit history...", nil)
 
 		absPath, err := filepath.Abs(repoPath)
 		if err != nil {
@@ -112,10 +112,10 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 
 		walker := ingestion.NewGitWalker(absPath, i.parser)
 		walker.OnHistoryProgress = func(n int) {
-			i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, fmt.Sprintf("Computing history... (%d commits)", n), nil)
+			i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, fmt.Sprintf("Reading commit history... (%d commits)", n), nil)
 		}
 		walker.OnProgress = func(n int) {
-			i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, fmt.Sprintf("Indexing... (%d files)", n), nil)
+			i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, fmt.Sprintf("Parsing files... (%d)", n), nil)
 		}
 		nodes, symbols, err := walker.Walk(jobCtx)
 		if err != nil {
