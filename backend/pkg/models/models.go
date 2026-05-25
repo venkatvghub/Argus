@@ -26,6 +26,7 @@ type FileNode struct {
 	Ownership float64   `json:"ownership"` // Percentage of commits by the top author
 
 	AuthorCount             int       `json:"author_count"`
+	PrimaryAuthor           string    `json:"primary_author,omitempty"`
 	PrimaryAuthorLastCommit time.Time `json:"primary_author_last_commit,omitempty"`
 	LineCoverage            float64   `json:"line_coverage"` // 0.0–100.0; -1 = unknown
 }

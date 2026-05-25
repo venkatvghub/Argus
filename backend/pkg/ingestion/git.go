@@ -51,6 +51,8 @@ type fileMetrics struct {
 	churn                   int
 	ownership               float64
 	authorCount             int
+	primaryAuthorEmail      string
+	primaryAuthorName       string
 	primaryAuthorLastCommit time.Time
 }
 
@@ -132,16 +134,21 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 				Churn:                   m.churn,
 				Ownership:               m.ownership,
 				AuthorCount:             m.authorCount,
+				PrimaryAuthor:           m.primaryAuthorName,
 				PrimaryAuthorLastCommit: m.primaryAuthorLastCommit,
 			}
 
 			var symbols []models.Symbol
 			if w.parser != nil {
 				var parseErr error
-				symbols, parseErr = w.analyzeFile(ctx, f)
+				var langName string
+				symbols, langName, parseErr = w.analyzeFile(ctx, f)
 				if parseErr != nil {
 					results[idx] = fileResult{err: fmt.Errorf("analyze %s: %w", f.Name, parseErr)}
 					return
+				}
+				if langName != "" {
+					node.Language = langName
 				}
 			}
 
@@ -171,30 +178,30 @@ func (w *GitWalker) Walk(ctx context.Context) ([]models.FileNode, []models.Symbo
 	return nodes, allSymbols, nil
 }
 
-func (w *GitWalker) analyzeFile(ctx context.Context, f *object.File) ([]models.Symbol, error) {
+func (w *GitWalker) analyzeFile(ctx context.Context, f *object.File) ([]models.Symbol, string, error) {
 	content, err := f.Contents()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	tree, langName, err := w.parser.Parse(ctx, []byte(content), f.Name)
 	if err != nil {
 		if errors.Is(err, ErrUnsupportedLanguage) {
-			return nil, nil // skip files with no registered grammar
+			return nil, "", nil // skip files with no registered grammar
 		}
-		return nil, err
+		return nil, "", err
 	}
 
 	symbols, err := w.parser.ExecuteBiomarkers(tree, langName, []byte(content))
 	if err != nil {
-		return nil, err
+		return nil, langName, err
 	}
 
 	for i := range symbols {
 		symbols[i].FilePath = f.Name
 	}
 
-	return symbols, nil
+	return symbols, langName, nil
 }
 
 func (w *GitWalker) recentAuthorCutoffDays() int {
@@ -209,10 +216,11 @@ func (w *GitWalker) recentAuthorCutoffDays() int {
 func buildFileMetricsMap(repoPath string, recentAuthorCutoffDays int, onProgress func(int)) (map[string]fileMetrics, error) {
 	// --name-only: file names only, no diff content computed → fast
 	// %x1e = record separator (safe in CLI args), %x1f = field separator
+	// format: \x1e<email>\x1f<name>\x1f<unix-timestamp>
 	cmd := exec.Command("git", "log",
 		"--name-only",
 		"--no-merges",
-		"--format=%x1e%ae%x1f%ct",
+		"--format=%x1e%ae%x1f%an%x1f%ct",
 		"HEAD",
 	)
 	cmd.Dir = repoPath
@@ -228,13 +236,14 @@ func buildFileMetricsMap(repoPath string, recentAuthorCutoffDays int, onProgress
 	type perFileAuthorStats struct {
 		totalCommits int
 		lastCommit   time.Time
+		name         string
 	}
 
 	fileAuthorStats := make(map[string]map[string]*perFileAuthorStats)
 	fileRecentAuthors := make(map[string]map[string]bool)
 	cutoff := time.Now().AddDate(0, 0, -recentAuthorCutoffDays)
 
-	var email string
+	var email, authorName string
 	var commitTime time.Time
 	var isRecent bool
 	commitCount := 0
@@ -245,16 +254,19 @@ func buildFileMetricsMap(repoPath string, recentAuthorCutoffDays int, onProgress
 		line := scanner.Text()
 
 		if strings.HasPrefix(line, commitRecordSep) {
-			// Commit header: \x1eemail\x1ftimestamp
-			parts := strings.SplitN(line[len(commitRecordSep):], fieldSep, 2)
-			if len(parts) < 2 {
+			// Commit header: \x1eemail\x1fname\x1ftimestamp
+			parts := strings.SplitN(line[len(commitRecordSep):], fieldSep, 3)
+			if len(parts) < 3 {
 				email = ""
+				authorName = ""
 				continue
 			}
 			email = parts[0]
-			ts, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+			authorName = parts[1]
+			ts, err := strconv.ParseInt(strings.TrimSpace(parts[2]), 10, 64)
 			if err != nil {
 				email = ""
+				authorName = ""
 				continue
 			}
 			commitTime = time.Unix(ts, 0)
@@ -277,8 +289,11 @@ func buildFileMetricsMap(repoPath string, recentAuthorCutoffDays int, onProgress
 		}
 		as, ok := fileAuthorStats[path][email]
 		if !ok {
-			as = &perFileAuthorStats{}
+			as = &perFileAuthorStats{name: authorName}
 			fileAuthorStats[path][email] = as
+		}
+		if as.name == "" && authorName != "" {
+			as.name = authorName
 		}
 		as.totalCommits++
 		if commitTime.After(as.lastCommit) {
@@ -315,14 +330,18 @@ func buildFileMetricsMap(repoPath string, recentAuthorCutoffDays int, onProgress
 		}
 
 		var primaryLastCommit time.Time
+		var primaryName string
 		if primaryEmail != "" {
 			primaryLastCommit = authorMap[primaryEmail].lastCommit
+			primaryName = authorMap[primaryEmail].name
 		}
 
 		result[path] = fileMetrics{
 			churn:                   totalCommits,
 			ownership:               float64(maxCommits) / float64(totalCommits),
 			authorCount:             len(fileRecentAuthors[path]),
+			primaryAuthorEmail:      primaryEmail,
+			primaryAuthorName:       primaryName,
 			primaryAuthorLastCommit: primaryLastCommit,
 		}
 	}

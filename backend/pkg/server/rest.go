@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,6 +54,7 @@ func (s *RESTServer) Routes() chi.Router {
 		r.Delete("/repos/{repoID}", s.deleteRepo)
 		r.Get("/repos/{repoID}/stats", s.getRepoStats)
 		r.Post("/repos/{repoID}/sync", s.syncRepo)
+		r.Post("/repos/{repoID}/full-resync", s.forceResync)
 		r.Get("/repos/{repoID}/symbols", s.getSymbols)
 		r.Get("/repos/{repoID}/markers", s.getMarkers)
 
@@ -64,6 +67,12 @@ func (s *RESTServer) Routes() chi.Router {
 		// Dead code
 		r.Get("/repos/{repoID}/dead-code/summary", s.getDeadCodeSummary)
 		r.Get("/repos/{repoID}/dead-code", s.getDeadCode)
+		r.Post("/repos/{repoID}/dead-code/analyze", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, map[string]any{"job_id": ""})
+		})
+
+		// Blast radius
+		r.Post("/repos/{repoID}/blast-radius", s.postBlastRadius)
 
 		// Decisions / ADR
 		r.Get("/repos/{repoID}/decisions", s.getDecisions)
@@ -126,12 +135,8 @@ func (s *RESTServer) Routes() chi.Router {
 		r.Get("/graph/{repoID}/nodes/search", func(w http.ResponseWriter, r *http.Request) {
 			s.json(w, http.StatusOK, map[string]any{"results": []any{}})
 		})
-		r.Get("/graph/{repoID}/dead-nodes", func(w http.ResponseWriter, r *http.Request) {
-			s.json(w, http.StatusOK, map[string]any{"findings": []any{}})
-		})
-		r.Get("/graph/{repoID}/hot-files", func(w http.ResponseWriter, r *http.Request) {
-			s.json(w, http.StatusOK, map[string]any{"files": []any{}})
-		})
+		r.Get("/graph/{repoID}/dead-nodes", s.getDeadNodesGraph)
+		r.Get("/graph/{repoID}/hot-files", s.getHotFilesGraph)
 		r.Get("/graph/{repoID}/modules", s.getGraphModules)
 		r.Get("/graph/{repoID}/entry-points", s.getGraphExport) // alias used by architecture view
 		r.Get("/graph/{repoID}/execution-flows", s.getExecutionFlows)
@@ -169,12 +174,8 @@ func (s *RESTServer) Routes() chi.Router {
 			s.json(w, http.StatusOK, map[string]any{"job_id": ""})
 		})
 
-		// Module health stubs
-		r.Get("/repos/{repoID}/modules/health", func(w http.ResponseWriter, r *http.Request) {
-			s.json(w, http.StatusOK, map[string]any{
-				"items": []any{}, "total": 0, "has_more": false, "next_offset": nil,
-			})
-		})
+		// Module health
+		r.Get("/repos/{repoID}/modules/health", s.getModuleHealth)
 		r.Get("/repos/{repoID}/modules/health/{modulePath}", func(w http.ResponseWriter, r *http.Request) {
 			s.json(w, http.StatusOK, map[string]any{})
 		})
@@ -309,6 +310,30 @@ func (s *RESTServer) syncRepo(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusAccepted, map[string]string{"job_id": jobID, "message": "sync started"})
 }
 
+func (s *RESTServer) forceResync(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+	repo, err := s.argus.GetRepository(r.Context(), repoID)
+	if err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	// Reset the HEAD checkpoint so Analyze won't skip due to unchanged HEAD.
+	if err := s.argus.ResetAnalysisCheckpoint(r.Context(), repoID); err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	jobID, err := s.argus.Analyze(r.Context(), repo.Path)
+	if err != nil {
+		s.error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.json(w, http.StatusAccepted, map[string]string{"job_id": jobID, "message": "full resync started"})
+}
+
 func (s *RESTServer) indexRepo(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Path string `json:"path"`
@@ -433,6 +458,71 @@ func (s *RESTServer) listSymbols(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		return float64(rank) / float64(len(churns)) * 100
+	}
+
+	// When kind=biomarker, return markers shaped as symOut items instead of symbols.
+	if filterKind == "biomarker" {
+		markers, _ := s.argus.GetRepoMarkers(r.Context(), repoID)
+		seen := make(map[string]struct{})
+		var out []symOut
+		for _, m := range markers {
+			if filterQ != "" && !strings.Contains(strings.ToLower(m.Message), filterQ) && !strings.Contains(strings.ToLower(m.File), filterQ) {
+				continue
+			}
+			fm := fileLookup[m.File]
+			if filterLang != "" && filterLang != "all" && fm.language != filterLang {
+				continue
+			}
+			id := fmt.Sprintf("%s:%s:%d", repoID, m.File, m.Line)
+			if _, dup := seen[id]; dup {
+				continue
+			}
+			seen[id] = struct{}{}
+			pct := churnPercentile(fm.churn)
+			hotBool := fm.churn >= hotspotChurn
+			h := symOut{
+				ID:                  id,
+				RepositoryID:        repoID,
+				FilePath:            m.File,
+				SymbolID:            id,
+				Name:                m.Message,
+				QualifiedName:       m.Message,
+				Kind:                "biomarker",
+				Signature:           m.Type,
+				StartLine:           m.Line,
+				EndLine:             m.Line,
+				Visibility:          "public",
+				Language:            fm.language,
+				FileChurnPercentile: &pct,
+				FileIsHotspot:       &hotBool,
+			}
+			out = append(out, h)
+		}
+		total := len(out)
+		if out == nil {
+			out = []symOut{}
+		}
+		if offset >= total {
+			s.json(w, http.StatusOK, map[string]any{
+				"items": []symOut{}, "total": total, "has_more": false, "next_offset": nil,
+			})
+			return
+		}
+		end := offset + limit
+		if end > total {
+			end = total
+		}
+		page := out[offset:end]
+		hasMore := end < total
+		var nextOffset *int
+		if hasMore {
+			n := end
+			nextOffset = &n
+		}
+		s.json(w, http.StatusOK, map[string]any{
+			"items": page, "total": total, "has_more": hasMore, "next_offset": nextOffset,
+		})
+		return
 	}
 
 	seen := make(map[string]struct{})
@@ -864,7 +954,150 @@ func (s *RESTServer) getCommunities(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.json(w, http.StatusOK, communities)
+	type communityOut struct {
+		CommunityID int      `json:"community_id"`
+		ID          int      `json:"id"`
+		Size        int      `json:"size"`
+		Files       []string `json:"files"`
+	}
+	out := make([]communityOut, len(communities))
+	for i, c := range communities {
+		out[i] = communityOut{CommunityID: c.ID, ID: c.ID, Size: c.Size, Files: c.Files}
+	}
+	s.json(w, http.StatusOK, out)
+}
+
+func (s *RESTServer) getDeadNodesGraph(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+	markers, err := s.argus.GetRepoMarkers(r.Context(), repoID)
+	if err != nil {
+		s.json(w, http.StatusOK, map[string]any{"nodes": []any{}, "links": []any{}})
+		return
+	}
+	files, _ := s.argus.GetRepoFiles(r.Context(), repoID)
+	type fileInfo struct {
+		language  string
+		churn     int
+		ownership float64
+	}
+	fileLookup := make(map[string]fileInfo, len(files))
+	for _, f := range files {
+		fileLookup[f.Path] = fileInfo{language: f.Language, churn: f.Churn, ownership: f.Ownership}
+	}
+
+	type deadNode struct {
+		NodeID          string  `json:"node_id"`
+		NodeType        string  `json:"node_type"`
+		Language        string  `json:"language"`
+		SymbolCount     int     `json:"symbol_count"`
+		Pagerank        float64 `json:"pagerank"`
+		Betweenness     float64 `json:"betweenness"`
+		CommunityID     int     `json:"community_id"`
+		IsTest          bool    `json:"is_test"`
+		IsEntryPoint    bool    `json:"is_entry_point"`
+		HasDoc          bool    `json:"has_doc"`
+		ConfidenceGroup string  `json:"confidence_group"`
+	}
+
+	seen := make(map[string]bool)
+	nodes := make([]deadNode, 0)
+	for _, m := range markers {
+		if m.Type != "dead_code" || seen[m.File] {
+			continue
+		}
+		seen[m.File] = true
+		fi := fileLookup[m.File]
+		base := strings.ToLower(filepath.Base(m.File))
+		isTest := strings.HasSuffix(base, "_test.go") || strings.Contains(base, ".test.") || strings.Contains(base, ".spec.")
+		isEntry := base == "main.go" || strings.Contains(m.File, "/cmd/")
+		confGroup := "high"
+		if isTest || strings.HasSuffix(base, ".pb.go") || strings.Contains(base, "_gen.") {
+			confGroup = "low"
+		} else if fi.churn > 20 || isEntry {
+			confGroup = "medium"
+		}
+		nodes = append(nodes, deadNode{
+			NodeID:          m.File,
+			NodeType:        "file",
+			Language:        fi.language,
+			SymbolCount:     0,
+			Pagerank:        0,
+			Betweenness:     0,
+			CommunityID:     0,
+			IsTest:          isTest,
+			IsEntryPoint:    isEntry,
+			HasDoc:          false,
+			ConfidenceGroup: confGroup,
+		})
+	}
+	s.json(w, http.StatusOK, map[string]any{"nodes": nodes, "links": []any{}})
+}
+
+func (s *RESTServer) getHotFilesGraph(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+	files, err := s.argus.GetRepoFiles(r.Context(), repoID)
+	if err != nil {
+		s.json(w, http.StatusOK, map[string]any{"nodes": []any{}, "links": []any{}})
+		return
+	}
+
+	type hotNode struct {
+		NodeID       string  `json:"node_id"`
+		NodeType     string  `json:"node_type"`
+		Language     string  `json:"language"`
+		SymbolCount  int     `json:"symbol_count"`
+		Pagerank     float64 `json:"pagerank"`
+		Betweenness  float64 `json:"betweenness"`
+		CommunityID  int     `json:"community_id"`
+		IsTest       bool    `json:"is_test"`
+		IsEntryPoint bool    `json:"is_entry_point"`
+		HasDoc       bool    `json:"has_doc"`
+		CommitCount  int     `json:"commit_count"`
+	}
+
+	// compute churn p90 as hotspot threshold
+	churns := make([]int, 0, len(files))
+	for _, f := range files {
+		if f.IsFile {
+			churns = append(churns, f.Churn)
+		}
+	}
+	sort.Ints(churns)
+	threshold := 10
+	if n := len(churns); n > 0 {
+		p90idx := int(float64(n)*0.9)
+		if p90idx >= n {
+			p90idx = n - 1
+		}
+		threshold = churns[p90idx]
+		if threshold < 5 {
+			threshold = 5
+		}
+	}
+
+	nodes := make([]hotNode, 0)
+	for _, f := range files {
+		if !f.IsFile || f.Churn < threshold {
+			continue
+		}
+		base := strings.ToLower(filepath.Base(f.Path))
+		isTest := strings.HasSuffix(base, "_test.go") || strings.Contains(base, ".test.") || strings.Contains(base, ".spec.")
+		isEntry := base == "main.go" || strings.Contains(f.Path, "/cmd/")
+		nodes = append(nodes, hotNode{
+			NodeID:       f.Path,
+			NodeType:     "file",
+			Language:     f.Language,
+			SymbolCount:  0,
+			Pagerank:     0,
+			Betweenness:  0,
+			CommunityID:  0,
+			IsTest:       isTest,
+			IsEntryPoint: isEntry,
+			HasDoc:       false,
+			CommitCount:  f.Churn,
+		})
+	}
+	s.json(w, http.StatusOK, map[string]any{"nodes": nodes, "links": []any{}})
 }
 
 func (s *RESTServer) listJobs(w http.ResponseWriter, r *http.Request) {
@@ -1038,8 +1271,14 @@ func (s *RESTServer) getGitSummary(w http.ResponseWriter, r *http.Request) {
 
 	const hotspotChurnThreshold = 10
 	hotspotCount, stableCount := 0, 0
-	ownerMap := make(map[string]int)
 	var totalChurn int
+
+	type ownerAgg struct {
+		name      string
+		fileCount int
+	}
+	ownersByEmail := make(map[string]*ownerAgg)
+
 	for _, f := range files {
 		if f.Churn >= hotspotChurnThreshold {
 			hotspotCount++
@@ -1047,13 +1286,20 @@ func (s *RESTServer) getGitSummary(w http.ResponseWriter, r *http.Request) {
 			stableCount++
 		}
 		totalChurn += f.Churn
-	}
 
-	// Aggregate ownership by extracting top contributor info from markers.
-	markers, _ := s.argus.GetRepoMarkers(r.Context(), repoID)
-	for _, m := range markers {
-		if m.Type == "knowledge_loss" || m.Type == "developer_congestion" {
-			ownerMap[m.File]++
+		// Aggregate file counts per primary owner.
+		if f.PrimaryAuthor != "" || f.Ownership > 0 {
+			// Use path as email key fallback when no PrimaryAuthor set yet.
+			key := f.PrimaryAuthor
+			if key == "" {
+				continue
+			}
+			agg, ok := ownersByEmail[key]
+			if !ok {
+				agg = &ownerAgg{name: f.PrimaryAuthor}
+				ownersByEmail[key] = agg
+			}
+			agg.fileCount++
 		}
 	}
 
@@ -1062,12 +1308,37 @@ func (s *RESTServer) getGitSummary(w http.ResponseWriter, r *http.Request) {
 		avgChurn = float64(totalChurn) / float64(len(files))
 	}
 
+	// Build top_owners sorted by file_count desc, capped at 10.
+	type topOwner struct {
+		Name      string  `json:"name"`
+		FileCount int     `json:"file_count"`
+		Pct       float64 `json:"pct"`
+	}
+	topOwners := make([]topOwner, 0, len(ownersByEmail))
+	for _, agg := range ownersByEmail {
+		pct := 0.0
+		if len(files) > 0 {
+			pct = float64(agg.fileCount) / float64(len(files))
+		}
+		topOwners = append(topOwners, topOwner{
+			Name:      agg.name,
+			FileCount: agg.fileCount,
+			Pct:       pct,
+		})
+	}
+	sort.Slice(topOwners, func(i, j int) bool {
+		return topOwners[i].FileCount > topOwners[j].FileCount
+	})
+	if len(topOwners) > 10 {
+		topOwners = topOwners[:10]
+	}
+
 	s.json(w, http.StatusOK, map[string]any{
 		"total_files":              len(files),
 		"hotspot_count":            hotspotCount,
 		"stable_count":             stableCount,
 		"average_churn_percentile": avgChurn,
-		"top_owners":               []any{},
+		"top_owners":               topOwners,
 	})
 }
 
@@ -1174,24 +1445,116 @@ func (s *RESTServer) getOwnership(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type ownershipItem struct {
-		Path        string  `json:"path"`
-		Language    string  `json:"language"`
-		Ownership   float64 `json:"ownership_pct"`
-		AuthorCount int     `json:"author_count"`
-		Churn       int     `json:"churn"`
+	granularity := strings.TrimSpace(r.URL.Query().Get("granularity"))
+	if granularity == "" {
+		granularity = "module"
 	}
 
-	items := make([]ownershipItem, 0, len(files))
+	type ownershipItem struct {
+		ModulePath   string  `json:"module_path"`
+		PrimaryOwner *string `json:"primary_owner"`
+		OwnerPct     float64 `json:"owner_pct"`
+		FileCount    int     `json:"file_count"`
+		IsSilo       bool    `json:"is_silo"`
+	}
+
+	if granularity == "file" {
+		items := make([]ownershipItem, 0, len(files))
+		for _, f := range files {
+			var owner *string
+			if f.PrimaryAuthor != "" {
+				s := f.PrimaryAuthor
+				owner = &s
+			}
+			items = append(items, ownershipItem{
+				ModulePath:   f.Path,
+				PrimaryOwner: owner,
+				OwnerPct:     f.Ownership,
+				FileCount:    1,
+				IsSilo:       f.Ownership > 0.8,
+			})
+		}
+		s.json(w, http.StatusOK, map[string]any{
+			"items":       items,
+			"total":       len(items),
+			"has_more":    false,
+			"next_offset": nil,
+		})
+		return
+	}
+
+	// module granularity: group by parent directory
+	type moduleAgg struct {
+		totalChurnWeightedOwnership float64
+		totalChurn                  int
+		fileCount                   int
+		ownerCommits                map[string]int
+		ownerNames                  map[string]string
+	}
+	moduleMap := make(map[string]*moduleAgg)
+
 	for _, f := range files {
+		dir := filepath.ToSlash(filepath.Dir(f.Path))
+		if dir == "." {
+			dir = "(root)"
+		}
+		agg, ok := moduleMap[dir]
+		if !ok {
+			agg = &moduleAgg{
+				ownerCommits: make(map[string]int),
+				ownerNames:   make(map[string]string),
+			}
+			moduleMap[dir] = agg
+		}
+		agg.fileCount++
+		if f.PrimaryAuthor != "" {
+			// Weight by churn: files with more commits influence module owner more.
+			weight := f.Churn
+			if weight < 1 {
+				weight = 1
+			}
+			agg.ownerCommits[f.PrimaryAuthor] += weight
+			agg.ownerNames[f.PrimaryAuthor] = f.PrimaryAuthor
+			agg.totalChurn += weight
+		}
+		agg.totalChurnWeightedOwnership += f.Ownership * float64(max(f.Churn, 1))
+	}
+
+	items := make([]ownershipItem, 0, len(moduleMap))
+	for dir, agg := range moduleMap {
+		var primaryOwner *string
+		ownerPct := 0.0
+
+		if len(agg.ownerCommits) > 0 {
+			maxW := 0
+			var topOwner string
+			for owner, w := range agg.ownerCommits {
+				if w > maxW || (w == maxW && (topOwner == "" || owner < topOwner)) {
+					maxW = w
+					topOwner = owner
+				}
+			}
+			if topOwner != "" {
+				o := topOwner
+				primaryOwner = &o
+			}
+			if agg.totalChurn > 0 {
+				ownerPct = float64(maxW) / float64(agg.totalChurn)
+			}
+		}
+
 		items = append(items, ownershipItem{
-			Path:        f.Path,
-			Language:    f.Language,
-			Ownership:   f.Ownership,
-			AuthorCount: f.AuthorCount,
-			Churn:       f.Churn,
+			ModulePath:   dir,
+			PrimaryOwner: primaryOwner,
+			OwnerPct:     ownerPct,
+			FileCount:    agg.fileCount,
+			IsSilo:       ownerPct > 0.8,
 		})
 	}
+
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].FileCount > items[j].FileCount
+	})
 
 	s.json(w, http.StatusOK, map[string]any{
 		"items":       items,
@@ -1200,6 +1563,7 @@ func (s *RESTServer) getOwnership(w http.ResponseWriter, r *http.Request) {
 		"next_offset": nil,
 	})
 }
+
 
 func (s *RESTServer) getHotspots(w http.ResponseWriter, r *http.Request) {
 	repoID := chi.URLParam(r, "repoID")
@@ -1218,31 +1582,99 @@ func (s *RESTServer) getHotspots(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type hotspotItem struct {
-		Path        string  `json:"path"`
-		Language    string  `json:"language"`
-		Churn       int     `json:"churn"`
-		Ownership   float64 `json:"ownership_pct"`
-		AuthorCount int     `json:"author_count"`
+		FilePath        string  `json:"file_path"`
+		Language        string  `json:"language"`
+		CommitCount90d  int     `json:"commit_count_90d"`
+		CommitCount30d  int     `json:"commit_count_30d"`
+		ChurnPercentile float64 `json:"churn_percentile"`
+		PrimaryOwner    *string `json:"primary_owner"`
+		IsHotspot       bool    `json:"is_hotspot"`
+		IsStable        bool    `json:"is_stable"`
+		BusFactor       int     `json:"bus_factor"`
+		ContributorCount int    `json:"contributor_count"`
+		LinesAdded90d   int     `json:"lines_added_90d"`
+		LinesDeleted90d int     `json:"lines_deleted_90d"`
+		AvgCommitSize   int     `json:"avg_commit_size"`
+		CommitCategories map[string]int `json:"commit_categories"`
 	}
 
-	const hotspotThreshold = 5
-	items := make([]hotspotItem, 0)
+	const hotspotChurnThreshold = 10
+
+	// Pre-compute churn percentile for each file.
+	n := len(files)
+	buildItem := func(f models.FileNode) hotspotItem {
+		churnPct := 0.0
+		if n > 1 {
+			below := 0
+			for _, other := range files {
+				if other.Churn < f.Churn {
+					below++
+				}
+			}
+			churnPct = float64(below) / float64(n-1) * 100
+		}
+		var owner *string
+		if f.PrimaryAuthor != "" {
+			o := f.PrimaryAuthor
+			owner = &o
+		}
+		return hotspotItem{
+			FilePath:         f.Path,
+			Language:         f.Language,
+			CommitCount90d:   f.Churn,
+			CommitCount30d:   0,
+			ChurnPercentile:  churnPct,
+			PrimaryOwner:     owner,
+			IsHotspot:        f.Churn >= hotspotChurnThreshold,
+			IsStable:         f.Churn < hotspotChurnThreshold,
+			BusFactor:        f.AuthorCount,
+			ContributorCount: f.AuthorCount,
+			LinesAdded90d:    0,
+			LinesDeleted90d:  0,
+			AvgCommitSize:    0,
+			CommitCategories: map[string]int{},
+		}
+	}
+
+	items := make([]hotspotItem, 0, len(files))
 	for _, f := range files {
-		if f.Churn >= hotspotThreshold {
-			items = append(items, hotspotItem{
-				Path:        f.Path,
-				Language:    f.Language,
-				Churn:       f.Churn,
-				Ownership:   f.Ownership,
-				AuthorCount: f.AuthorCount,
-			})
+		items = append(items, buildItem(f))
+	}
+
+	// Sort by churn descending.
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].CommitCount90d > items[j].CommitCount90d
+	})
+
+	// Apply limit / offset pagination.
+	q := r.URL.Query()
+	limit := 50
+	offset := 0
+	if v := q.Get("limit"); v != "" {
+		if parsed, err := fmt.Sscanf(v, "%d", &limit); parsed != 1 || err != nil || limit <= 0 {
+			limit = 50
+		}
+	}
+	if v := q.Get("offset"); v != "" {
+		if parsed, err := fmt.Sscanf(v, "%d", &offset); parsed != 1 || err != nil || offset < 0 {
+			offset = 0
+		}
+	}
+
+	total := len(items)
+	if offset >= total {
+		items = []hotspotItem{}
+	} else {
+		items = items[offset:]
+		if len(items) > limit {
+			items = items[:limit]
 		}
 	}
 
 	s.json(w, http.StatusOK, map[string]any{
 		"items":       items,
-		"total":       len(items),
-		"has_more":    false,
+		"total":       total,
+		"has_more":    offset+len(items) < total,
 		"next_offset": nil,
 	})
 }
@@ -1255,7 +1687,8 @@ func (s *RESTServer) getDeadCodeSummary(w http.ResponseWriter, r *http.Request) 
 		s.error(w, http.StatusBadRequest, "repo_id is required")
 		return
 	}
-	if _, err := s.argus.GetRepository(r.Context(), repoID); err != nil {
+	markers, err := s.argus.GetRepoMarkers(r.Context(), repoID)
+	if err != nil {
 		if errors.Is(err, argus.ErrRepoNotFound) {
 			s.error(w, http.StatusNotFound, err.Error())
 		} else {
@@ -1263,12 +1696,56 @@ func (s *RESTServer) getDeadCodeSummary(w http.ResponseWriter, r *http.Request) 
 		}
 		return
 	}
+	files, _ := s.argus.GetRepoFiles(r.Context(), repoID)
+	type fileInfo struct {
+		churn     int
+		ownership float64
+	}
+	fileLookup := make(map[string]fileInfo, len(files))
+	for _, f := range files {
+		fileLookup[f.Path] = fileInfo{churn: f.Churn, ownership: f.Ownership}
+	}
+	confHigh, confMed, confLow := 0, 0, 0
+	count := 0
+	for _, m := range markers {
+		if m.Type != "dead_code" {
+			continue
+		}
+		count++
+		base := strings.ToLower(filepath.Base(m.File))
+		var conf float64
+		if strings.HasSuffix(base, "_test.go") || strings.HasSuffix(base, ".test.ts") ||
+			strings.HasSuffix(base, ".test.tsx") || strings.HasSuffix(base, ".spec.ts") ||
+			strings.HasSuffix(base, ".spec.tsx") {
+			conf = 0.5
+		} else if strings.HasSuffix(base, ".pb.go") || strings.Contains(base, "_gen.") ||
+			strings.Contains(base, ".gen.") || strings.Contains(base, "_mock.") {
+			conf = 0.55
+		} else if base == "main.go" || base == "index.ts" || base == "index.tsx" ||
+			strings.Contains(m.File, "/cmd/") {
+			conf = 0.6
+		} else if fi, ok := fileLookup[m.File]; ok && fi.churn > 20 {
+			conf = 0.65
+		} else if fi, ok := fileLookup[m.File]; ok && fi.churn <= 5 && fi.ownership > 0.8 {
+			conf = 0.9
+		} else {
+			conf = 0.8
+		}
+		switch {
+		case conf >= 0.8:
+			confHigh++
+		case conf >= 0.6:
+			confMed++
+		default:
+			confLow++
+		}
+	}
 	s.json(w, http.StatusOK, map[string]any{
-		"total_findings":     0,
-		"confidence_summary": map[string]int{},
+		"total_findings":     count,
+		"confidence_summary": map[string]int{"high": confHigh, "medium": confMed, "low": confLow},
 		"deletable_lines":    0,
 		"total_lines":        0,
-		"by_kind":            map[string]int{},
+		"by_kind":            map[string]int{"zombie_export": count},
 	})
 }
 
@@ -1278,7 +1755,8 @@ func (s *RESTServer) getDeadCode(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, "repo_id is required")
 		return
 	}
-	if _, err := s.argus.GetRepository(r.Context(), repoID); err != nil {
+	markers, err := s.argus.GetRepoMarkers(r.Context(), repoID)
+	if err != nil {
 		if errors.Is(err, argus.ErrRepoNotFound) {
 			s.error(w, http.StatusNotFound, err.Error())
 		} else {
@@ -1286,7 +1764,87 @@ func (s *RESTServer) getDeadCode(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.json(w, http.StatusOK, []any{})
+	files, _ := s.argus.GetRepoFiles(r.Context(), repoID)
+	type fileInfo struct {
+		churn     int
+		ownership float64
+		owner     string
+	}
+	fileLookup := make(map[string]fileInfo, len(files))
+	for _, f := range files {
+		fileLookup[f.Path] = fileInfo{churn: f.Churn, ownership: f.Ownership, owner: f.PrimaryAuthor}
+	}
+
+	deadCodeConfidence := func(path string) float64 {
+		base := strings.ToLower(filepath.Base(path))
+		// Test files: high false-positive rate
+		if strings.HasSuffix(base, "_test.go") || strings.HasSuffix(base, ".test.ts") ||
+			strings.HasSuffix(base, ".test.tsx") || strings.HasSuffix(base, ".spec.ts") ||
+			strings.HasSuffix(base, ".spec.tsx") {
+			return 0.5
+		}
+		// Generated files: protobuf, mocks, codegen
+		if strings.HasSuffix(base, ".pb.go") || strings.Contains(base, "_gen.") ||
+			strings.Contains(base, ".gen.") || strings.Contains(base, "_mock.") {
+			return 0.55
+		}
+		// Entry points: may be called by runtime/OS, not graph-traceable
+		if base == "main.go" || base == "index.ts" || base == "index.tsx" ||
+			strings.Contains(path, "/cmd/") {
+			return 0.6
+		}
+		fi, ok := fileLookup[path]
+		if !ok {
+			return 0.75
+		}
+		// High-churn file: recently active, exports may be in-flight
+		if fi.churn > 20 {
+			return 0.65
+		}
+		// Stable, single-owner: very likely genuinely dead
+		if fi.churn <= 5 && fi.ownership > 0.8 {
+			return 0.9
+		}
+		return 0.8
+	}
+
+	type deadCodeItem struct {
+		ID           string  `json:"id"`
+		RepoID       string  `json:"repo_id"`
+		FilePath     string  `json:"file_path"`
+		SymbolName   string  `json:"symbol_name"`
+		Kind         string  `json:"kind"`
+		Confidence   float64 `json:"confidence"`
+		SafeToDelete bool    `json:"safe_to_delete"`
+		LineStart    int     `json:"line_start"`
+		LineEnd      int     `json:"line_end"`
+		PrimaryOwner string  `json:"primary_owner"`
+		Status       string  `json:"status"`
+		Message      string  `json:"message"`
+	}
+	out := make([]deadCodeItem, 0)
+	for _, m := range markers {
+		if m.Type != "dead_code" {
+			continue
+		}
+		conf := deadCodeConfidence(m.File)
+		owner := fileLookup[m.File].owner
+		out = append(out, deadCodeItem{
+			ID:           fmt.Sprintf("%s:%d:%s", m.File, m.Line, m.Message),
+			RepoID:       repoID,
+			FilePath:     m.File,
+			SymbolName:   m.Message,
+			Kind:         "zombie_export",
+			Confidence:   conf,
+			SafeToDelete: conf >= 0.7,
+			LineStart:    m.Line,
+			LineEnd:      m.Line,
+			PrimaryOwner: owner,
+			Status:       "open",
+			Message:      m.Message,
+		})
+	}
+	s.json(w, http.StatusOK, out)
 }
 
 // --- Decision / ADR stubs ---
@@ -1903,6 +2461,495 @@ func (s *RESTServer) getPageByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.json(w, http.StatusOK, wikiPageToResponse(page))
+}
+
+// getModuleHealth handles GET /repos/{repoID}/modules/health
+func (s *RESTServer) getModuleHealth(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+	q := r.URL.Query()
+	sortBy := q.Get("sort")
+	limit := 30
+	offset := 0
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	if v := q.Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+
+	files, err := s.argus.GetRepoFiles(r.Context(), repoID)
+	if err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	markers, _ := s.argus.GetRepoMarkers(r.Context(), repoID)
+	symbols, _ := s.argus.GetRepoSymbols(r.Context(), repoID)
+
+	// Compute global churn percentile helpers.
+	n := len(files)
+	churnPercentileFor := func(churn int) float64 {
+		if n <= 1 {
+			return 0
+		}
+		below := 0
+		for _, f := range files {
+			if f.Churn < churn {
+				below++
+			}
+		}
+		return float64(below) / float64(n-1) * 100
+	}
+
+	// Group files by module (directory).
+	type moduleData struct {
+		files     []models.FileNode
+		churns    []float64
+		busFactor []int
+		owners    map[string]int
+	}
+	modules := make(map[string]*moduleData)
+	for _, f := range files {
+		dir := filepath.ToSlash(filepath.Dir(f.Path))
+		if dir == "." {
+			dir = "(root)"
+		}
+		md, ok := modules[dir]
+		if !ok {
+			md = &moduleData{owners: make(map[string]int)}
+			modules[dir] = md
+		}
+		md.files = append(md.files, f)
+		md.churns = append(md.churns, churnPercentileFor(f.Churn))
+		md.busFactor = append(md.busFactor, f.AuthorCount)
+		if f.PrimaryAuthor != "" {
+			md.owners[f.PrimaryAuthor]++
+		}
+	}
+
+	// Count dead_code markers per module.
+	deadCodeByModule := make(map[string]int)
+	for _, m := range markers {
+		if m.Type != "dead_code" {
+			continue
+		}
+		dir := filepath.ToSlash(filepath.Dir(m.File))
+		if dir == "." {
+			dir = "(root)"
+		}
+		deadCodeByModule[dir]++
+	}
+
+	// Count symbols per module.
+	symbolsByModule := make(map[string]int)
+	for _, sym := range symbols {
+		dir := filepath.ToSlash(filepath.Dir(sym.FilePath))
+		if dir == "." {
+			dir = "(root)"
+		}
+		symbolsByModule[dir]++
+	}
+
+	type moduleHealthSummary struct {
+		ModulePath        string  `json:"module_path"`
+		FileCount         int     `json:"file_count"`
+		SymbolCount       int     `json:"symbol_count"`
+		HotspotCount      int     `json:"hotspot_count"`
+		DeadCodeCount     int     `json:"dead_code_count"`
+		DeadCodeLines     int     `json:"dead_code_lines"`
+		AvgChurnPercentile float64 `json:"avg_churn_percentile"`
+		MedianBusFactor   float64 `json:"median_bus_factor"`
+		MinBusFactor      int     `json:"min_bus_factor"`
+		PrimaryOwner      *string `json:"primary_owner"`
+		PrimaryOwnerPct   float64 `json:"primary_owner_pct"`
+		IsSilo            bool    `json:"is_silo"`
+		DecisionCount     int     `json:"decision_count"`
+		DocCoveragePct    float64 `json:"doc_coverage_pct"`
+		HealthScore       float64 `json:"health_score"`
+	}
+
+	const hotspotChurnThreshold = 10
+
+	clamp := func(v, lo, hi float64) float64 {
+		if v < lo {
+			return lo
+		}
+		if v > hi {
+			return hi
+		}
+		return v
+	}
+
+	items := make([]moduleHealthSummary, 0, len(modules))
+	for modPath, md := range modules {
+		fc := len(md.files)
+
+		// Avg churn percentile.
+		avgChurn := 0.0
+		if fc > 0 {
+			sum := 0.0
+			for _, c := range md.churns {
+				sum += c
+			}
+			avgChurn = sum / float64(fc)
+		}
+
+		// Bus factor stats.
+		sortedBF := make([]int, len(md.busFactor))
+		copy(sortedBF, md.busFactor)
+		sort.Ints(sortedBF)
+		minBF := 1
+		if len(sortedBF) > 0 {
+			minBF = sortedBF[0]
+			if minBF < 1 {
+				minBF = 1
+			}
+		}
+		medianBF := 0.0
+		if len(sortedBF) > 0 {
+			mid := len(sortedBF) / 2
+			if len(sortedBF)%2 == 0 {
+				medianBF = float64(sortedBF[mid-1]+sortedBF[mid]) / 2.0
+			} else {
+				medianBF = float64(sortedBF[mid])
+			}
+		}
+
+		// Primary owner.
+		var primaryOwner *string
+		primaryOwnerPct := 0.0
+		if len(md.owners) > 0 {
+			bestOwner := ""
+			bestCount := 0
+			for owner, cnt := range md.owners {
+				if cnt > bestCount {
+					bestCount = cnt
+					bestOwner = owner
+				}
+			}
+			if bestOwner != "" {
+				primaryOwner = &bestOwner
+				primaryOwnerPct = float64(bestCount) / float64(fc)
+			}
+		}
+
+		// Hotspot count.
+		hotspotCount := 0
+		for _, f := range md.files {
+			if f.Churn >= hotspotChurnThreshold {
+				hotspotCount++
+			}
+		}
+
+		deadCodeCount := deadCodeByModule[modPath]
+		symCount := symbolsByModule[modPath]
+
+		// Health score.
+		score := 100.0
+		score -= clamp(avgChurn*0.4, 0, 40)
+		score -= clamp((1-primaryOwnerPct)*20, 0, 20)
+		score -= clamp((1/float64(minBF))*20, 0, 20)
+		score -= clamp(float64(deadCodeCount)*2, 0, 20)
+		score = clamp(score, 0, 100)
+
+		items = append(items, moduleHealthSummary{
+			ModulePath:         modPath,
+			FileCount:          fc,
+			SymbolCount:        symCount,
+			HotspotCount:       hotspotCount,
+			DeadCodeCount:      deadCodeCount,
+			DeadCodeLines:      0,
+			AvgChurnPercentile: avgChurn,
+			MedianBusFactor:    medianBF,
+			MinBusFactor:       minBF,
+			PrimaryOwner:       primaryOwner,
+			PrimaryOwnerPct:    primaryOwnerPct,
+			IsSilo:             primaryOwnerPct > 0.8,
+			DecisionCount:      0,
+			DocCoveragePct:     0,
+			HealthScore:        score,
+		})
+	}
+
+	// Sort.
+	switch sortBy {
+	case "health_score":
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].HealthScore < items[j].HealthScore
+		})
+	case "hotspot_count":
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].HotspotCount > items[j].HotspotCount
+		})
+	case "dead_code_lines":
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].DeadCodeCount > items[j].DeadCodeCount
+		})
+	case "file_count":
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].FileCount > items[j].FileCount
+		})
+	default:
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].HealthScore < items[j].HealthScore
+		})
+	}
+
+	total := len(items)
+	if offset >= total {
+		s.json(w, http.StatusOK, map[string]any{
+			"items": []moduleHealthSummary{}, "total": total, "has_more": false, "next_offset": nil,
+		})
+		return
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	page := items[offset:end]
+	hasMore := end < total
+	s.json(w, http.StatusOK, map[string]any{
+		"items": page, "total": total, "has_more": hasMore, "next_offset": nil,
+	})
+}
+
+// postBlastRadius handles POST /repos/{repoID}/blast-radius
+func (s *RESTServer) postBlastRadius(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+
+	var body struct {
+		ChangedFiles []string `json:"changed_files"`
+		MaxDepth     int      `json:"max_depth"`
+	}
+	body.MaxDepth = 3
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if body.MaxDepth <= 0 {
+		body.MaxDepth = 3
+	}
+
+	files, err := s.argus.GetRepoFiles(r.Context(), repoID)
+	if err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	graph, _ := s.argus.GetGraphExport(r.Context(), repoID)
+
+	// Build file map and churn array for percentile.
+	fileMap := make(map[string]models.FileNode, len(files))
+	churns := make([]int, 0, len(files))
+	for _, f := range files {
+		fileMap[filepath.ToSlash(f.Path)] = f
+		churns = append(churns, f.Churn)
+	}
+	churnPctFor := func(churn int) float64 {
+		if len(churns) <= 1 {
+			return 0
+		}
+		below := 0
+		for _, c := range churns {
+			if c < churn {
+				below++
+			}
+		}
+		return float64(below) / float64(len(churns)-1) * 100
+	}
+
+	// Compute max pagerank for normalization.
+	maxPR := 0.0
+	prByID := make(map[string]float64, len(graph.Nodes))
+	for _, node := range graph.Nodes {
+		prByID[node.NodeID] = node.PageRank
+		if node.PageRank > maxPR {
+			maxPR = node.PageRank
+		}
+	}
+	if maxPR == 0 {
+		maxPR = 1
+	}
+
+	// Build adjacency map: nodeID → []nodeID from graph links.
+	adjacency := make(map[string][]string)
+	for _, link := range graph.Links {
+		adjacency[link.Source] = append(adjacency[link.Source], link.Target)
+	}
+
+	// Build set of changed files (slash-normalized).
+	changedSet := make(map[string]bool, len(body.ChangedFiles))
+	for _, cf := range body.ChangedFiles {
+		changedSet[filepath.ToSlash(cf)] = true
+	}
+
+	// Direct risks.
+	type directRisk struct {
+		Path            string  `json:"path"`
+		RiskScore       float64 `json:"risk_score"`
+		TemporalHotspot float64 `json:"temporal_hotspot"`
+		Centrality      float64 `json:"centrality"`
+	}
+	directRisks := make([]directRisk, 0)
+	for _, cf := range body.ChangedFiles {
+		cfSlash := filepath.ToSlash(cf)
+		f, ok := fileMap[cfSlash]
+		if !ok {
+			continue
+		}
+		churnPct := churnPctFor(f.Churn)
+		pr := prByID[cfSlash]
+		centrality := pr / maxPR
+
+		riskScore := (churnPct/100*0.5 + f.Ownership*0.3 + centrality*0.2)
+		if riskScore > 1 {
+			riskScore = 1
+		}
+		directRisks = append(directRisks, directRisk{
+			Path:            cfSlash,
+			RiskScore:       riskScore,
+			TemporalHotspot: churnPct / 100,
+			Centrality:      centrality,
+		})
+	}
+
+	// Transitive affected: BFS from changed files via adjacency edges.
+	type transitiveItem struct {
+		Path  string `json:"path"`
+		Depth int    `json:"depth"`
+	}
+	transitiveAffected := make([]transitiveItem, 0)
+	visited := make(map[string]bool)
+	for cf := range changedSet {
+		visited[cf] = true
+	}
+	type bfsNode struct {
+		id    string
+		depth int
+	}
+	queue := make([]bfsNode, 0)
+	for cf := range changedSet {
+		queue = append(queue, bfsNode{id: cf, depth: 0})
+	}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if cur.depth >= body.MaxDepth {
+			continue
+		}
+		for _, neighbor := range adjacency[cur.id] {
+			if visited[neighbor] {
+				continue
+			}
+			visited[neighbor] = true
+			transitiveAffected = append(transitiveAffected, transitiveItem{Path: neighbor, Depth: cur.depth + 1})
+			queue = append(queue, bfsNode{id: neighbor, depth: cur.depth + 1})
+		}
+	}
+
+	// Recommended reviewers: aggregate PrimaryAuthors from direct + transitive files.
+	type reviewerAgg struct {
+		files      int
+		ownershipSum float64
+	}
+	reviewers := make(map[string]*reviewerAgg)
+	collectReviewer := func(path string) {
+		f, ok := fileMap[path]
+		if !ok {
+			return
+		}
+		if f.PrimaryAuthor == "" {
+			return
+		}
+		agg, exists := reviewers[f.PrimaryAuthor]
+		if !exists {
+			agg = &reviewerAgg{}
+			reviewers[f.PrimaryAuthor] = agg
+		}
+		agg.files++
+		agg.ownershipSum += f.Ownership
+	}
+	for _, cf := range body.ChangedFiles {
+		collectReviewer(filepath.ToSlash(cf))
+	}
+	for _, t := range transitiveAffected {
+		collectReviewer(t.Path)
+	}
+	type reviewerItem struct {
+		Email        string  `json:"email"`
+		Files        int     `json:"files"`
+		OwnershipPct float64 `json:"ownership_pct"`
+	}
+	reviewerList := make([]reviewerItem, 0, len(reviewers))
+	for email, agg := range reviewers {
+		avgOwnership := 0.0
+		if agg.files > 0 {
+			avgOwnership = agg.ownershipSum / float64(agg.files)
+		}
+		reviewerList = append(reviewerList, reviewerItem{
+			Email:        email,
+			Files:        agg.files,
+			OwnershipPct: avgOwnership,
+		})
+	}
+	sort.Slice(reviewerList, func(i, j int) bool {
+		return reviewerList[i].Files > reviewerList[j].Files
+	})
+	if len(reviewerList) > 5 {
+		reviewerList = reviewerList[:5]
+	}
+
+	// Test gaps: changed non-test files with no test file neighbor.
+	testGaps := make([]string, 0)
+	for _, cf := range body.ChangedFiles {
+		cfSlash := filepath.ToSlash(cf)
+		// Skip files that are themselves test files.
+		if strings.HasSuffix(cfSlash, "_test.go") ||
+			strings.Contains(cfSlash, "/test/") ||
+			strings.Contains(cfSlash, "test_") {
+			continue
+		}
+		hasTest := false
+		for _, neighbor := range adjacency[cfSlash] {
+			if strings.HasSuffix(neighbor, "_test.go") {
+				hasTest = true
+				break
+			}
+		}
+		if !hasTest {
+			testGaps = append(testGaps, cfSlash)
+		}
+	}
+
+	// Overall risk score: average of direct risks * 10.
+	overallRisk := 0.0
+	if len(directRisks) > 0 {
+		sum := 0.0
+		for _, dr := range directRisks {
+			sum += dr.RiskScore
+		}
+		overallRisk = (sum / float64(len(directRisks))) * 10
+	}
+
+	s.json(w, http.StatusOK, map[string]any{
+		"direct_risks":          directRisks,
+		"transitive_affected":   transitiveAffected,
+		"cochange_warnings":     []any{},
+		"recommended_reviewers": reviewerList,
+		"test_gaps":             testGaps,
+		"overall_risk_score":    overallRisk,
+	})
 }
 
 func (s *RESTServer) json(w http.ResponseWriter, code int, payload any) {

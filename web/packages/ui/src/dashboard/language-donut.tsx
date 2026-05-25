@@ -31,7 +31,23 @@ export function LanguageDonut({ distribution }: LanguageDonutProps) {
     .sort((a, b) => b.value - a.value);
 
   const total = entries.reduce((s, e) => s + e.value, 0);
-  if (total === 0) return null;
+  if (total === 0) {
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Code className="h-4 w-4 text-[var(--color-text-secondary)]" />
+            Languages
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <p className="text-xs text-[var(--color-text-tertiary)]">
+            Language breakdown not available yet. Run a sync to index the graph.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const shown = entries.slice(0, 6);
   const otherValue = entries.slice(6).reduce((s, e) => s + e.value, 0);

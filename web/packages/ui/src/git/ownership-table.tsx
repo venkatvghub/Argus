@@ -118,9 +118,9 @@ export function OwnershipTable({ entries, repoId, linkPrefix }: OwnershipTablePr
               </tr>
             </thead>
             <tbody>
-              {filtered.map((entry) => (
+              {filtered.map((entry, i) => (
                 <tr
-                  key={entry.module_path}
+                  key={entry.module_path || String(i)}
                   className="border-b border-[var(--color-border-default)] hover:bg-[var(--color-bg-elevated)] transition-colors last:border-0"
                 >
                   <td className="px-4 py-2.5 font-mono text-xs text-[var(--color-text-primary)] min-w-[200px] max-w-[480px]">

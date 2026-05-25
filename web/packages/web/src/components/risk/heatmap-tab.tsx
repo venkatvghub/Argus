@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { OwnershipTreemap } from "@argus-dev/ui/git/ownership-treemap";
+import { EmptyState } from "@argus-dev/ui/shared/empty-state";
 import { listModuleHealth } from "@/lib/api/modules";
 import type { ModuleHealthSummary } from "@/lib/api/types";
 import { BusFactorPanel } from "@argus-dev/ui/git/bus-factor-panel";
@@ -64,6 +65,9 @@ export function HeatmapTab({ repoId }: { repoId: string }) {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm">Ownership Heatmap</CardTitle>
+              <span className="text-[10px] text-[var(--color-text-tertiary)]">
+                Each tile = one module. Bigger tile = more files.
+              </span>
               <div className="flex rounded-md border border-[var(--color-border-default)] overflow-hidden text-xs">
                 {(["module", "file"] as Granularity[]).map((g) => (
                   <button
@@ -99,22 +103,38 @@ export function HeatmapTab({ repoId }: { repoId: string }) {
             />
           </CardContent>
         </Card>
-      ) : null}
-
-      {hotspots && hotspots.length > 0 && (
+      ) : (
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Hotspot trend</CardTitle>
-            <p className="text-xs text-[var(--color-text-tertiary)]">
-              Top files by churn. Heating arrows mark files where the last 30 days are
-              outpacing the 90-day baseline.
-            </p>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <HotspotTrendStrip hotspots={hotspots} />
+          <CardContent className="p-6">
+            <EmptyState
+              title="No ownership data"
+              description="Run a sync to compute ownership. Once indexed, each module appears as a tile sized by code volume and colored by primary owner."
+            />
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Hotspot trend</CardTitle>
+          <p className="text-xs text-[var(--color-text-tertiary)]">
+            Top files ranked by churn (commit frequency). A <strong>hotspot</strong> is a file changed
+            so often it statistically has more bugs. The heating arrow{" "}
+            <span className="font-mono">↑</span> means the last 30 days are accelerating vs. the 90-day
+            average — those files are getting riskier.
+          </p>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {hotspots && hotspots.length > 0 ? (
+            <HotspotTrendStrip hotspots={hotspots} />
+          ) : (
+            <EmptyState
+              title="No hotspot data"
+              description="Run a sync to compute churn metrics."
+            />
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {hotspots && hotspots.length > 0 && (
