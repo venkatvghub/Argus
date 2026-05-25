@@ -59,6 +59,21 @@ function lookupCost(modelName: string): [number, number] {
   return bestRates;
 }
 
+function isFreeModel(modelName: string): boolean {
+  const lower = modelName.toLowerCase();
+  return lower.startsWith("llama") || lower.startsWith("mock") || lower.startsWith("ollama");
+}
+
+function isKnownModel(modelName: string): boolean {
+  if (!modelName) return false;
+  const lower = modelName.toLowerCase();
+  if (lower in COST_TABLE_EXACT) return true;
+  for (const [prefix] of COST_TABLE_PREFIX) {
+    if (lower.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
 function estimateCost(pageCount: number, modelName: string) {
   const inputTokens = pageCount * AVG_INPUT_TOKENS_PER_PAGE;
   const outputTokens = pageCount * AVG_OUTPUT_TOKENS_PER_PAGE;
@@ -270,10 +285,18 @@ export function QuickActions({
               </div>
             )}
 
-            {estimate && estimate.cost === 0 && (
+            {estimate && estimate.cost === 0 && isFreeModel(modelName ?? "") && (
               <div className="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-inset)] p-3">
                 <p className="text-xs text-[var(--color-success)] text-center">
-                  No API cost — running locally via Ollama
+                  No API cost — running locally
+                </p>
+              </div>
+            )}
+
+            {estimate && estimate.cost === 0 && !isFreeModel(modelName ?? "") && !isKnownModel(modelName ?? "") && modelName && (
+              <div className="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-inset)] p-3">
+                <p className="text-xs text-[var(--color-text-tertiary)] text-center">
+                  Cost estimate unavailable for model: {modelName}
                 </p>
               </div>
             )}
