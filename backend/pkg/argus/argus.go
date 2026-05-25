@@ -120,7 +120,9 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 
 	job := i.Jobs.CreateJob(jobTypeAnalysis, repoID)
 
-	jobCtx, cancel := context.WithCancel(ctx)
+	// Detach from the caller's context so the job survives HTTP request completion.
+	// WithoutCancel preserves values (logger, trace IDs) but not the cancellation signal.
+	jobCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	i.Jobs.RegisterCancel(job.ID, cancel)
 
 	// Persist the job to DB so it survives process restarts.
