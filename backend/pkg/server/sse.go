@@ -12,6 +12,7 @@ import (
 	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/logger"
 	"github.com/venkatvghub/argus/pkg/models"
+	"github.com/venkatvghub/argus/pkg/providers"
 )
 
 func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
@@ -200,8 +201,8 @@ func (s *RESTServer) postChatMessage(w http.ResponseWriter, r *http.Request) {
 				}
 				// Record LLM cost (best-effort; never block the response).
 				modelName := s.argus.ActiveModelName()
-				inputTokens := len(body.Message) / 4
-				outputTokens := len(assistantContent) / 4
+				inputTokens := providers.EstimateTokenCount(modelName, body.Message)
+				outputTokens := providers.EstimateTokenCount(modelName, assistantContent)
 				if recordErr := s.argus.RecordCost(ctx, repoID, modelName, "chat", inputTokens, outputTokens, nil); recordErr != nil {
 					logger.FromContext(ctx).Warn("failed to record LLM cost", "repo_id", repoID, "error", recordErr)
 				}

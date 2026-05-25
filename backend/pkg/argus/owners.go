@@ -11,9 +11,6 @@ import (
 	"time"
 )
 
-const ownerHotspotChurnThreshold = 10
-const ownerDefaultCutoffDays = 90
-
 // OwnerListEntry is the paginated contributor entry for /repos/{id}/owners.
 type OwnerListEntry struct {
 	Key                string  `json:"key"`
@@ -111,7 +108,12 @@ func buildOwnerStatsFromGit(repoPath string, cutoffDays int) (map[string]*rawOwn
 		}
 		byEmail[curEmail].fileCommits[line]++
 	}
-	_ = cmd.Wait()
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("git log scan: %w", err)
+	}
+	if err := cmd.Wait(); err != nil {
+		return nil, fmt.Errorf("git log wait: %w", err)
+	}
 	return byEmail, nil
 }
 
@@ -137,7 +139,7 @@ func (i *Instance) GetOwners(ctx context.Context, repoID, q, sortKey string, lim
 		fileMap[f.Path] = fileInfo{churn: f.Churn, authorCount: f.AuthorCount}
 	}
 
-	byEmail, err := buildOwnerStatsFromGit(repo.Path, ownerDefaultCutoffDays)
+	byEmail, err := buildOwnerStatsFromGit(repo.Path, i.cfg.OwnerDefaultCutoffDaysOrDefault())
 	if err != nil {
 		return nil, 0, fmt.Errorf("owners git: %w", err)
 	}
@@ -171,7 +173,7 @@ func (i *Instance) GetOwners(ctx context.Context, repoID, q, sortKey string, lim
 		}
 		m.filesOwned++
 		fi := fileMap[path]
-		if fi.churn >= ownerHotspotChurnThreshold {
+		if fi.churn >= i.cfg.OwnerHotspotChurnThresholdOrDefault() {
 			m.hotspotsOwned++
 		}
 		if fi.authorCount == 1 {

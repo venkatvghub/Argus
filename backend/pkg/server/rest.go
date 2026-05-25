@@ -161,8 +161,6 @@ func (s *RESTServer) Routes() chi.Router {
 
 		// Symbols — flat query-param style used by the frontend (/api/symbols?repo_id=...)
 		r.Get("/symbols", s.listSymbols)
-		r.Get("/symbols/by-name/{name}", s.listSymbols)
-		r.Get("/symbols/{symbolID}", s.listSymbols)
 
 		// Wiki pages — flat query-param style (/api/pages?repo_id=...)
 		r.Get("/pages", s.listPages)
@@ -187,7 +185,7 @@ func (s *RESTServer) Routes() chi.Router {
 		// Owners
 		r.Get("/repos/{repoID}/owners", s.listOwners)
 		r.Get("/repos/{repoID}/owners/{ownerKey}", func(w http.ResponseWriter, r *http.Request) {
-			s.json(w, http.StatusOK, map[string]any{})
+			s.error(w, http.StatusNotImplemented, "owner detail endpoint not yet implemented")
 		})
 
 		// Score & export (existing)
@@ -582,20 +580,18 @@ func (s *RESTServer) listSymbols(w http.ResponseWriter, r *http.Request) {
 	// Sort.
 	switch sortBy {
 	case "name":
-		for i := 1; i < len(out); i++ {
-			for j := i; j > 0 && out[j].Name < out[j-1].Name; j-- {
-				out[j], out[j-1] = out[j-1], out[j]
-			}
-		}
+		sort.SliceStable(out, func(i, j int) bool {
+			return out[i].Name < out[j].Name
+		})
 	default: // "importance" — sort by hotspot descending, then name
-		for i := 1; i < len(out); i++ {
-			a, b := out[i], out[i-1]
-			aHot := a.FileIsHotspot != nil && *a.FileIsHotspot
-			bHot := b.FileIsHotspot != nil && *b.FileIsHotspot
-			if aHot && !bHot {
-				out[i], out[i-1] = out[i-1], out[i]
+		sort.SliceStable(out, func(i, j int) bool {
+			aHot := out[i].FileIsHotspot != nil && *out[i].FileIsHotspot
+			bHot := out[j].FileIsHotspot != nil && *out[j].FileIsHotspot
+			if aHot != bHot {
+				return aHot
 			}
-		}
+			return out[i].Name < out[j].Name
+		})
 	}
 
 	total := len(out)
@@ -649,7 +645,7 @@ var securityMarkerTypes = map[string]bool{
 }
 
 type securityFinding struct {
-	ID         int    `json:"id"`
+	ID         string `json:"id"`
 	FilePath   string `json:"file_path"`
 	Kind       string `json:"kind"`
 	Severity   string `json:"severity"`
@@ -666,24 +662,19 @@ func (s *RESTServer) getSecurityFindings(w http.ResponseWriter, r *http.Request)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	out := make([]securityFinding, 0)
-	id := 1
 	for _, m := range markers {
 		if !securityMarkerTypes[m.Type] {
 			continue
 		}
-		sev := m.Severity
-		if sev == "medium" {
-			sev = "med"
-		}
+		id := fmt.Sprintf("%x", sha256.Sum256([]byte(m.File+m.Type+fmt.Sprint(m.Line))))[:12]
 		out = append(out, securityFinding{
 			ID:         id,
 			FilePath:   m.File,
 			Kind:       m.Type,
-			Severity:   sev,
+			Severity:   m.Severity,
 			Snippet:    m.Message,
 			DetectedAt: now,
 		})
-		id++
 	}
 	s.json(w, http.StatusOK, out)
 }
@@ -884,11 +875,16 @@ func (s *RESTServer) getHealthFileBreakdown(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Build metric sub-object.
-	module := filepath.Dir(filePath)
+	moduleDir := filepath.ToSlash(filepath.Dir(filePath))
+	var modulePtr *string
+	if moduleDir != "" {
+		modulePtr = &moduleDir
+	}
 	metric := &HealthFileMetric{
 		FilePath:    filePath,
 		Score:       score.Final,
 		HasTestFile: false,
+		Module:      modulePtr,
 	}
 
 	// Build findings list for the sidebar.
@@ -914,7 +910,6 @@ func (s *RESTServer) getHealthFileBreakdown(w http.ResponseWriter, r *http.Reque
 			Status:        "open",
 		})
 	}
-	_ = module
 
 	s.json(w, http.StatusOK, map[string]any{
 		"file_path": filePath,
@@ -1364,9 +1359,10 @@ func (s *RESTServer) getGitMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var target *struct {
-		churn       int
-		ownership   float64
-		authorCount int
+		churn         int
+		ownership     float64
+		authorCount   int
+		primaryAuthor string
 	}
 	const hotspotChurnThreshold = 10
 	totalChurn := 0
@@ -1376,11 +1372,13 @@ func (s *RESTServer) getGitMetadata(w http.ResponseWriter, r *http.Request) {
 			c := f.Churn
 			o := f.Ownership
 			a := f.AuthorCount
+			pa := f.PrimaryAuthor
 			target = &struct {
-				churn       int
-				ownership   float64
-				authorCount int
-			}{c, o, a}
+				churn         int
+				ownership     float64
+				authorCount   int
+				primaryAuthor string
+			}{c, o, a, pa}
 		}
 	}
 	if target == nil {
@@ -1407,8 +1405,8 @@ func (s *RESTServer) getGitMetadata(w http.ResponseWriter, r *http.Request) {
 		"commit_count_30d":         0,
 		"first_commit_at":          nil,
 		"last_commit_at":           nil,
-		"primary_owner_name":       nil,
-		"primary_owner_email":      nil,
+		"primary_owner_name":       target.primaryAuthor,
+		"primary_owner_email":      target.primaryAuthor,
 		"primary_owner_commit_pct": target.ownership * 100,
 		"recent_owner_name":        nil,
 		"recent_owner_commit_pct":  target.ownership * 100,
@@ -1600,19 +1598,37 @@ func (s *RESTServer) getHotspots(w http.ResponseWriter, r *http.Request) {
 
 	const hotspotChurnThreshold = 10
 
-	// Pre-compute churn percentile for each file.
+	// Pre-compute churn percentile for each file (O(n log n), not O(n²) per file).
 	n := len(files)
-	buildItem := func(f models.FileNode) hotspotItem {
-		churnPct := 0.0
-		if n > 1 {
-			below := 0
-			for _, other := range files {
-				if other.Churn < f.Churn {
-					below++
-				}
-			}
-			churnPct = float64(below) / float64(n-1) * 100
+	churnPctMap := make(map[string]float64, n)
+	if n > 1 {
+		type pathChurn struct {
+			path  string
+			churn int
 		}
+		pairs := make([]pathChurn, 0, n)
+		for _, f := range files {
+			pairs = append(pairs, pathChurn{path: f.Path, churn: f.Churn})
+		}
+		sort.Slice(pairs, func(i, j int) bool { return pairs[i].churn < pairs[j].churn })
+		below := 0
+		for i := 0; i < len(pairs); {
+			churn := pairs[i].churn
+			j := i
+			for j < len(pairs) && pairs[j].churn == churn {
+				j++
+			}
+			pct := float64(below) / float64(n-1) * 100
+			for k := i; k < j; k++ {
+				churnPctMap[pairs[k].path] = pct
+			}
+			below += j - i
+			i = j
+		}
+	}
+
+	buildItem := func(f models.FileNode) hotspotItem {
+		churnPct := churnPctMap[f.Path]
 		var owner *string
 		if f.PrimaryAuthor != "" {
 			o := f.PrimaryAuthor
@@ -2341,13 +2357,7 @@ func (s *RESTServer) getRefactoringTargets(w http.ResponseWriter, r *http.Reques
 			return targets[i].ImpactPerEffort > targets[j].ImpactPerEffort
 		}
 	}
-	for i := 1; i < len(targets); i++ {
-		for j := 0; j < len(targets)-i; j++ {
-			if sortTargets(j+1, j) {
-				targets[j], targets[j+1] = targets[j+1], targets[j]
-			}
-		}
-	}
+	sort.Slice(targets, sortTargets)
 
 	s.json(w, http.StatusOK, map[string]any{
 		"targets": targets,

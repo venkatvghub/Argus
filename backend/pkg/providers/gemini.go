@@ -108,7 +108,7 @@ func (p *GeminiProvider) Chat(ctx context.Context, prompt string) (string, error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		return "", fmt.Errorf("gemini chat: status %d: %s", resp.StatusCode, string(raw))
 	}
 
@@ -142,7 +142,7 @@ func (p *GeminiProvider) ChatWithUsage(ctx context.Context, prompt string) (stri
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		return "", 0, 0, fmt.Errorf("gemini chat: status %d: %s", resp.StatusCode, string(raw))
 	}
 	var result geminiResponse
@@ -180,7 +180,7 @@ func (p *GeminiProvider) ChatStream(ctx context.Context, repoID string, prompt s
 		return nil, nil, fmt.Errorf("gemini stream: http: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		resp.Body.Close()
 		return nil, nil, fmt.Errorf("gemini stream: status %d: %s", resp.StatusCode, string(raw))
 	}
@@ -253,7 +253,7 @@ func (p *GeminiProvider) ListModels(ctx context.Context) ([]string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		return nil, fmt.Errorf("gemini list models: status %d: %s", resp.StatusCode, string(raw))
 	}
 

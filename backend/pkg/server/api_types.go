@@ -20,13 +20,20 @@ type RepoResponse struct {
 }
 
 func repoToResponse(r models.Repository) RepoResponse {
-	updatedAt := r.CreatedAt
+	defaultBranch := r.DefaultBranch
+	if defaultBranch == "" {
+		defaultBranch = "main"
+	}
+	updatedAt := r.UpdatedAt
+	if updatedAt.IsZero() {
+		updatedAt = r.CreatedAt
+	}
 	return RepoResponse{
 		ID:            r.ID,
 		Name:          r.Name,
 		LocalPath:     r.Path,
 		URL:           r.URL,
-		DefaultBranch: "main",
+		DefaultBranch: defaultBranch,
 		HeadCommit:    r.LastCommit,
 		CreatedAt:     r.CreatedAt,
 		UpdatedAt:     updatedAt,
@@ -154,7 +161,7 @@ type HealthTrendResponse struct {
 	SnapshotCount int                `json:"snapshot_count"`
 }
 
-// markerToFinding converts an internal argus.HealthFinding to the API shape.
+// argusHealthFindingToAPI converts an internal argus.HealthFinding to the API shape.
 func argusHealthFindingToAPI(f argus.HealthFinding) HealthFinding {
 	var lineStart *int
 	if f.Line > 0 {

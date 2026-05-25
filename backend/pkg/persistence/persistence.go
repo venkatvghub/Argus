@@ -21,6 +21,9 @@ type DB struct {
 	db *gorm.DB
 }
 
+// ErrRepoNotFound is returned when a repository ID is not in the database.
+var ErrRepoNotFound = errors.New("repo not found")
+
 // -- GORM models ----------------------------------------------------------
 
 type repositoryRow struct {
@@ -149,6 +152,7 @@ type repoFileRow struct {
 	AuthorCount             int        `gorm:"column:author_count;type:integer;not null;default:0"`
 	LineCoverage            float64    `gorm:"column:line_coverage;type:double precision;not null;default:0"`
 	Size                    int64      `gorm:"column:size;type:bigint;not null;default:0"`
+	PrimaryAuthor           string     `gorm:"column:primary_author;type:text"`
 	PrimaryAuthorLastCommit *time.Time `gorm:"column:primary_author_last_commit;type:timestamptz"`
 }
 
@@ -244,7 +248,7 @@ func (d *DB) GetRepository(ctx context.Context, repoID string) (models.Repositor
 	err := d.db.WithContext(ctx).Where("id = ?", repoID).First(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return models.Repository{}, fmt.Errorf("repository %q: %w", repoID, gorm.ErrRecordNotFound)
+			return models.Repository{}, fmt.Errorf("repository %q: %w", repoID, ErrRepoNotFound)
 		}
 		return models.Repository{}, err
 	}
@@ -254,6 +258,7 @@ func (d *DB) GetRepository(ctx context.Context, repoID string) (models.Repositor
 		Path:       row.LocalPath,
 		LastCommit: row.LastCommit,
 		CreatedAt:  row.CreatedAt,
+		UpdatedAt:  row.UpdatedAt,
 	}, nil
 }
 
@@ -270,6 +275,7 @@ func (d *DB) ListRepositories(ctx context.Context) ([]models.Repository, error) 
 			Path:       r.LocalPath,
 			LastCommit: r.LastCommit,
 			CreatedAt:  r.CreatedAt,
+			UpdatedAt:  r.UpdatedAt,
 		})
 	}
 	return repos, nil
@@ -786,6 +792,7 @@ func (d *DB) UpsertRepoFiles(ctx context.Context, repoID string, files []models.
 				AuthorCount:             f.AuthorCount,
 				LineCoverage:            f.LineCoverage,
 				Size:                    f.Size,
+				PrimaryAuthor:           f.PrimaryAuthor,
 				PrimaryAuthorLastCommit: pac,
 			})
 		}
@@ -804,14 +811,15 @@ func (d *DB) GetRepoFiles(ctx context.Context, repoID string) ([]models.FileNode
 	files := make([]models.FileNode, 0, len(rows))
 	for _, r := range rows {
 		f := models.FileNode{
-			Path:         r.Path,
-			Language:     r.Language,
-			Churn:        r.Churn,
-			Ownership:    r.Ownership,
-			AuthorCount:  r.AuthorCount,
-			LineCoverage: r.LineCoverage,
-			Size:         r.Size,
-			IsFile:       true,
+			Path:          r.Path,
+			Language:      r.Language,
+			Churn:         r.Churn,
+			Ownership:     r.Ownership,
+			AuthorCount:   r.AuthorCount,
+			LineCoverage:  r.LineCoverage,
+			Size:          r.Size,
+			PrimaryAuthor: r.PrimaryAuthor,
+			IsFile:        true,
 		}
 		if r.PrimaryAuthorLastCommit != nil {
 			f.PrimaryAuthorLastCommit = *r.PrimaryAuthorLastCommit

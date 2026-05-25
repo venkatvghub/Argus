@@ -19,7 +19,7 @@ import (
 // Instance manages the lifecycle and resources for a single Argus session.
 type Instance struct {
 	cfg    *config.Config
-	db     *persistence.DB
+	db     dbStore
 	log    *logger.Logger
 	parser *ingestion.TreeSitterParser
 	Jobs   *JobManager
@@ -31,8 +31,26 @@ type Instance struct {
 	upToDate     map[string]bool     // repoID → true when HEAD unchanged, analysis skipped
 }
 
-// New creates and initializes a new Argus instance.
+// New creates and initializes a new Argus instance backed by PostgreSQL.
 func New(ctx context.Context, cfg *config.Config) (*Instance, error) {
+	if cfg == nil {
+		var err error
+		cfg, err = config.Load()
+		if err != nil {
+			return nil, fmt.Errorf("config load: %w", err)
+		}
+	}
+
+	db, err := persistence.New(cfg.DatabaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("persistence init: %w", err)
+	}
+
+	return newWithDB(ctx, cfg, db)
+}
+
+// newWithDB creates an Instance using the provided dbStore implementation.
+func newWithDB(ctx context.Context, cfg *config.Config, db dbStore) (*Instance, error) {
 	if cfg == nil {
 		var err error
 		cfg, err = config.Load()
@@ -49,11 +67,6 @@ func New(ctx context.Context, cfg *config.Config) (*Instance, error) {
 	}
 	log := logger.FromContext(ctx)
 
-	db, err := persistence.New(cfg.DatabaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("persistence init: %w", err)
-	}
-
 	parser, err := ingestion.NewTreeSitterParser()
 	if err != nil {
 		log.Warn("failed to initialize tree-sitter parser", "error", err)
@@ -62,10 +75,10 @@ func New(ctx context.Context, cfg *config.Config) (*Instance, error) {
 	markerMap := make(map[string][]models.Marker)
 	if loaded, err := db.LoadAllMarkers(ctx); err == nil {
 		for repoID, ms := range loaded {
-		for i := range ms {
-			if ms[i].Suggestion == "" {
-				ms[i].Suggestion = analysis.SuggestionFor(ms[i].Type)
-			}
+			for i := range ms {
+				if ms[i].Suggestion == "" {
+					ms[i].Suggestion = analysis.SuggestionFor(ms[i].Type)
+				}
 			}
 			loaded[repoID] = ms
 		}
@@ -362,6 +375,7 @@ func (i *Instance) GetRepoSymbols(ctx context.Context, repoID string) ([]models.
 	}
 	dbSymbols, err := i.db.GetRepoSymbols(ctx, repoID)
 	if err != nil {
+		i.log.Warn("failed to load repo symbols from DB", "repo_id", repoID, "error", err)
 		return []models.Symbol{}, nil
 	}
 	if dbSymbols == nil {

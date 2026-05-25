@@ -27,7 +27,7 @@ type GraphNodeResponse struct {
 type GraphEdgeResponse struct {
 	Source        string   `json:"source"`
 	Target        string   `json:"target"`
-	ImportedNames []string `json:"imported_names"`
+	ImportedNames []string `json:"imported_names,omitempty"`
 }
 
 // GraphExportResponse is the full graph for the dashboard.
@@ -47,14 +47,17 @@ type CommunityInfo struct {
 // isTestPath returns true for common test file naming conventions.
 func isTestPath(path string) bool {
 	base := strings.ToLower(filepath.Base(path))
-	return strings.HasSuffix(base, "_test.go") ||
+	if strings.HasSuffix(base, "_test.go") ||
 		strings.HasSuffix(base, ".test.ts") ||
 		strings.HasSuffix(base, ".test.tsx") ||
 		strings.HasSuffix(base, ".spec.ts") ||
-		strings.HasSuffix(base, ".spec.tsx") ||
-		strings.Contains(path, "/test/") ||
-		strings.Contains(path, "/tests/") ||
-		strings.Contains(path, "/__tests__/")
+		strings.HasSuffix(base, ".spec.tsx") {
+		return true
+	}
+	normalized := filepath.ToSlash(path)
+	return strings.Contains(normalized, "/test/") ||
+		strings.Contains(normalized, "/tests/") ||
+		strings.Contains(normalized, "/__tests__/")
 }
 
 // GetGraphExport returns the full graph structure for a repository.
@@ -154,9 +157,8 @@ func (i *Instance) GetGraphExport(ctx context.Context, repoID string) (GraphExpo
 			continue
 		}
 		resp.Links = append(resp.Links, GraphEdgeResponse{
-			Source:        fromFile.Path,
-			Target:        toFile.Path,
-			ImportedNames: []string{},
+			Source: fromFile.Path,
+			Target: toFile.Path,
 		})
 	}
 

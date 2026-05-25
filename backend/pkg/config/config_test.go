@@ -136,6 +136,13 @@ func TestLoad_LLMResilienceValidation(t *testing.T) {
 	}
 }
 
+func TestConfig_OwnerDefaults(t *testing.T) {
+	assert.Equal(t, 10, (&Config{}).OwnerHotspotChurnThresholdOrDefault())
+	assert.Equal(t, 90, (&Config{}).OwnerDefaultCutoffDaysOrDefault())
+	assert.Equal(t, 15, (&Config{OwnerHotspotChurnThreshold: 15}).OwnerHotspotChurnThresholdOrDefault())
+	assert.Equal(t, 120, (&Config{OwnerDefaultCutoffDays: 120}).OwnerDefaultCutoffDaysOrDefault())
+}
+
 func TestConfig_LLMHTTPTimeout(t *testing.T) {
 	defaultTimeout := time.Duration(defaultLLMHTTPTimeoutS) * time.Second
 

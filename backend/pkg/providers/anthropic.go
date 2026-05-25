@@ -106,7 +106,7 @@ func (p *AnthropicProvider) Chat(ctx context.Context, prompt string) (string, er
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		return "", fmt.Errorf("anthropic chat: status %d: %s", resp.StatusCode, string(raw))
 	}
 
@@ -144,7 +144,7 @@ func (p *AnthropicProvider) ChatWithUsage(ctx context.Context, prompt string) (s
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		return "", 0, 0, fmt.Errorf("anthropic chat: status %d: %s", resp.StatusCode, string(raw))
 	}
 	var result anthropicResponse
@@ -184,7 +184,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, repoID string, promp
 		return nil, nil, fmt.Errorf("anthropic stream: http: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		resp.Body.Close()
 		return nil, nil, fmt.Errorf("anthropic stream: status %d: %s", resp.StatusCode, string(raw))
 	}
@@ -271,7 +271,7 @@ func (p *AnthropicProvider) ListModels(ctx context.Context) ([]string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		return nil, fmt.Errorf("anthropic list models: status %d: %s", resp.StatusCode, string(raw))
 	}
 

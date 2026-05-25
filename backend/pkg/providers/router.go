@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -130,8 +131,9 @@ type usageProvider interface {
 	ChatWithUsage(ctx context.Context, prompt string) (string, int, int, error)
 }
 
-// ChatTierWithUsage calls ChatTier and also returns input/output token counts if the underlying
-// provider supports it. Falls back to estimation (len/4) when not supported.
+// ChatTierWithUsage calls the tier provider and returns token counts when the
+// underlying provider implements usageProvider/ChatWithUsage (after unwrapping
+// retryingProvider). Otherwise it falls back to Chat plus a best-effort estimate.
 func (t *TieredRouter) ChatTierWithUsage(ctx context.Context, tier, prompt string) (content string, inputTokens, outputTokens int, err error) {
 	var p Provider
 	switch tier {
@@ -153,11 +155,17 @@ func (t *TieredRouter) ChatTierWithUsage(ctx context.Context, tier, prompt strin
 	if up, ok := p.(usageProvider); ok {
 		return up.ChatWithUsage(ctx, prompt)
 	}
-	// Fallback: call Chat and estimate tokens.
+	// Best-effort fallback only when usageProvider/ChatWithUsage is unavailable
+	// (including after unwrapping retryingProvider): call Chat and estimate
+	// tokens from byte length / 4 — not provider-reported usage.
 	content, err = p.Chat(ctx, prompt)
 	if err != nil {
 		return "", 0, 0, err
 	}
+	log.Printf(
+		"providers: ChatTierWithUsage using estimated token counts (tier=%q provider=%q model=%q); provider does not implement ChatWithUsage",
+		tier, p.Name(), t.ModelForTier(tier),
+	)
 	return content, len(prompt) / 4, len(content) / 4, nil
 }
 

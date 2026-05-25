@@ -25,7 +25,7 @@ import (
 
 func TestSSEHandler(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	assert.NoError(t, err)
 	defer inst.Close()
 
@@ -97,7 +97,7 @@ func TestSSEHandler(t *testing.T) {
 func TestSSEParsing(t *testing.T) {
 	// More detailed parsing test
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	if err != nil {
 		t.Fatalf("failed to create argus instance: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestSSEParsing(t *testing.T) {
 
 func TestChatStreamHandler_MissingRepoID(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -166,7 +166,7 @@ func TestChatStreamHandler_MissingRepoID(t *testing.T) {
 
 func TestChatStreamHandler_MissingQuery(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -183,7 +183,7 @@ func TestChatStreamHandler_MissingQuery(t *testing.T) {
 
 func TestChatStreamHandler_RepoNotFound(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -202,7 +202,7 @@ func TestChatStreamHandler_RepoNotFound(t *testing.T) {
 
 func TestChatStreamHandler_NoProvider(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -220,7 +220,7 @@ func TestChatStreamHandler_NoProvider(t *testing.T) {
 
 func TestChatStreamHandler_StreamsTokens(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -246,7 +246,7 @@ func TestChatStreamHandler_StreamsTokens(t *testing.T) {
 
 func TestChatStreamHandler_StreamingError(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -270,7 +270,7 @@ func TestChatStreamHandler_StreamingError(t *testing.T) {
 
 func TestSetProvider(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 

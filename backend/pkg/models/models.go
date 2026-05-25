@@ -7,12 +7,14 @@ import "time"
 
 // Repository represents a source code repository under analysis.
 type Repository struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Path       string    `json:"path"`
-	URL        string    `json:"url,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
-	LastCommit string    `json:"last_commit,omitempty"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Path          string    `json:"path"`
+	URL           string    `json:"url,omitempty"`
+	DefaultBranch string    `json:"default_branch,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	LastCommit    string    `json:"last_commit,omitempty"`
 }
 
 // FileNode represents a single file or directory within a repository.

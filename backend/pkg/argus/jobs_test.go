@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/venkatvghub/argus/pkg/config"
 	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/models"
@@ -91,8 +92,8 @@ func TestJobManager(t *testing.T) {
 func TestBackgroundExecution(t *testing.T) {
 	// This tests that Analyze indeed runs in background and returns a job ID
 	ctx := context.Background()
-	inst, err := New(ctx, nil)
-	assert.NoError(t, err)
+	inst, err := NewForTest(ctx, nil)
+	require.NoError(t, err)
 	defer inst.Close()
 
 	// Use a fake repo path for testing

@@ -1,6 +1,6 @@
 "use client";
 
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, Tooltip } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Code } from "lucide-react";
 
@@ -64,9 +64,8 @@ export function LanguageDonut({ distribution }: LanguageDonutProps) {
       <CardContent className="pt-0">
         <div className="flex items-center gap-4">
           <div className="w-[120px] h-[120px] shrink-0">
-            <ResponsiveContainer width={120} height={120}>
-              <PieChart>
-                <Pie
+            <PieChart width={120} height={120}>
+              <Pie
                   data={shown}
                   cx="50%"
                   cy="50%"
@@ -94,7 +93,6 @@ export function LanguageDonut({ distribution }: LanguageDonutProps) {
                   }}
                 />
               </PieChart>
-            </ResponsiveContainer>
           </div>
           <div className="space-y-1.5 min-w-0 flex-1">
             {shown.map((entry) => (

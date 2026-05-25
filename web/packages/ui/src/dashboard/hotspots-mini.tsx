@@ -1,7 +1,9 @@
+import { useEffect, useMemo } from "react";
 import { Flame } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { EmptyState } from "../shared/empty-state";
 import { truncatePath } from "../lib/format";
+import { warnHotspotsMissingFilePath } from "../lib/hotspot-validation";
 import type { Hotspot } from "@argus-dev/types/git";
 
 interface HotspotsMiniProps {
@@ -33,7 +35,14 @@ export function HotspotsMini({
   previewCount = 5,
 }: HotspotsMiniProps) {
   const prefix = linkPrefix ?? `/repos/${repoId}`;
-  const top = hotspots.slice(0, Math.min(previewCount, 10));
+  const top = useMemo(
+    () => hotspots.slice(0, Math.min(previewCount, 10)),
+    [hotspots, previewCount],
+  );
+
+  useEffect(() => {
+    warnHotspotsMissingFilePath(top, "HotspotsMini");
+  }, [top]);
   // Authoritative total is the server-reported figure when present; fall
   // back to the array length so this widget still works when callers
   // haven't migrated to the paginated fetch yet.

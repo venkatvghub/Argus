@@ -1,4 +1,5 @@
 import { apiGet } from "./client";
+import { warnHotspotsMissingFilePath } from "@argus-dev/ui/lib/hotspot-validation";
 import type {
   GitMetadataResponse,
   GitSummaryResponse,
@@ -29,10 +30,12 @@ export async function getHotspotsPage(
   options: { limit?: number; offset?: number } = {},
 ): Promise<Paginated<HotspotResponse>> {
   const { limit = 50, offset = 0 } = options;
-  return apiGet<Paginated<HotspotResponse>>(`/api/repos/${repoId}/hotspots`, {
+  const page = await apiGet<Paginated<HotspotResponse>>(`/api/repos/${repoId}/hotspots`, {
     limit,
     offset,
   });
+  warnHotspotsMissingFilePath(page.items, "getHotspotsPage");
+  return page;
 }
 
 /**

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/venkatvghub/argus/pkg/config"
 )
 
 // corsMiddleware returns a middleware that handles CORS for all routes,
@@ -78,15 +80,13 @@ func (s *RESTServer) corsAllowedOrigins() []string {
 	return cfg.CORSAllowedOrigins
 }
 
-const defaultCORSMaxAge = 86400
-
 func (s *RESTServer) corsMaxAge() int {
 	if s.argus == nil {
-		return defaultCORSMaxAge
+		return config.DefaultCORSMaxAge
 	}
 	cfg := s.argus.Config()
 	if cfg == nil || cfg.CORSMaxAge <= 0 {
-		return defaultCORSMaxAge
+		return config.DefaultCORSMaxAge
 	}
 	return cfg.CORSMaxAge
 }
