@@ -68,8 +68,9 @@ func TestModelCostPer1M_Unknown(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt, func(t *testing.T) {
 			inCost, outCost := providers.ModelCostPer1M(tt)
-			if inCost != 0 || outCost != 0 {
-				t.Errorf("unknown model should return (0, 0), got (%f, %f)", inCost, outCost)
+			// Unknown models return conservative fallback (3.0, 15.0), never (0, 0).
+			if inCost != 3.0 || outCost != 15.0 {
+				t.Errorf("unknown model should return fallback (3.0, 15.0), got (%f, %f)", inCost, outCost)
 			}
 		})
 	}
@@ -124,10 +125,10 @@ func TestEstimatePageCost_UnknownType(t *testing.T) {
 }
 
 func TestEstimatePageCost_UnknownModel(t *testing.T) {
-	// Known page type with unknown model should return 0
+	// Known page type with unknown model uses conservative fallback pricing — cost > 0.
 	cost := providers.EstimatePageCost("file_page", "unknown-model-xyz", 10)
-	if cost != 0 {
-		t.Errorf("unknown model should return cost 0, got %f", cost)
+	if cost <= 0 {
+		t.Errorf("unknown model should return fallback cost > 0, got %f", cost)
 	}
 }
 

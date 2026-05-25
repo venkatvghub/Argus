@@ -489,6 +489,16 @@ func (i *Instance) GetWikiPage(ctx context.Context, pageID string) (models.WikiP
 	return i.db.GetWikiPage(ctx, pageID)
 }
 
+// SaveProviderPricing persists live pricing from provider discovery for future runs.
+func (i *Instance) SaveProviderPricing(ctx context.Context, provider string, pricing map[string][2]float64) error {
+	return i.db.SaveProviderPricing(ctx, provider, pricing)
+}
+
+// LoadProviderPricing retrieves cached live pricing for a provider. Returns nil when not cached.
+func (i *Instance) LoadProviderPricing(ctx context.Context, provider string) (map[string][2]float64, error) {
+	return i.db.LoadProviderPricing(ctx, provider)
+}
+
 // GetRepoFiles returns all file nodes for a repository.
 // Falls back to DB when the engine is not in memory, and further falls back to
 // deriving a file list from in-memory markers when the DB has no rows yet.

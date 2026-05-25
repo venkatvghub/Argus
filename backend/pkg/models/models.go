@@ -201,6 +201,7 @@ type WikiPage struct {
 	Type      string    `json:"type"`       // "file_page", "module_page", etc.
 	Subject   string    `json:"subject"`    // file path, module dir, symbol name, etc.
 	Content   string    `json:"content"`    // generated markdown
+	Model     string    `json:"model"`      // LLM model that generated this page
 	Level     int       `json:"level"`      // generation level 0-7
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

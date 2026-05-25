@@ -4,6 +4,7 @@ package persistence
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -73,6 +74,7 @@ type wikiPageRow struct {
 	Type      string    `gorm:"column:type;type:text;not null"`
 	Subject   string    `gorm:"column:subject;type:text;not null"`
 	Content   string    `gorm:"column:content;type:text"`
+	Model     string    `gorm:"column:model;type:text;not null;default:''"`
 	Level     int       `gorm:"column:level;type:integer"`
 	CreatedAt time.Time `gorm:"column:created_at;type:timestamptz;autoCreateTime"`
 	UpdatedAt time.Time `gorm:"column:updated_at;type:timestamptz;autoUpdateTime"`
@@ -126,6 +128,16 @@ type llmCostRow struct {
 }
 
 func (*llmCostRow) TableName() string { return "llm_costs" }
+
+// providerPricingRow caches live model pricing fetched from provider discovery APIs.
+// One row per provider (e.g. "openrouter"); pricing stored as JSON blob.
+type providerPricingRow struct {
+	Provider    string    `gorm:"column:provider;type:text;primaryKey"`
+	PricingJSON []byte    `gorm:"column:pricing_json;type:jsonb;not null"`
+	FetchedAt   time.Time `gorm:"column:fetched_at;type:timestamptz;autoUpdateTime"`
+}
+
+func (*providerPricingRow) TableName() string { return "provider_pricing" }
 
 type repoFileRow struct {
 	ID                      int64      `gorm:"column:id;type:bigserial;primaryKey"`
@@ -184,6 +196,7 @@ func New(dsn string) (*DB, error) {
 		&conversationRow{},
 		&chatMessageRow{},
 		&llmCostRow{},
+		&providerPricingRow{},
 		&repoFileRow{},
 		&repoSymbolRow{},
 	); err != nil {
@@ -405,12 +418,13 @@ func (d *DB) UpsertWikiPage(ctx context.Context, page models.WikiPage) error {
 		Type:    page.Type,
 		Subject: page.Subject,
 		Content: page.Content,
+		Model:   page.Model,
 		Level:   page.Level,
 	}
 	return d.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"content", "updated_at"}),
+			DoUpdates: clause.AssignmentColumns([]string{"content", "model", "updated_at"}),
 		}).
 		Create(&row).Error
 }
@@ -432,6 +446,7 @@ func (d *DB) ListWikiPages(ctx context.Context, repoID string) ([]models.WikiPag
 			Type:      r.Type,
 			Subject:   r.Subject,
 			Content:   r.Content,
+			Model:     r.Model,
 			Level:     r.Level,
 			CreatedAt: r.CreatedAt,
 			UpdatedAt: r.UpdatedAt,
@@ -452,6 +467,7 @@ func (d *DB) GetWikiPage(ctx context.Context, pageID string) (models.WikiPage, e
 		Type:      row.Type,
 		Subject:   row.Subject,
 		Content:   row.Content,
+		Model:     row.Model,
 		Level:     row.Level,
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
@@ -708,6 +724,40 @@ func (d *DB) GetLLMCostSummary(ctx context.Context, repoID string) (CostSummary,
 	}
 	summary.Since = since
 	return summary, nil
+}
+
+// -- Provider pricing cache -----------------------------------------------
+
+// SaveProviderPricing persists a live pricing map for a provider (upsert by provider name).
+func (d *DB) SaveProviderPricing(ctx context.Context, provider string, pricing map[string][2]float64) error {
+	if len(pricing) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(pricing)
+	if err != nil {
+		return fmt.Errorf("marshal pricing: %w", err)
+	}
+	return d.db.WithContext(ctx).Save(&providerPricingRow{
+		Provider:    provider,
+		PricingJSON: data,
+	}).Error
+}
+
+// LoadProviderPricing retrieves the cached pricing map for a provider.
+// Returns nil map (not an error) when no cached pricing exists.
+func (d *DB) LoadProviderPricing(ctx context.Context, provider string) (map[string][2]float64, error) {
+	var row providerPricingRow
+	if err := d.db.WithContext(ctx).First(&row, "provider = ?", provider).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var pricing map[string][2]float64
+	if err := json.Unmarshal(row.PricingJSON, &pricing); err != nil {
+		return nil, fmt.Errorf("unmarshal pricing: %w", err)
+	}
+	return pricing, nil
 }
 
 // -- Repo files -----------------------------------------------------------

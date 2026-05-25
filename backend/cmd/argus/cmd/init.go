@@ -147,6 +147,18 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("provider setup: %w", err)
 	}
 
+	// Persist live pricing from discovery so resume runs get accurate costs.
+	if pricingMap != nil {
+		if saveErr := instance.SaveProviderPricing(ctx, tc.ProviderName, pricingMap); saveErr != nil {
+			fmt.Fprintf(os.Stderr, "  ⚠  Could not cache provider pricing: %v\n", saveErr)
+		}
+	} else if initResume != "" {
+		// Resume path: no fresh discovery — load cached pricing from DB.
+		if cached, loadErr := instance.LoadProviderPricing(ctx, tc.ProviderName); loadErr == nil && cached != nil {
+			pricingMap = cached
+		}
+	}
+
 	// ── Step 5: Scale counts by coverage + build plan ───────────────────
 	// scaleCounts is exported from coverage.go as an internal helper via
 	// ComputeCoverageOptions; replicate the same scaling inline here so

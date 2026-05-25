@@ -173,6 +173,7 @@ func (i *Instance) GenerateWiki(
 					Type:    job.pgType,
 					Subject: job.subject,
 					Content: content,
+					Model:   router.ModelForTier(job.tier),
 					Level:   job.level,
 				}
 				if err := i.db.UpsertWikiPage(ctx, page); err != nil {
