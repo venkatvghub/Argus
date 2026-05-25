@@ -48,7 +48,7 @@ export function LanguageDonut({ distribution }: LanguageDonutProps) {
       <CardContent className="pt-0">
         <div className="flex items-center gap-4">
           <div className="w-[120px] h-[120px] shrink-0">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width={120} height={120}>
               <PieChart>
                 <Pie
                   data={shown}

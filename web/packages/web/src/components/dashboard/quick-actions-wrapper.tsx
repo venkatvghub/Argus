@@ -31,6 +31,8 @@ export function QuickActionsWrapper({
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   // Hydrate from any in-flight job so refreshes don't lose progress visibility.
+  // Skip jobs older than 10 minutes — they're likely stuck from a prior failed run.
+  const STALE_JOB_MS = 10 * 60 * 1000;
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -41,7 +43,10 @@ export function QuickActionsWrapper({
         ]);
         if (cancelled) return;
         const inflight = running[0] ?? pending[0];
-        if (inflight) setActiveJobId(inflight.id);
+        if (inflight) {
+          const age = Date.now() - new Date(inflight.created_at).getTime();
+          if (age < STALE_JOB_MS) setActiveJobId(inflight.id);
+        }
       } catch {
         // best-effort
       }

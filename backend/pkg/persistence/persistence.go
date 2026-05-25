@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -41,8 +40,10 @@ func New(dbPath string) (*DB, error) {
 		return nil, fmt.Errorf("failed to open sqlite: %w", err)
 	}
 
-	// WAL mode allows concurrent readers; cap idle connections to limit overhead.
-	db.SetMaxOpenConns(runtime.NumCPU())
+	// SQLite allows only one writer at a time. A single open connection serialises
+	// all reads and writes, which is correct for this workload and eliminates
+	// SQLITE_BUSY errors caused by concurrent write attempts from multiple conns.
+	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 
 	if err := runMigrations(db); err != nil {
