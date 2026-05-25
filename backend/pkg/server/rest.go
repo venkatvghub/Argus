@@ -50,6 +50,22 @@ func (s *RESTServer) Routes() chi.Router {
 		r.Get("/repos/{repoID}/symbols", s.getSymbols)
 		r.Get("/repos/{repoID}/markers", s.getMarkers)
 
+		// Git intelligence
+		r.Get("/repos/{repoID}/git-summary", s.getGitSummary)
+		r.Get("/repos/{repoID}/ownership", s.getOwnership)
+		r.Get("/repos/{repoID}/hotspots", s.getHotspots)
+
+		// Dead code
+		r.Get("/repos/{repoID}/dead-code/summary", s.getDeadCodeSummary)
+		r.Get("/repos/{repoID}/dead-code", s.getDeadCode)
+
+		// Decisions / ADR
+		r.Get("/repos/{repoID}/decisions", s.getDecisions)
+		r.Get("/repos/{repoID}/decisions/health", s.getDecisionsHealth)
+
+		// Knowledge map
+		r.Get("/repos/{repoID}/knowledge-map", s.getKnowledgeMap)
+
 		// Health
 		r.Get("/repos/{repoID}/health/overview", s.getHealthOverview)
 		r.Get("/repos/{repoID}/health/files", s.getHealthFiles)
@@ -61,6 +77,9 @@ func (s *RESTServer) Routes() chi.Router {
 		r.Get("/repos/{repoID}/health/coordinator", func(w http.ResponseWriter, r *http.Request) {
 			s.json(w, http.StatusOK, map[string]string{"status": "ok"})
 		})
+
+		// Providers
+		r.Get("/providers", s.getProviders)
 
 		// Graph
 		r.Get("/graph/{repoID}", s.getGraphExport)
@@ -83,6 +102,8 @@ func (s *RESTServer) Routes() chi.Router {
 		r.Get("/graph/{repoID}/hot-files", func(w http.ResponseWriter, r *http.Request) {
 			s.json(w, http.StatusOK, map[string]any{"files": []any{}})
 		})
+		r.Get("/graph/{repoID}/modules", s.getGraphModules)
+		r.Get("/graph/{repoID}/execution-flows", s.getExecutionFlows)
 
 		// Jobs
 		r.Get("/jobs", s.listJobs)
@@ -169,7 +190,7 @@ func (s *RESTServer) deleteRepo(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.json(w, http.StatusOK, map[string]any{"ok": true, "deleted_pages": 0})
+	s.json(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *RESTServer) getRepoStats(w http.ResponseWriter, r *http.Request) {
@@ -332,7 +353,11 @@ func (s *RESTServer) getJob(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobID")
 	job, err := s.argus.GetJob(r.Context(), jobID)
 	if err != nil {
-		s.error(w, http.StatusNotFound, err.Error())
+		if errors.Is(err, argus.ErrJobNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 	s.json(w, http.StatusOK, job)
@@ -458,6 +483,114 @@ func (s *RESTServer) exportCognee(w http.ResponseWriter, r *http.Request) {
 		"entities":  []any{},
 		"relations": []any{},
 		"version":   constants.APIVersion,
+	})
+}
+
+// --- Git intelligence stubs ---
+
+func (s *RESTServer) getGitSummary(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, map[string]any{
+		"total_files":              0,
+		"hotspot_count":            0,
+		"stable_count":             0,
+		"average_churn_percentile": 0.0,
+		"top_owners":               []any{},
+	})
+}
+
+func (s *RESTServer) getOwnership(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, map[string]any{
+		"items":       []any{},
+		"total":       0,
+		"has_more":    false,
+		"next_offset": 0,
+	})
+}
+
+func (s *RESTServer) getHotspots(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, map[string]any{
+		"items":       []any{},
+		"total":       0,
+		"has_more":    false,
+		"next_offset": 0,
+	})
+}
+
+// --- Dead code stubs ---
+
+func (s *RESTServer) getDeadCodeSummary(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, map[string]any{
+		"total_findings":   0,
+		"confidence_summary": map[string]int{},
+		"deletable_lines":  0,
+		"total_lines":      0,
+		"by_kind":          map[string]int{},
+	})
+}
+
+func (s *RESTServer) getDeadCode(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, []any{})
+}
+
+// --- Decision / ADR stubs ---
+
+func (s *RESTServer) getDecisions(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, []any{})
+}
+
+func (s *RESTServer) getDecisionsHealth(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, map[string]any{
+		"summary": map[string]int{
+			"active":     0,
+			"proposed":   0,
+			"deprecated": 0,
+			"superseded": 0,
+			"stale":      0,
+		},
+		"stale_decisions":         []any{},
+		"proposed_awaiting_review": []any{},
+		"ungoverned_hotspots":     []any{},
+	})
+}
+
+// --- Knowledge map stub ---
+
+func (s *RESTServer) getKnowledgeMap(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, map[string]any{
+		"top_owners":        []any{},
+		"knowledge_silos":   []any{},
+		"onboarding_targets": []any{},
+	})
+}
+
+// --- Providers stub ---
+
+func (s *RESTServer) getProviders(w http.ResponseWriter, r *http.Request) {
+	active := map[string]string{"provider": "", "model": ""}
+	if s.argus != nil {
+		if cfg := s.argus.Config(); cfg != nil {
+			active["provider"] = cfg.LLMProvider
+		}
+	}
+	s.json(w, http.StatusOK, map[string]any{
+		"active":    active,
+		"providers": []any{},
+	})
+}
+
+// --- Graph extension stubs ---
+
+func (s *RESTServer) getGraphModules(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, map[string]any{
+		"nodes": []any{},
+		"edges": []any{},
+	})
+}
+
+func (s *RESTServer) getExecutionFlows(w http.ResponseWriter, r *http.Request) {
+	s.json(w, http.StatusOK, map[string]any{
+		"total_entry_points": 0,
+		"flows":              []any{},
 	})
 }
 
