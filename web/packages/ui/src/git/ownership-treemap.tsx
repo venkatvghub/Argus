@@ -125,7 +125,7 @@ export function OwnershipTreemap({ entries, busFactorByModule, onSelect }: Owner
         className="rounded-lg"
         onMouseLeave={() => setTooltip(null)}
       >
-        {leaves.map((leaf) => {
+        {leaves.map((leaf, idx) => {
           const d = leaf.data;
           const x0 = leaf.x0;
           const y0 = leaf.y0;
@@ -138,7 +138,7 @@ export function OwnershipTreemap({ entries, busFactorByModule, onSelect }: Owner
           const entry = entries.find((e) => e.module_path === d.name);
           return (
             <g
-              key={d.name}
+              key={d.name || String(idx)}
               onMouseMove={(e) =>
                 handleMouseMove(e, {
                   name: d.name,
