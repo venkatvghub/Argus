@@ -125,10 +125,13 @@ func TestEstimatePageCost_UnknownType(t *testing.T) {
 }
 
 func TestEstimatePageCost_UnknownModel(t *testing.T) {
-	// Known page type with unknown model uses conservative fallback pricing — cost > 0.
+	// Known page type with unknown model uses conservative fallback pricing.
+	// file_page: input=2000, output=800 tokens; fallback=(3.0, 15.0)/1M.
+	// expected = (2000*10*3.0 + 800*10*15.0) / 1_000_000 = 0.00018
 	cost := providers.EstimatePageCost("file_page", "unknown-model-xyz", 10)
-	if cost <= 0 {
-		t.Errorf("unknown model should return fallback cost > 0, got %f", cost)
+	const wantCost = (2000*10*3.0 + 800*10*15.0) / 1_000_000
+	if cost != wantCost {
+		t.Errorf("unknown model should return fallback cost %.6f, got %.6f", wantCost, cost)
 	}
 }
 

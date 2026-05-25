@@ -20,14 +20,16 @@ func TestJobManager(t *testing.T) {
 	defer jm.Close()
 
 	t.Run("Create and Get Job", func(t *testing.T) {
-		job := jm.CreateJob("test", "")
+		job := jm.CreateJob("test", "test-repo")
 		assert.NotEmpty(t, job.ID)
 		assert.Equal(t, "test", job.Type)
+		assert.Equal(t, "test-repo", job.RepoID)
 		assert.Equal(t, models.JobStatusPending, job.Status)
 
 		fetched, ok := jm.GetJob(job.ID)
 		assert.True(t, ok)
 		assert.Equal(t, job.ID, fetched.ID)
+		assert.Equal(t, "test-repo", fetched.RepoID)
 	})
 
 	t.Run("Update Status and Notify", func(t *testing.T) {

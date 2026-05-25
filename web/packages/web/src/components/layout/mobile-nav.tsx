@@ -121,6 +121,7 @@ export function MobileNav({ repos = [], workspace }: MobileNavProps) {
           alt="argus"
           width={24}
           height={24}
+          priority
           style={{ width: "24px", height: "24px" }}
           className="shrink-0 drop-shadow-[0_0_8px_rgba(245,149,32,0.3)]"
         />

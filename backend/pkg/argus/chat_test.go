@@ -273,6 +273,7 @@ func TestConversationMessageFlow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, conv.ID, retrievedConv.ID)
 	assert.Equal(t, "repo-001", retrievedConv.RepositoryID)
+	assert.Equal(t, 2, retrievedConv.MessageCount)
 
 	// Verify messages exist and are in order
 	messages, err := instance.ListChatMessages(ctx, conv.ID)

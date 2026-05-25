@@ -21,9 +21,6 @@ type RepoResponse struct {
 
 func repoToResponse(r models.Repository) RepoResponse {
 	defaultBranch := r.DefaultBranch
-	if defaultBranch == "" {
-		defaultBranch = "main"
-	}
 	updatedAt := r.UpdatedAt
 	if updatedAt.IsZero() {
 		updatedAt = r.CreatedAt

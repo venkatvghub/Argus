@@ -122,6 +122,9 @@ func (i *Instance) GetOwners(ctx context.Context, repoID, q, sortKey string, lim
 	if limit <= 0 {
 		limit = 50
 	}
+	if offset < 0 {
+		offset = 0
+	}
 
 	repo, err := i.GetRepository(ctx, repoID)
 	if err != nil {
