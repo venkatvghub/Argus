@@ -23,9 +23,10 @@ func setupHealthTestServer(t *testing.T) (*RESTServer, func()) {
 
 	dbPath := filepath.Join(tmpDir, "test.db")
 	cfg := &config.Config{
-		DBPath:   dbPath,
-		LogLevel: "error",
-		AppName:  "ArgusTest",
+		DBPath:             dbPath,
+		LogLevel:           "error",
+		AppName:            "ArgusTest",
+		CORSAllowedOrigins: []string{"http://localhost:3000"},
 	}
 
 	ctx := context.Background()
@@ -55,7 +56,9 @@ func TestGetHealth_Endpoint(t *testing.T) {
 	assert.NotEmpty(t, w.Body.String())
 }
 
-// TestGetRepoHealth_Overview_NotFound tests health overview for non-existent repo.
+// TestGetRepoHealth_Overview_NoEngine tests health overview when engine not loaded.
+// Engine-not-in-memory returns a 200 with an empty summary rather than 404,
+// so the dashboard degrades gracefully after a server restart.
 func TestGetRepoHealth_Overview_NotFound(t *testing.T) {
 	restServer, cleanup := setupHealthTestServer(t)
 	defer cleanup()
@@ -65,10 +68,11 @@ func TestGetRepoHealth_Overview_NotFound(t *testing.T) {
 
 	restServer.Routes().ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "summary")
 }
 
-// TestGetRepoHealth_Files_NotFound tests health files for non-existent repo.
+// TestGetRepoHealth_Files_NoEngine tests health files when engine not loaded.
 func TestGetRepoHealth_Files_NotFound(t *testing.T) {
 	restServer, cleanup := setupHealthTestServer(t)
 	defer cleanup()
@@ -78,10 +82,11 @@ func TestGetRepoHealth_Files_NotFound(t *testing.T) {
 
 	restServer.Routes().ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "files")
 }
 
-// TestGetRepoHealth_Findings_NotFound tests health findings for non-existent repo.
+// TestGetRepoHealth_Findings_NoEngine tests health findings when engine not loaded.
 func TestGetRepoHealth_Findings_NotFound(t *testing.T) {
 	restServer, cleanup := setupHealthTestServer(t)
 	defer cleanup()
@@ -91,7 +96,7 @@ func TestGetRepoHealth_Findings_NotFound(t *testing.T) {
 
 	restServer.Routes().ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 // TestHealthEndpointHeaders tests response headers for health endpoints.
@@ -117,11 +122,12 @@ func TestHealthEndpointHeaders(t *testing.T) {
 
 			restServer.Routes().ServeHTTP(w, req)
 
-			// Health endpoints should return success or not found, not error
 			assert.True(t, w.Code >= 200 && w.Code < 500, "expected 2xx or 4xx, got %d", w.Code)
-			// With Origin header set and allowed, CORS headers may be present (depends on implementation)
-			// Just verify response is valid
 			assert.NotEmpty(t, w.Body.String())
+			assert.Equal(t, "http://localhost:3000", w.Header().Get("Access-Control-Allow-Origin"))
+			assert.Equal(t, "Origin", w.Header().Get("Vary"))
+			assert.Equal(t, "GET, POST, DELETE, PATCH, OPTIONS", w.Header().Get("Access-Control-Allow-Methods"))
+			assert.Equal(t, "Accept, Content-Type, Cache-Control, Last-Event-ID", w.Header().Get("Access-Control-Allow-Headers"))
 		})
 	}
 }

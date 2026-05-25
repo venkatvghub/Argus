@@ -11,20 +11,22 @@ import (
 )
 
 // newShortID returns a 16-char hex string from 8 crypto-random bytes.
-func newShortID() string {
+func newShortID() (string, error) {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		// Extremely unlikely; fall back to a deterministic but unique counter isn't
-		// available here, so we panic only in test/debug contexts.
-		panic("crypto/rand unavailable: " + err.Error())
+		return "", fmt.Errorf("generate short id: %w", err)
 	}
-	return fmt.Sprintf("%x", b)
+	return fmt.Sprintf("%x", b), nil
 }
 
 // CreateConversation creates a new conversation for a repository.
 func (i *Instance) CreateConversation(ctx context.Context, repoID, title string) (models.Conversation, error) {
+	id, err := newShortID()
+	if err != nil {
+		return models.Conversation{}, err
+	}
 	conv := models.Conversation{
-		ID:           newShortID(),
+		ID:           id,
 		RepositoryID: repoID,
 		Title:        title,
 	}
@@ -62,8 +64,12 @@ func (i *Instance) DeleteConversation(ctx context.Context, convID string) error 
 
 // CreateChatMessage persists a new chat message and increments the conversation message count.
 func (i *Instance) CreateChatMessage(ctx context.Context, convID, role, content string) (models.ChatMessage, error) {
+	id, err := newShortID()
+	if err != nil {
+		return models.ChatMessage{}, err
+	}
 	msg := models.ChatMessage{
-		ID:             newShortID(),
+		ID:             id,
 		ConversationID: convID,
 		Role:           role,
 		Content:        content,

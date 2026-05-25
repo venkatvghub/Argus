@@ -7,5 +7,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     error TEXT NOT NULL DEFAULT '',
     created_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     updated_at DATETIME NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    FOREIGN KEY (repo_id) REFERENCES repositories(id)
+    FOREIGN KEY (repo_id) REFERENCES repositories(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_jobs_repo_id ON jobs(repo_id);

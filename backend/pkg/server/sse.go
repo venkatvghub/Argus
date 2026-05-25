@@ -88,11 +88,11 @@ func (s *RESTServer) postChatMessage(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusBadRequest, "repoID is required")
 		return
 	}
-	if _, err := s.argus.GetRepoSymbols(r.Context(), repoID); err != nil {
+	if _, err := s.argus.GetRepository(r.Context(), repoID); err != nil {
 		if errors.Is(err, argus.ErrRepoNotFound) {
 			s.error(w, http.StatusNotFound, "repo not found")
 		} else {
-			logger.FromContext(r.Context()).Error("get repo symbols failed", "repo_id", repoID, "error", err)
+			logger.FromContext(r.Context()).Error("get repository failed", "repo_id", repoID, "error", err)
 			s.error(w, http.StatusInternalServerError, "internal server error")
 		}
 		return
@@ -193,7 +193,7 @@ func (s *RESTServer) postChatMessage(w http.ResponseWriter, r *http.Request) {
 				assistantMsg, persistErr := s.argus.CreateChatMessage(ctx, convID, "assistant", sb.String())
 				if persistErr != nil {
 					logger.FromContext(ctx).Error("persist assistant message failed", "conv_id", convID, "error", persistErr)
-					writeSSEEvent(w, `{"type":"error","message":"failed to persist assistant message"}`)
+					writeSSEEvent(w, "[ERROR] failed to persist assistant message")
 					flusher.Flush()
 					return
 				}

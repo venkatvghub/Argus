@@ -4,6 +4,7 @@ package server
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -30,7 +31,7 @@ func (s *RESTServer) corsMiddleware() func(http.Handler) http.Handler {
 			}
 			if r.Method == http.MethodOptions {
 				if allowed {
-					w.Header().Set("Access-Control-Max-Age", "86400")
+					w.Header().Set("Access-Control-Max-Age", strconv.Itoa(s.corsMaxAge()))
 				}
 				w.WriteHeader(http.StatusNoContent)
 				return
@@ -75,4 +76,17 @@ func (s *RESTServer) corsAllowedOrigins() []string {
 		return nil
 	}
 	return cfg.CORSAllowedOrigins
+}
+
+const defaultCORSMaxAge = 86400
+
+func (s *RESTServer) corsMaxAge() int {
+	if s.argus == nil {
+		return defaultCORSMaxAge
+	}
+	cfg := s.argus.Config()
+	if cfg == nil || cfg.CORSMaxAge <= 0 {
+		return defaultCORSMaxAge
+	}
+	return cfg.CORSMaxAge
 }

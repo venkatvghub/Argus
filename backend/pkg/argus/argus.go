@@ -496,7 +496,7 @@ func (i *Instance) GetCommunityCount(ctx context.Context, repoID string) (int, e
 func (i *Instance) GetJob(ctx context.Context, jobID string) (models.Job, error) {
 	job, ok := i.Jobs.GetJob(jobID)
 	if !ok {
-		return models.Job{}, fmt.Errorf("job not found: %s", jobID)
+		return models.Job{}, ErrJobNotFound
 	}
 	return *job, nil
 }

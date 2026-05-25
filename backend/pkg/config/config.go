@@ -61,6 +61,8 @@ type Config struct {
 
 	// CORSAllowedOrigins lists origins permitted for browser SSE access (comma-separated).
 	CORSAllowedOrigins []string `envconfig:"CORS_ALLOWED_ORIGINS"`
+	// CORSMaxAge is the preflight cache duration in seconds for browser CORS.
+	CORSMaxAge int `envconfig:"CORS_MAX_AGE" default:"86400"`
 
 	// CoverageFile is the path to the coverage report file (lcov.info, coverage.xml, or clover.xml).
 	// If empty, Argus auto-discovers coverage files in the repository root.

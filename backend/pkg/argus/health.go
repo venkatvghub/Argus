@@ -23,20 +23,22 @@ type HealthFinding struct {
 // HealthOverview summarises repo health for the dashboard.
 type HealthOverview struct {
 	RepoID        string  `json:"repo_id"`
+	FileCount     int     `json:"file_count"`    // unique files with at least one finding
 	OverallScore  float64 `json:"overall_score"`
 	FindingCount  int     `json:"finding_count"`
 	CriticalCount int     `json:"critical_count"`
 	WarningCount  int     `json:"warning_count"`
 	InfoCount     int     `json:"info_count"`
-	MaxCCN        int     `json:"max_ccn"`    // stub 0
-	MaxNesting    int     `json:"max_nesting"` // stub 0
-	TotalNLOC     int     `json:"total_nloc"`  // stub 0
 }
+
+// ScoreUnavailable is used in HealthFile.Score when the score could not be computed.
+// Valid computed scores are in [1.0, 10.0]; 0 means unavailable, not a real health score.
+const ScoreUnavailable = 0
 
 // HealthFile summarises health for one file.
 type HealthFile struct {
 	Path         string  `json:"path"`
-	Score        float64 `json:"score"`
+	Score        float64 `json:"score"` // [1.0, 10.0], or ScoreUnavailable (0) when computation failed
 	FindingCount int     `json:"finding_count"`
 	HasTestFile  bool    `json:"has_test_file"` // stub false
 	Language     string  `json:"language"`
@@ -51,12 +53,14 @@ func (i *Instance) GetHealthOverview(ctx context.Context, repoID string) (Health
 
 	score, _ := i.GetRepoScore(ctx, repoID)
 
+	uniqueFiles := make(map[string]struct{})
 	overview := HealthOverview{
 		RepoID:       repoID,
 		OverallScore: score,
 		FindingCount: len(markers),
 	}
 	for _, m := range markers {
+		uniqueFiles[m.File] = struct{}{}
 		switch m.Severity {
 		case "critical":
 			overview.CriticalCount++
@@ -66,6 +70,7 @@ func (i *Instance) GetHealthOverview(ctx context.Context, repoID string) (Health
 			overview.InfoCount++
 		}
 	}
+	overview.FileCount = len(uniqueFiles)
 	return overview, nil
 }
 
@@ -95,7 +100,7 @@ func (i *Instance) GetHealthFiles(ctx context.Context, repoID string) ([]HealthF
 			i.log.Warn("failed to compute file health score", "repo_id", repoID, "file_path", f.Path, "error", err)
 			result = append(result, HealthFile{
 				Path:         f.Path,
-				Score:        0,
+				Score:        ScoreUnavailable,
 				FindingCount: countByFile[f.Path],
 				Language:     f.Language,
 			})

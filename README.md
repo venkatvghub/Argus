@@ -2,6 +2,42 @@
 
 Go structural intelligence engine: parses repos into dependency graphs, detects architectural risks, enforces compliance markers. Serves as a standalone CLI and embedded library. 27× fewer tokens per query vs baseline.
 
+## Dashboard (Frontend + Backend)
+
+Start both services for the full web dashboard:
+
+**Terminal 1 — backend**
+```bash
+cd Argus/backend
+
+# Copy and edit env (set your LLM key; CORS already includes localhost:3000)
+cp .env.example .env
+
+go build -o argus ./cmd/argus
+
+# Run on :7337 so the Next.js proxy works with zero frontend config
+ARGUS_DATA_DIR=./data ./argus serve rest --addr :7337
+```
+
+**Terminal 2 — frontend**
+```bash
+cd Argus/web
+
+# Install dependencies (first time only)
+pnpm install
+
+# Start dev server on http://localhost:3000
+pnpm dev
+```
+
+Open **http://localhost:3000**.
+
+The Next.js dev server rewrites `/api/*` → `http://localhost:7337/api/*`, so no CORS or proxy config is needed.
+
+> **Custom backend port:** If you prefer `:8080`, set `ARGUS_API_URL=http://localhost:8080` in `web/packages/web/.env.local` and run `argus serve rest --addr :8080`.
+
+---
+
 ## Quick Start (5 min)
 
 **Prerequisites:** Go 1.24+, Git

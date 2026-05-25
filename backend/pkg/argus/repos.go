@@ -22,16 +22,27 @@ func (i *Instance) GetRepository(ctx context.Context, repoID string) (models.Rep
 }
 
 // DeleteRepository removes a repository from memory and the database.
-// The DB delete is performed inside the lock to prevent concurrent Analyze()
-// calls from re-populating the in-memory maps between the unlock and the delete.
+// Existence is verified first; DB delete and in-memory cleanup run under the
+// lock together so concurrent Analyze() cannot repopulate maps between them.
 func (i *Instance) DeleteRepository(ctx context.Context, repoID string) error {
+	if _, err := i.db.GetRepository(ctx, repoID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrRepoNotFound
+		}
+		return err
+	}
+
 	i.mu.Lock()
 	defer i.mu.Unlock()
+
+	if err := i.db.DeleteRepository(ctx, repoID); err != nil {
+		return err
+	}
 	delete(i.engines, repoID)
 	delete(i.markers, repoID)
 	delete(i.changedFiles, repoID)
 	delete(i.upToDate, repoID)
-	return i.db.DeleteRepository(ctx, repoID)
+	return nil
 }
 
 // GetRepoStats returns aggregate statistics for a repository.

@@ -71,7 +71,7 @@ func (s *RESTServer) Routes() chi.Router {
 		r.Get("/repos/{repoID}/health/files", s.getHealthFiles)
 		r.Get("/repos/{repoID}/health/findings", s.getHealthFindings)
 		r.Get("/repos/{repoID}/health/files/breakdown", s.getHealthFiles) // same as getHealthFiles
-		r.Get("/repos/{repoID}/health/trend", s.stubEmptyData)
+		r.Get("/repos/{repoID}/health/trend", s.getHealthTrend)
 		r.Get("/repos/{repoID}/health/coverage", s.stubEmptyData)
 		r.Get("/repos/{repoID}/health/refactoring-targets", s.stubEmptyData)
 		r.Get("/repos/{repoID}/health/coordinator", func(w http.ResponseWriter, r *http.Request) {
@@ -147,7 +147,11 @@ func (s *RESTServer) listRepos(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.json(w, http.StatusOK, repos)
+	out := make([]RepoResponse, 0, len(repos))
+	for _, r := range repos {
+		out = append(out, repoToResponse(r))
+	}
+	s.json(w, http.StatusOK, out)
 }
 
 func (s *RESTServer) createRepo(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +185,7 @@ func (s *RESTServer) getRepo(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.json(w, http.StatusOK, repo)
+	s.json(w, http.StatusOK, repoToResponse(repo))
 }
 
 func (s *RESTServer) deleteRepo(w http.ResponseWriter, r *http.Request) {
@@ -198,13 +202,20 @@ func (s *RESTServer) getRepoStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := s.argus.GetRepoStats(r.Context(), repoID)
 	if err != nil {
 		if errors.Is(err, argus.ErrRepoNotFound) {
-			s.error(w, http.StatusNotFound, err.Error())
+			// Engine not yet loaded; return empty stats so the dashboard doesn't 404.
+			s.json(w, http.StatusOK, RepoStatsResponse{})
 		} else {
 			s.error(w, http.StatusInternalServerError, err.Error())
 		}
 		return
 	}
-	s.json(w, http.StatusOK, stats)
+	// Map the generic map to the typed API shape.
+	fileCount, _ := stats["file_count"].(int)
+	symCount, _ := stats["total_symbols"].(int)
+	s.json(w, http.StatusOK, RepoStatsResponse{
+		FileCount:   fileCount,
+		SymbolCount: symCount,
+	})
 }
 
 func (s *RESTServer) syncRepo(w http.ResponseWriter, r *http.Request) {
@@ -253,7 +264,11 @@ func (s *RESTServer) getSymbols(w http.ResponseWriter, r *http.Request) {
 	}
 	symbols, err := s.argus.GetRepoSymbols(r.Context(), repoID)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.json(w, http.StatusOK, []any{})
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 	s.json(w, http.StatusOK, symbols)
@@ -274,13 +289,41 @@ func (s *RESTServer) getHealthOverview(w http.ResponseWriter, r *http.Request) {
 	overview, err := s.argus.GetHealthOverview(r.Context(), repoID)
 	if err != nil {
 		if errors.Is(err, argus.ErrRepoNotFound) {
-			s.error(w, http.StatusNotFound, err.Error())
+			s.json(w, http.StatusOK, HealthOverviewResponse{
+				Summary:     HealthOverviewSummary{SeverityBreakdown: map[string]int{}},
+				Files:       []HealthFileMetric{},
+				TopFindings: []HealthFinding{},
+			})
 		} else {
 			s.error(w, http.StatusInternalServerError, err.Error())
 		}
 		return
 	}
-	s.json(w, http.StatusOK, overview)
+
+	// Get top findings for the overview (capped at 10).
+	rawFindings, _ := s.argus.GetHealthFindings(r.Context(), repoID)
+	topFindings := make([]HealthFinding, 0, len(rawFindings))
+	for _, f := range rawFindings {
+		topFindings = append(topFindings, argusHealthFindingToAPI(f))
+		if len(topFindings) >= 10 {
+			break
+		}
+	}
+
+	s.json(w, http.StatusOK, HealthOverviewResponse{
+		Summary: HealthOverviewSummary{
+			FileCount:     overview.FileCount,
+			AverageHealth: overview.OverallScore,
+			OpenFindings:  overview.FindingCount,
+			SeverityBreakdown: map[string]int{
+				"critical": overview.CriticalCount,
+				"warning":  overview.WarningCount,
+				"info":     overview.InfoCount,
+			},
+		},
+		Files:       []HealthFileMetric{},
+		TopFindings: topFindings,
+	})
 }
 
 func (s *RESTServer) getHealthFiles(w http.ResponseWriter, r *http.Request) {
@@ -288,13 +331,27 @@ func (s *RESTServer) getHealthFiles(w http.ResponseWriter, r *http.Request) {
 	files, err := s.argus.GetHealthFiles(r.Context(), repoID)
 	if err != nil {
 		if errors.Is(err, argus.ErrRepoNotFound) {
-			s.error(w, http.StatusNotFound, err.Error())
+			// Engine not loaded; return empty paginated response.
+			s.json(w, http.StatusOK, HealthFilesResponse{Files: []HealthFileMetric{}})
 		} else {
 			s.error(w, http.StatusInternalServerError, err.Error())
 		}
 		return
 	}
-	s.json(w, http.StatusOK, files)
+	metrics := make([]HealthFileMetric, 0, len(files))
+	for _, f := range files {
+		metrics = append(metrics, HealthFileMetric{
+			FilePath:    f.Path,
+			Score:       f.Score,
+			HasTestFile: f.HasTestFile,
+		})
+	}
+	s.json(w, http.StatusOK, HealthFilesResponse{
+		Total:  len(metrics),
+		Offset: 0,
+		Limit:  len(metrics),
+		Files:  metrics,
+	})
 }
 
 func (s *RESTServer) getHealthFindings(w http.ResponseWriter, r *http.Request) {
@@ -302,13 +359,17 @@ func (s *RESTServer) getHealthFindings(w http.ResponseWriter, r *http.Request) {
 	findings, err := s.argus.GetHealthFindings(r.Context(), repoID)
 	if err != nil {
 		if errors.Is(err, argus.ErrRepoNotFound) {
-			s.error(w, http.StatusNotFound, err.Error())
+			s.json(w, http.StatusOK, []HealthFinding{})
 		} else {
 			s.error(w, http.StatusInternalServerError, err.Error())
 		}
 		return
 	}
-	s.json(w, http.StatusOK, findings)
+	out := make([]HealthFinding, 0, len(findings))
+	for _, f := range findings {
+		out = append(out, argusHealthFindingToAPI(f))
+	}
+	s.json(w, http.StatusOK, out)
 }
 
 func (s *RESTServer) getGraphExport(w http.ResponseWriter, r *http.Request) {
@@ -316,7 +377,7 @@ func (s *RESTServer) getGraphExport(w http.ResponseWriter, r *http.Request) {
 	export, err := s.argus.GetGraphExport(r.Context(), repoID)
 	if err != nil {
 		if errors.Is(err, argus.ErrRepoNotFound) {
-			s.error(w, http.StatusNotFound, err.Error())
+			s.json(w, http.StatusOK, map[string]any{"repo_id": repoID, "nodes": []any{}, "edges": []any{}})
 		} else {
 			s.error(w, http.StatusInternalServerError, err.Error())
 		}
@@ -330,7 +391,7 @@ func (s *RESTServer) getCommunities(w http.ResponseWriter, r *http.Request) {
 	communities, err := s.argus.GetCommunities(r.Context(), repoID)
 	if err != nil {
 		if errors.Is(err, argus.ErrRepoNotFound) {
-			s.error(w, http.StatusNotFound, err.Error())
+			s.json(w, http.StatusOK, []any{})
 		} else {
 			s.error(w, http.StatusInternalServerError, err.Error())
 		}
@@ -346,7 +407,11 @@ func (s *RESTServer) listJobs(w http.ResponseWriter, r *http.Request) {
 		s.error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.json(w, http.StatusOK, jobs)
+	out := make([]JobResponse, 0, len(jobs))
+	for _, j := range jobs {
+		out = append(out, jobToResponse(j))
+	}
+	s.json(w, http.StatusOK, out)
 }
 
 func (s *RESTServer) getJob(w http.ResponseWriter, r *http.Request) {
@@ -360,7 +425,7 @@ func (s *RESTServer) getJob(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.json(w, http.StatusOK, job)
+	s.json(w, http.StatusOK, jobToResponse(job))
 }
 
 func (s *RESTServer) cancelJob(w http.ResponseWriter, r *http.Request) {
@@ -591,6 +656,23 @@ func (s *RESTServer) getExecutionFlows(w http.ResponseWriter, r *http.Request) {
 	s.json(w, http.StatusOK, map[string]any{
 		"total_entry_points": 0,
 		"flows":              []any{},
+	})
+}
+
+func (s *RESTServer) getHealthTrend(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+	score, err := s.argus.GetRepoScore(r.Context(), repoID)
+	if err != nil {
+		score = 0
+	}
+	s.json(w, http.StatusOK, HealthTrendResponse{
+		History:    []any{},
+		Alerts:     []any{},
+		FileDeltas: []any{},
+		Summary: HealthTrendSummary{
+			CurrentAverageHealth: score,
+		},
+		SnapshotCount: 0,
 	})
 }
 
