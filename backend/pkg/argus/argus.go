@@ -269,6 +269,13 @@ func (i *Instance) IsRepoUpToDate(repoID string) bool {
 	return i.upToDate[repoID]
 }
 
+// ResetAnalysisCheckpoint clears the persisted last_commit for a repo so that
+// the next Analyze call performs a full re-analysis regardless of HEAD state.
+// Used by --force-wiki to ensure the in-memory graph engine is populated.
+func (i *Instance) ResetAnalysisCheckpoint(ctx context.Context, repoID string) error {
+	return i.db.ClearRepoLastCommit(ctx, repoID)
+}
+
 // ListRepositories returns all indexed repositories.
 func (i *Instance) ListRepositories(ctx context.Context) ([]models.Repository, error) {
 	return i.db.ListRepositories(ctx)

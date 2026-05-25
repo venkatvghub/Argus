@@ -21,6 +21,7 @@ import (
 var (
 	initIndexOnly    bool
 	initYes          bool
+	initForceWiki    bool
 	initResume       string
 	initProvider     string
 	initCheapModel   string
@@ -50,6 +51,16 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// ── Step 1: Analyze ────────────────────────────────────────────────────
 	fmt.Fprintf(os.Stderr, "\n  Analyzing %s\n\n", repoPath)
 
+	// --force-wiki: clear the persisted HEAD checkpoint so Analyze performs a
+	// full re-analysis and populates the in-memory graph engine (required by wiki).
+	if initForceWiki {
+		absForce, _ := filepath.Abs(repoPath)
+		forceRepoID := fmt.Sprintf("%x", sha256.Sum256([]byte(absForce)))[:constants.RepoIDLength]
+		if resetErr := instance.ResetAnalysisCheckpoint(ctx, forceRepoID); resetErr != nil {
+			fmt.Fprintf(os.Stderr, "  ⚠  Could not reset analysis checkpoint: %v\n", resetErr)
+		}
+	}
+
 	jobID, err := instance.Analyze(ctx, repoPath)
 	if err != nil {
 		return fmt.Errorf("analyze: %w", err)
@@ -68,7 +79,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	repoID := fmt.Sprintf("%x", sha256.Sum256([]byte(absPath)))[:constants.RepoIDLength]
 
 	// ── Incremental short-circuit ────────────────────────────────────────
-	if instance.IsRepoUpToDate(repoID) {
+	if instance.IsRepoUpToDate(repoID) && !initForceWiki {
 		fmt.Fprintf(os.Stderr, "  Repository is up-to-date (HEAD unchanged). Nothing to regenerate.\n\n")
 		return nil
 	}
@@ -123,6 +134,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// ── Step 4: Provider setup ──────────────────────────────────────────
+	// If resuming a paused (rate-limited) job, warn before model selection so the
+	// user knows to pick a different model or provider to avoid hitting the same limit.
+	if initResume != "" && isTTY {
+		if prevJob, jobErr := instance.GetWikiJob(ctx, initResume); jobErr == nil && prevJob.Status == models.WikiJobPaused {
+			fmt.Fprintf(os.Stderr, "\n  ⚠  Job %s was paused (rate limit). Select a different provider or models below to avoid hitting the same limit.\n", initResume)
+		}
+	}
+
 	tc, pricingMap, err := resolveProviderConfig(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("provider setup: %w", err)
@@ -210,6 +229,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	if err := instance.GenerateWiki(ctx, repoID, wikiJobID, plan, router, completedPageIDs, initConcurrency, onProgress); err != nil {
 		fmt.Fprintf(os.Stderr, "\n  ⚠  Generation interrupted: %v\n", err)
+		fmt.Fprintf(os.Stderr, "\n  Models used:\n")
+		fmt.Fprintf(os.Stderr, "    cheap:   %s\n", tc.CheapModel)
+		fmt.Fprintf(os.Stderr, "    medium:  %s\n", tc.MediumModel)
+		fmt.Fprintf(os.Stderr, "    premium: %s\n", tc.PremiumModel)
+		fmt.Fprintf(os.Stderr, "\n  To switch models on resume, pass --cheap-model, --medium-model, or --premium-model.\n")
 		fmt.Fprintf(os.Stderr, "  Resume with: argus init %s --resume %s\n", repoPath, wikiJobID)
 		return err
 	}
@@ -598,6 +622,7 @@ func coalesce(a, b string) string {
 func init() {
 	initCmd.Flags().BoolVar(&initIndexOnly, "index-only", false, "skip wiki generation, only analyze and score")
 	initCmd.Flags().BoolVar(&initYes, "yes", false, "skip all confirmation prompts")
+	initCmd.Flags().BoolVar(&initForceWiki, "force-wiki", false, "force wiki regeneration even if HEAD is unchanged")
 	initCmd.Flags().StringVar(&initResume, "resume", "", "resume a previous wiki generation job ID")
 	initCmd.Flags().StringVar(&initProvider, "provider", "", "force LLM provider (anthropic|openai|gemini)")
 	initCmd.Flags().StringVar(&initCheapModel, "cheap-model", "", "override cheap-tier model")

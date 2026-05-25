@@ -219,6 +219,13 @@ func (d *DB) UpsertRepository(ctx context.Context, repo models.Repository) error
 		Create(&row).Error
 }
 
+func (d *DB) ClearRepoLastCommit(ctx context.Context, repoID string) error {
+	return d.db.WithContext(ctx).
+		Model(&repositoryRow{}).
+		Where("id = ?", repoID).
+		Update("last_commit", "").Error
+}
+
 func (d *DB) GetRepository(ctx context.Context, repoID string) (models.Repository, error) {
 	var row repositoryRow
 	err := d.db.WithContext(ctx).Where("id = ?", repoID).First(&row).Error

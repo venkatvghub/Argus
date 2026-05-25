@@ -23,7 +23,6 @@ type Config struct {
 
 	// Persistence configuration
 	DatabaseURL string `envconfig:"DATABASE_URL" default:"postgres://argus:argus@localhost:5432/argus?sslmode=disable"`
-	DataDir     string `envconfig:"DATA_DIR" default:"data"`
 	DocsDir     string `envconfig:"DOCS_DIR" default:"docs"`
 
 	// Compliance patterns (comma-separated identifiers: AADHAAR, PAN, UPI_ID, MOBILE, EMAIL)
