@@ -190,12 +190,20 @@ func (s *RESTServer) postChatMessage(w http.ResponseWriter, r *http.Request) {
 		case token, ok := <-tokens:
 			if !ok {
 				// Stream done — persist the assistant message.
-				assistantMsg, persistErr := s.argus.CreateChatMessage(ctx, convID, "assistant", sb.String())
+				assistantContent := sb.String()
+				assistantMsg, persistErr := s.argus.CreateChatMessage(ctx, convID, "assistant", assistantContent)
 				if persistErr != nil {
 					logger.FromContext(ctx).Error("persist assistant message failed", "conv_id", convID, "error", persistErr)
 					writeSSEEvent(w, "[ERROR] failed to persist assistant message")
 					flusher.Flush()
 					return
+				}
+				// Record LLM cost (best-effort; never block the response).
+				modelName := s.argus.ActiveModelName()
+				inputTokens := len(body.Message) / 4
+				outputTokens := len(assistantContent) / 4
+				if recordErr := s.argus.RecordCost(ctx, repoID, modelName, "chat", inputTokens, outputTokens); recordErr != nil {
+					logger.FromContext(ctx).Warn("failed to record LLM cost", "repo_id", repoID, "error", recordErr)
 				}
 				donePayload, _ := json.Marshal(map[string]string{
 					"type":            "done",

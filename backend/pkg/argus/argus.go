@@ -228,6 +228,12 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 		if err := i.db.UpsertMarkers(jobCtx, repoID, markers); err != nil {
 			i.log.Warn("failed to persist markers", "error", err)
 		}
+		if err := i.db.UpsertRepoFiles(jobCtx, repoID, nodes); err != nil {
+			i.log.Warn("failed to persist repo files", "error", err)
+		}
+		if err := i.db.UpsertRepoSymbols(jobCtx, repoID, symbols); err != nil {
+			i.log.Warn("failed to persist repo symbols", "error", err)
+		}
 
 		i.mu.Lock()
 		i.engines[repoID] = engine
@@ -317,25 +323,37 @@ func (i *Instance) GetCommunityGraph(ctx context.Context, repoID string, communi
 }
 
 // GetRepoSymbols returns all symbols for a specific repository.
+// Falls back to DB when the engine is not in memory.
 func (i *Instance) GetRepoSymbols(ctx context.Context, repoID string) ([]models.Symbol, error) {
 	i.mu.RLock()
-	defer i.mu.RUnlock()
-
 	engine, ok := i.engines[repoID]
-	if !ok {
-		return nil, ErrRepoNotFound
-	}
+	i.mu.RUnlock()
 
-	var results []models.Symbol = []models.Symbol{}
-	for _, node := range engine.GetNodes() {
-		if node.InternalType() == analysis.NodeTypeSymbol {
-			s := node.Symbol()
-			if s != nil {
-				results = append(results, *s)
+	if ok {
+		var results []models.Symbol = []models.Symbol{}
+		for _, node := range engine.GetNodes() {
+			if node.InternalType() == analysis.NodeTypeSymbol {
+				s := node.Symbol()
+				if s != nil {
+					results = append(results, *s)
+				}
 			}
 		}
+		return results, nil
 	}
-	return results, nil
+
+	// Engine not in memory — fall back to DB.
+	if _, err := i.db.GetRepository(ctx, repoID); err != nil {
+		return nil, ErrRepoNotFound
+	}
+	dbSymbols, err := i.db.GetRepoSymbols(ctx, repoID)
+	if err != nil {
+		return []models.Symbol{}, nil
+	}
+	if dbSymbols == nil {
+		return []models.Symbol{}, nil
+	}
+	return dbSymbols, nil
 }
 
 // GetRepoMarkers returns all markers for a specific repository.
@@ -457,33 +475,68 @@ func (i *Instance) GetWikiPage(ctx context.Context, pageID string) (models.WikiP
 	return i.db.GetWikiPage(ctx, pageID)
 }
 
-// GetRepoFiles returns all file nodes for a repository from the in-memory graph engine.
-// Returns ErrRepoNotFound if the repo has not been analyzed in this session.
+// GetRepoFiles returns all file nodes for a repository.
+// Falls back to DB when the engine is not in memory, and further falls back to
+// deriving a file list from in-memory markers when the DB has no rows yet.
 func (i *Instance) GetRepoFiles(ctx context.Context, repoID string) ([]models.FileNode, error) {
 	i.mu.RLock()
-	defer i.mu.RUnlock()
 	engine, ok := i.engines[repoID]
-	if !ok {
-		return nil, ErrRepoNotFound
-	}
-	var files []models.FileNode
-	for _, n := range engine.GetNodes() {
-		if n.InternalType() == analysis.NodeTypeFile {
-			if f := n.File(); f != nil {
-				files = append(files, *f)
+	i.mu.RUnlock()
+
+	if ok {
+		var files []models.FileNode
+		for _, n := range engine.GetNodes() {
+			if n.InternalType() == analysis.NodeTypeFile {
+				if f := n.File(); f != nil {
+					files = append(files, *f)
+				}
 			}
 		}
+		return files, nil
+	}
+
+	// Engine not in memory — verify repo exists.
+	if _, err := i.db.GetRepository(ctx, repoID); err != nil {
+		return nil, ErrRepoNotFound
+	}
+
+	// Try DB first (populated by Analyze).
+	dbFiles, err := i.db.GetRepoFiles(ctx, repoID)
+	if err == nil && len(dbFiles) > 0 {
+		return dbFiles, nil
+	}
+
+	// Last resort: derive from in-memory markers (available after restart from LoadAllMarkers).
+	i.mu.RLock()
+	markers, hasMark := i.markers[repoID]
+	i.mu.RUnlock()
+	if !hasMark {
+		return []models.FileNode{}, nil
+	}
+	seen := make(map[string]struct{})
+	var files []models.FileNode
+	for _, m := range markers {
+		if _, already := seen[m.File]; already {
+			continue
+		}
+		seen[m.File] = struct{}{}
+		files = append(files, models.FileNode{
+			Path:     m.File,
+			IsFile:   true,
+			Language: langFromExt(m.File),
+		})
 	}
 	return files, nil
 }
 
 // GetCommunityCount returns the number of distinct communities detected for a repository.
+// Returns 0 (no error) when the engine is not in memory.
 func (i *Instance) GetCommunityCount(ctx context.Context, repoID string) (int, error) {
 	i.mu.RLock()
-	defer i.mu.RUnlock()
 	engine, ok := i.engines[repoID]
+	i.mu.RUnlock()
 	if !ok {
-		return 0, ErrRepoNotFound
+		return 0, nil
 	}
 	seen := make(map[int]struct{})
 	for _, n := range engine.GetNodes() {

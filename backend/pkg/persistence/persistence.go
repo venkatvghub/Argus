@@ -331,6 +331,202 @@ func (db *DB) DeleteRepository(ctx context.Context, repoID string) error {
 	return err
 }
 
+// UpsertRepoFiles replaces all file records for the given repo.
+func (db *DB) UpsertRepoFiles(ctx context.Context, repoID string, files []models.FileNode) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM repo_files WHERE repo_id = ?", repoID); err != nil {
+		return err
+	}
+
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO repo_files (repo_id, path, language, churn, ownership, author_count, line_coverage, size, primary_author_last_commit)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, f := range files {
+		var pac *time.Time
+		if !f.PrimaryAuthorLastCommit.IsZero() {
+			pac = &f.PrimaryAuthorLastCommit
+		}
+		if _, err := stmt.ExecContext(ctx, repoID, f.Path, f.Language, f.Churn, f.Ownership, f.AuthorCount, f.LineCoverage, f.Size, pac); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// GetRepoFiles returns all file records for a repository.
+func (db *DB) GetRepoFiles(ctx context.Context, repoID string) ([]models.FileNode, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT path, language, churn, ownership, author_count, line_coverage, size, primary_author_last_commit
+		FROM repo_files WHERE repo_id = ? ORDER BY churn DESC`, repoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var files []models.FileNode
+	for rows.Next() {
+		var f models.FileNode
+		var pac *string
+		f.IsFile = true
+		if err := rows.Scan(&f.Path, &f.Language, &f.Churn, &f.Ownership, &f.AuthorCount, &f.LineCoverage, &f.Size, &pac); err != nil {
+			return nil, err
+		}
+		if pac != nil {
+			if t, parseErr := parseSQLiteTimestamp("primary_author_last_commit", *pac); parseErr == nil {
+				f.PrimaryAuthorLastCommit = t
+			}
+		}
+		files = append(files, f)
+	}
+	return files, rows.Err()
+}
+
+// UpsertRepoSymbols replaces all symbol records for the given repo.
+func (db *DB) UpsertRepoSymbols(ctx context.Context, repoID string, symbols []models.Symbol) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM repo_symbols WHERE repo_id = ?", repoID); err != nil {
+		return err
+	}
+
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO repo_symbols (repo_id, name, type, file_path, line, end_line)
+		VALUES (?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, s := range symbols {
+		if _, err := stmt.ExecContext(ctx, repoID, s.Name, string(s.Type), s.FilePath, s.Line, s.EndLine); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// GetRepoSymbols returns all symbol records for a repository.
+func (db *DB) GetRepoSymbols(ctx context.Context, repoID string) ([]models.Symbol, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT name, type, file_path, line, end_line
+		FROM repo_symbols WHERE repo_id = ?`, repoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var symbols []models.Symbol
+	for rows.Next() {
+		var s models.Symbol
+		var typ string
+		if err := rows.Scan(&s.Name, &typ, &s.FilePath, &s.Line, &s.EndLine); err != nil {
+			return nil, err
+		}
+		s.Type = models.SymbolType(typ)
+		symbols = append(symbols, s)
+	}
+	return symbols, rows.Err()
+}
+
+// LLMCostRecord is a single LLM call cost entry to persist.
+type LLMCostRecord struct {
+	RepoID       string
+	Model        string
+	Operation    string
+	InputTokens  int
+	OutputTokens int
+	CostUSD      float64
+}
+
+// CostGroup is an aggregated cost row returned by ListLLMCosts.
+type CostGroup struct {
+	Group        string  `json:"group"`
+	Calls        int     `json:"calls"`
+	InputTokens  int     `json:"input_tokens"`
+	OutputTokens int     `json:"output_tokens"`
+	CostUSD      float64 `json:"cost_usd"`
+}
+
+// CostSummary is the aggregate cost totals for a repo.
+type CostSummary struct {
+	TotalCostUSD      float64  `json:"total_cost_usd"`
+	TotalCalls        int      `json:"total_calls"`
+	TotalInputTokens  int      `json:"total_input_tokens"`
+	TotalOutputTokens int      `json:"total_output_tokens"`
+	Since             *string  `json:"since"`
+}
+
+// RecordLLMCost inserts a cost record for an LLM call.
+func (db *DB) RecordLLMCost(ctx context.Context, rec LLMCostRecord) error {
+	op := rec.Operation
+	if op == "" {
+		op = "chat"
+	}
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO llm_costs (repo_id, model, operation, input_tokens, output_tokens, cost_usd)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		rec.RepoID, rec.Model, op, rec.InputTokens, rec.OutputTokens, rec.CostUSD)
+	return err
+}
+
+// ListLLMCosts returns aggregated cost data for a repo, grouped by "day", "model", or "operation".
+func (db *DB) ListLLMCosts(ctx context.Context, repoID, by string) ([]CostGroup, error) {
+	var groupExpr string
+	switch by {
+	case "model":
+		groupExpr = "model"
+	case "operation":
+		groupExpr = "operation"
+	default:
+		groupExpr = "strftime('%Y-%m-%d', called_at)"
+	}
+	q := fmt.Sprintf(`
+		SELECT %s as grp, COUNT(*) as calls, SUM(input_tokens), SUM(output_tokens), SUM(cost_usd)
+		FROM llm_costs WHERE repo_id = ?
+		GROUP BY grp ORDER BY grp DESC`, groupExpr)
+	rows, err := db.QueryContext(ctx, q, repoID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var groups []CostGroup
+	for rows.Next() {
+		var g CostGroup
+		if err := rows.Scan(&g.Group, &g.Calls, &g.InputTokens, &g.OutputTokens, &g.CostUSD); err != nil {
+			return nil, err
+		}
+		groups = append(groups, g)
+	}
+	return groups, rows.Err()
+}
+
+// GetLLMCostSummary returns aggregate totals for all LLM calls for a repo.
+func (db *DB) GetLLMCostSummary(ctx context.Context, repoID string) (CostSummary, error) {
+	var summary CostSummary
+	var since *string
+	err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cost_usd),0.0), MIN(called_at)
+		FROM llm_costs WHERE repo_id = ?`, repoID).
+		Scan(&summary.TotalCalls, &summary.TotalInputTokens, &summary.TotalOutputTokens, &summary.TotalCostUSD, &since)
+	if err != nil {
+		return summary, err
+	}
+	summary.Since = since
+	return summary, nil
+}
+
 // CreateJob inserts a new job record.
 func (db *DB) CreateJob(ctx context.Context, job models.Job) error {
 	_, err := db.ExecContext(ctx, `

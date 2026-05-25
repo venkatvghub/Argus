@@ -66,16 +66,42 @@ func (s *RESTServer) Routes() chi.Router {
 		// Knowledge map
 		r.Get("/repos/{repoID}/knowledge-map", s.getKnowledgeMap)
 
+		// Security findings (stub — PII markers served from health/findings)
+		r.Get("/repos/{repoID}/security", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, []any{})
+		})
+
 		// Health
 		r.Get("/repos/{repoID}/health/overview", s.getHealthOverview)
 		r.Get("/repos/{repoID}/health/files", s.getHealthFiles)
 		r.Get("/repos/{repoID}/health/findings", s.getHealthFindings)
 		r.Get("/repos/{repoID}/health/files/breakdown", s.getHealthFiles) // same as getHealthFiles
 		r.Get("/repos/{repoID}/health/trend", s.getHealthTrend)
-		r.Get("/repos/{repoID}/health/coverage", s.stubEmptyData)
-		r.Get("/repos/{repoID}/health/refactoring-targets", s.stubEmptyData)
+		r.Get("/repos/{repoID}/health/coverage", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, map[string]any{
+				"summary": map[string]any{
+					"file_count":           0,
+					"covered_lines":        0,
+					"total_lines":          0,
+					"line_coverage_pct":    nil,
+					"branch_coverage_pct":  nil,
+					"source_format":        nil,
+					"ingested_at":          nil,
+					"ingested_commit_sha":  nil,
+				},
+				"files":   []any{},
+				"modules": []any{},
+			})
+		})
+		r.Get("/repos/{repoID}/health/refactoring-targets", s.getRefactoringTargets)
 		r.Get("/repos/{repoID}/health/coordinator", func(w http.ResponseWriter, r *http.Request) {
-			s.json(w, http.StatusOK, map[string]string{"status": "ok"})
+			s.json(w, http.StatusOK, map[string]any{
+				"status":      "ok",
+				"sql_pages":   nil,
+				"vector_count": nil,
+				"graph_nodes":  nil,
+				"drift_pct":    nil,
+			})
 		})
 
 		// Providers
@@ -105,6 +131,36 @@ func (s *RESTServer) Routes() chi.Router {
 		r.Get("/graph/{repoID}/modules", s.getGraphModules)
 		r.Get("/graph/{repoID}/execution-flows", s.getExecutionFlows)
 
+		// C4 diagram stubs
+		r.Get("/graph/{repoID}/c4/l1", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, map[string]any{
+				"system":           map[string]any{"id": "system", "name": "System", "description": ""},
+				"people":           []any{},
+				"external_systems": []any{},
+				"relations":        []any{},
+			})
+		})
+		r.Get("/graph/{repoID}/c4/l2", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, map[string]any{
+				"containers":       []any{},
+				"external_systems": []any{},
+				"relations":        []any{},
+			})
+		})
+		r.Get("/graph/{repoID}/c4/l3", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, map[string]any{
+				"container":        nil,
+				"components":       []any{},
+				"external_systems": []any{},
+				"relations":        []any{},
+			})
+		})
+		r.Get("/graph/{repoID}/c4/mermaid", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("C4Context\n  title System Context"))
+		})
+
 		// Jobs
 		r.Get("/jobs", s.listJobs)
 		r.Get("/jobs/{jobID}", s.getJob)
@@ -116,6 +172,49 @@ func (s *RESTServer) Routes() chi.Router {
 		r.Get("/repos/{repoID}/chat/conversations/{convID}", s.getConversation)
 		r.Delete("/repos/{repoID}/chat/conversations/{convID}", s.deleteConversation)
 		r.Post("/repos/{repoID}/chat/messages", s.postChatMessage)
+
+		// Symbols — flat query-param style used by the frontend (/api/symbols?repo_id=...)
+		r.Get("/symbols", s.listSymbols)
+		r.Get("/symbols/by-name/{name}", s.listSymbols)
+		r.Get("/symbols/{symbolID}", s.listSymbols)
+
+		// Wiki pages — flat query-param style (/api/pages?repo_id=...)
+		r.Get("/pages", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, []any{})
+		})
+		r.Get("/pages/lookup", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, map[string]any{})
+		})
+		r.Get("/pages/lookup/versions", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, []any{})
+		})
+		r.Post("/pages/lookup/regenerate", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, map[string]any{"job_id": ""})
+		})
+
+		// Module health stubs
+		r.Get("/repos/{repoID}/modules/health", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, map[string]any{
+				"items": []any{}, "total": 0, "has_more": false, "next_offset": nil,
+			})
+		})
+		r.Get("/repos/{repoID}/modules/health/{modulePath}", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, map[string]any{})
+		})
+
+		// LLM cost tracking
+		r.Get("/repos/{repoID}/costs", s.getRepoCosts)
+		r.Get("/repos/{repoID}/costs/summary", s.getRepoCostSummary)
+
+		// Owners stubs
+		r.Get("/repos/{repoID}/owners", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, map[string]any{
+				"items": []any{}, "total": 0, "has_more": false, "next_offset": nil,
+			})
+		})
+		r.Get("/repos/{repoID}/owners/{ownerKey}", func(w http.ResponseWriter, r *http.Request) {
+			s.json(w, http.StatusOK, map[string]any{})
+		})
 
 		// Score & export (existing)
 		r.Get("/score/file", s.getFileScore)
@@ -272,6 +371,28 @@ func (s *RESTServer) getSymbols(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.json(w, http.StatusOK, symbols)
+}
+
+// listSymbols handles GET /api/symbols?repo_id=... with the paginated envelope
+// shape the frontend expects: { items, total, has_more, next_offset }.
+func (s *RESTServer) listSymbols(w http.ResponseWriter, r *http.Request) {
+	repoID := r.URL.Query().Get("repo_id")
+	if repoID == "" {
+		s.json(w, http.StatusOK, map[string]any{
+			"items": []any{}, "total": 0, "has_more": false, "next_offset": nil,
+		})
+		return
+	}
+	symbols, err := s.argus.GetRepoSymbols(r.Context(), repoID)
+	if err != nil {
+		s.json(w, http.StatusOK, map[string]any{
+			"items": []any{}, "total": 0, "has_more": false, "next_offset": nil,
+		})
+		return
+	}
+	s.json(w, http.StatusOK, map[string]any{
+		"items": symbols, "total": len(symbols), "has_more": false, "next_offset": nil,
+	})
 }
 
 func (s *RESTServer) getMarkers(w http.ResponseWriter, r *http.Request) {
@@ -551,59 +672,223 @@ func (s *RESTServer) exportCognee(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// --- Git intelligence stubs ---
+// --- Git intelligence ---
 
 func (s *RESTServer) getGitSummary(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+	if repoID == "" {
+		s.error(w, http.StatusBadRequest, "repoID is required")
+		return
+	}
+	files, err := s.argus.GetRepoFiles(r.Context(), repoID)
+	if err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	const hotspotChurnThreshold = 10
+	hotspotCount, stableCount := 0, 0
+	ownerMap := make(map[string]int)
+	var totalChurn int
+	for _, f := range files {
+		if f.Churn >= hotspotChurnThreshold {
+			hotspotCount++
+		} else {
+			stableCount++
+		}
+		totalChurn += f.Churn
+	}
+
+	// Aggregate ownership by extracting top contributor info from markers.
+	markers, _ := s.argus.GetRepoMarkers(r.Context(), repoID)
+	for _, m := range markers {
+		if m.Type == "knowledge_loss" || m.Type == "developer_congestion" {
+			ownerMap[m.File]++
+		}
+	}
+
+	avgChurn := 0.0
+	if len(files) > 0 {
+		avgChurn = float64(totalChurn) / float64(len(files))
+	}
+
 	s.json(w, http.StatusOK, map[string]any{
-		"total_files":              0,
-		"hotspot_count":            0,
-		"stable_count":             0,
-		"average_churn_percentile": 0.0,
+		"total_files":              len(files),
+		"hotspot_count":            hotspotCount,
+		"stable_count":             stableCount,
+		"average_churn_percentile": avgChurn,
 		"top_owners":               []any{},
 	})
 }
 
 func (s *RESTServer) getOwnership(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+	if repoID == "" {
+		s.error(w, http.StatusBadRequest, "repoID is required")
+		return
+	}
+	files, err := s.argus.GetRepoFiles(r.Context(), repoID)
+	if err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	type ownershipItem struct {
+		Path        string  `json:"path"`
+		Language    string  `json:"language"`
+		Ownership   float64 `json:"ownership_pct"`
+		AuthorCount int     `json:"author_count"`
+		Churn       int     `json:"churn"`
+	}
+
+	items := make([]ownershipItem, 0, len(files))
+	for _, f := range files {
+		items = append(items, ownershipItem{
+			Path:        f.Path,
+			Language:    f.Language,
+			Ownership:   f.Ownership,
+			AuthorCount: f.AuthorCount,
+			Churn:       f.Churn,
+		})
+	}
+
 	s.json(w, http.StatusOK, map[string]any{
-		"items":       []any{},
-		"total":       0,
+		"items":       items,
+		"total":       len(items),
 		"has_more":    false,
-		"next_offset": 0,
+		"next_offset": nil,
 	})
 }
 
 func (s *RESTServer) getHotspots(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+	if repoID == "" {
+		s.error(w, http.StatusBadRequest, "repoID is required")
+		return
+	}
+	files, err := s.argus.GetRepoFiles(r.Context(), repoID)
+	if err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	type hotspotItem struct {
+		Path        string  `json:"path"`
+		Language    string  `json:"language"`
+		Churn       int     `json:"churn"`
+		Ownership   float64 `json:"ownership_pct"`
+		AuthorCount int     `json:"author_count"`
+	}
+
+	const hotspotThreshold = 5
+	items := make([]hotspotItem, 0)
+	for _, f := range files {
+		if f.Churn >= hotspotThreshold {
+			items = append(items, hotspotItem{
+				Path:        f.Path,
+				Language:    f.Language,
+				Churn:       f.Churn,
+				Ownership:   f.Ownership,
+				AuthorCount: f.AuthorCount,
+			})
+		}
+	}
+
 	s.json(w, http.StatusOK, map[string]any{
-		"items":       []any{},
-		"total":       0,
+		"items":       items,
+		"total":       len(items),
 		"has_more":    false,
-		"next_offset": 0,
+		"next_offset": nil,
 	})
 }
 
 // --- Dead code stubs ---
 
 func (s *RESTServer) getDeadCodeSummary(w http.ResponseWriter, r *http.Request) {
+	repoID := strings.TrimSpace(chi.URLParam(r, "repoID"))
+	if repoID == "" {
+		s.error(w, http.StatusBadRequest, "repo_id is required")
+		return
+	}
+	if _, err := s.argus.GetRepository(r.Context(), repoID); err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
 	s.json(w, http.StatusOK, map[string]any{
-		"total_findings":   0,
+		"total_findings":     0,
 		"confidence_summary": map[string]int{},
-		"deletable_lines":  0,
-		"total_lines":      0,
-		"by_kind":          map[string]int{},
+		"deletable_lines":    0,
+		"total_lines":        0,
+		"by_kind":            map[string]int{},
 	})
 }
 
 func (s *RESTServer) getDeadCode(w http.ResponseWriter, r *http.Request) {
+	repoID := strings.TrimSpace(chi.URLParam(r, "repoID"))
+	if repoID == "" {
+		s.error(w, http.StatusBadRequest, "repo_id is required")
+		return
+	}
+	if _, err := s.argus.GetRepository(r.Context(), repoID); err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
 	s.json(w, http.StatusOK, []any{})
 }
 
 // --- Decision / ADR stubs ---
 
 func (s *RESTServer) getDecisions(w http.ResponseWriter, r *http.Request) {
+	repoID := strings.TrimSpace(chi.URLParam(r, "repoID"))
+	if repoID == "" {
+		s.error(w, http.StatusBadRequest, "repo_id is required")
+		return
+	}
+	if _, err := s.argus.GetRepository(r.Context(), repoID); err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
 	s.json(w, http.StatusOK, []any{})
 }
 
 func (s *RESTServer) getDecisionsHealth(w http.ResponseWriter, r *http.Request) {
+	repoID := strings.TrimSpace(chi.URLParam(r, "repoID"))
+	if repoID == "" {
+		s.error(w, http.StatusBadRequest, "repo_id is required")
+		return
+	}
+	if _, err := s.argus.GetRepository(r.Context(), repoID); err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
 	s.json(w, http.StatusOK, map[string]any{
 		"summary": map[string]int{
 			"active":     0,
@@ -612,18 +897,31 @@ func (s *RESTServer) getDecisionsHealth(w http.ResponseWriter, r *http.Request) 
 			"superseded": 0,
 			"stale":      0,
 		},
-		"stale_decisions":         []any{},
+		"stale_decisions":          []any{},
 		"proposed_awaiting_review": []any{},
-		"ungoverned_hotspots":     []any{},
+		"ungoverned_hotspots":      []any{},
 	})
 }
 
 // --- Knowledge map stub ---
 
 func (s *RESTServer) getKnowledgeMap(w http.ResponseWriter, r *http.Request) {
+	repoID := strings.TrimSpace(chi.URLParam(r, "repoID"))
+	if repoID == "" {
+		s.error(w, http.StatusBadRequest, "repo_id is required")
+		return
+	}
+	if _, err := s.argus.GetRepository(r.Context(), repoID); err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
 	s.json(w, http.StatusOK, map[string]any{
-		"top_owners":        []any{},
-		"knowledge_silos":   []any{},
+		"top_owners":         []any{},
+		"knowledge_silos":    []any{},
 		"onboarding_targets": []any{},
 	})
 }
@@ -646,6 +944,15 @@ func (s *RESTServer) getProviders(w http.ResponseWriter, r *http.Request) {
 // --- Graph extension stubs ---
 
 func (s *RESTServer) getGraphModules(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+	if _, err := s.argus.GetCommunities(r.Context(), repoID); err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.json(w, http.StatusOK, map[string]any{"nodes": []any{}, "edges": []any{}})
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
 	s.json(w, http.StatusOK, map[string]any{
 		"nodes": []any{},
 		"edges": []any{},
@@ -653,6 +960,18 @@ func (s *RESTServer) getGraphModules(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *RESTServer) getExecutionFlows(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+	if _, err := s.argus.GetCommunities(r.Context(), repoID); err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.json(w, http.StatusOK, map[string]any{
+				"total_entry_points": 0,
+				"flows":              []any{},
+			})
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
 	s.json(w, http.StatusOK, map[string]any{
 		"total_entry_points": 0,
 		"flows":              []any{},
@@ -673,6 +992,100 @@ func (s *RESTServer) getHealthTrend(w http.ResponseWriter, r *http.Request) {
 			CurrentAverageHealth: score,
 		},
 		SnapshotCount: 0,
+	})
+}
+
+func (s *RESTServer) getRepoCosts(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+	by := r.URL.Query().Get("by")
+	if by == "" {
+		by = "day"
+	}
+	groups, err := s.argus.GetRepoCosts(r.Context(), repoID, by)
+	if err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	s.json(w, http.StatusOK, map[string]any{
+		"items":   groups,
+		"total":   len(groups),
+		"has_more": false,
+	})
+}
+
+func (s *RESTServer) getRepoCostSummary(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+	summary, err := s.argus.GetRepoCostSummary(r.Context(), repoID)
+	if err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	s.json(w, http.StatusOK, summary)
+}
+
+func (s *RESTServer) getRefactoringTargets(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
+	markers, err := s.argus.GetRepoMarkers(r.Context(), repoID)
+	if err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.json(w, http.StatusOK, map[string]any{"targets": []any{}, "total": 0})
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	type refactorTarget struct {
+		File       string  `json:"file"`
+		Type       string  `json:"type"`
+		Severity   string  `json:"severity"`
+		Message    string  `json:"message"`
+		Line       int     `json:"line"`
+		Deduction  float64 `json:"deduction"`
+		Suggestion string  `json:"suggestion"`
+	}
+
+	refactorCategories := map[string]struct{}{
+		"structural_complexity": {},
+		"size_api_complexity":   {},
+		"duplication":           {},
+	}
+
+	targets := make([]refactorTarget, 0)
+	for _, m := range markers {
+		if _, ok := refactorCategories[string(m.Category)]; ok && m.Deduction > 0 {
+			targets = append(targets, refactorTarget{
+				File:       m.File,
+				Type:       m.Type,
+				Severity:   m.Severity,
+				Message:    m.Message,
+				Line:       m.Line,
+				Deduction:  m.Deduction,
+				Suggestion: m.Suggestion,
+			})
+		}
+	}
+
+	// Sort by deduction descending (highest impact first).
+	for i := 1; i < len(targets); i++ {
+		for j := 0; j < len(targets)-i; j++ {
+			if targets[j].Deduction < targets[j+1].Deduction {
+				targets[j], targets[j+1] = targets[j+1], targets[j]
+			}
+		}
+	}
+
+	s.json(w, http.StatusOK, map[string]any{
+		"targets": targets,
+		"total":   len(targets),
 	})
 }
 

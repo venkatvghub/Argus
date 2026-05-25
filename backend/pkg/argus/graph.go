@@ -51,7 +51,39 @@ func (i *Instance) GetGraphExport(ctx context.Context, repoID string) (GraphExpo
 		}{},
 	}
 	if !ok {
-		return resp, ErrRepoNotFound
+		// Engine not in memory — return empty graph derived from DB files.
+		dbFiles, dbErr := i.db.GetRepoFiles(ctx, repoID)
+		if dbErr != nil || len(dbFiles) == 0 {
+			// Try marker-derived files.
+			i.mu.RLock()
+			markers, hasMark := i.markers[repoID]
+			i.mu.RUnlock()
+			if hasMark {
+				seen := make(map[string]struct{})
+				nodeID := 1
+				for _, m := range markers {
+					if _, already := seen[m.File]; already {
+						continue
+					}
+					seen[m.File] = struct{}{}
+					resp.Nodes = append(resp.Nodes, GraphNode{
+						ID:    fmt.Sprintf("%d", nodeID),
+						Label: m.File,
+						File:  m.File,
+					})
+					nodeID++
+				}
+			}
+		} else {
+			for idx, f := range dbFiles {
+				resp.Nodes = append(resp.Nodes, GraphNode{
+					ID:    fmt.Sprintf("%d", idx+1),
+					Label: f.Path,
+					File:  f.Path,
+				})
+			}
+		}
+		return resp, nil
 	}
 
 	for _, n := range engine.GetNodes() {
@@ -103,7 +135,7 @@ func (i *Instance) GetCommunities(ctx context.Context, repoID string) ([]Communi
 	i.mu.RUnlock()
 
 	if !ok {
-		return nil, ErrRepoNotFound
+		return []CommunityInfo{}, nil
 	}
 
 	byID := make(map[int][]string)

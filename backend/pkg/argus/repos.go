@@ -49,7 +49,10 @@ func (i *Instance) DeleteRepository(ctx context.Context, repoID string) error {
 func (i *Instance) GetRepoStats(ctx context.Context, repoID string) (map[string]any, error) {
 	files, err := i.GetRepoFiles(ctx, repoID)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, ErrRepoNotFound) {
+			return nil, ErrRepoNotFound
+		}
+		files = []models.FileNode{}
 	}
 
 	langBreakdown := make(map[string]int)
@@ -61,7 +64,7 @@ func (i *Instance) GetRepoStats(ctx context.Context, repoID string) (map[string]
 
 	symbols, err := i.GetRepoSymbols(ctx, repoID)
 	if err != nil {
-		return nil, err
+		symbols = []models.Symbol{}
 	}
 
 	score, err := i.GetRepoScore(ctx, repoID)
