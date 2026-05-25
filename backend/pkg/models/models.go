@@ -7,12 +7,14 @@ import "time"
 
 // Repository represents a source code repository under analysis.
 type Repository struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Path       string    `json:"path"`
-	URL        string    `json:"url,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
-	LastCommit string    `json:"last_commit,omitempty"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Path          string    `json:"path"`
+	URL           string    `json:"url,omitempty"`
+	DefaultBranch string    `json:"default_branch,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	LastCommit    string    `json:"last_commit,omitempty"`
 }
 
 // FileNode represents a single file or directory within a repository.
@@ -26,6 +28,7 @@ type FileNode struct {
 	Ownership float64   `json:"ownership"` // Percentage of commits by the top author
 
 	AuthorCount             int       `json:"author_count"`
+	PrimaryAuthor           string    `json:"primary_author,omitempty"`
 	PrimaryAuthorLastCommit time.Time `json:"primary_author_last_commit,omitempty"`
 	LineCoverage            float64   `json:"line_coverage"` // 0.0–100.0; -1 = unknown
 }
@@ -139,12 +142,32 @@ const (
 
 type Job struct {
 	ID        string    `json:"id"`
+	RepoID    string    `json:"repo_id,omitempty"`
 	Type      string    `json:"type"` // e.g., "analysis"
 	Status    JobStatus `json:"status"`
 	Progress  string    `json:"progress"`
 	Error     string    `json:"error,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Conversation holds a chat session for a repo.
+type Conversation struct {
+	ID           string    `json:"id"`
+	RepositoryID string    `json:"repository_id"`
+	Title        string    `json:"title"`
+	MessageCount int       `json:"message_count"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// ChatMessage is a single user or assistant turn in a conversation.
+type ChatMessage struct {
+	ID             string    `json:"id"`
+	ConversationID string    `json:"conversation_id"`
+	Role           string    `json:"role"`    // "user" | "assistant"
+	Content        string    `json:"content"` // plain text or JSON for tool calls
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // WikiJobStatus represents the lifecycle state of a wiki generation job.
@@ -181,6 +204,7 @@ type WikiPage struct {
 	Type      string    `json:"type"`       // "file_page", "module_page", etc.
 	Subject   string    `json:"subject"`    // file path, module dir, symbol name, etc.
 	Content   string    `json:"content"`    // generated markdown
+	Model     string    `json:"model"`      // LLM model that generated this page
 	Level     int       `json:"level"`      // generation level 0-7
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

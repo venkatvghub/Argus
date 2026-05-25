@@ -69,6 +69,10 @@ export function HotspotTable({
   onLoadMore,
   renderExpandedRow,
 }: HotspotTableProps) {
+  const hotspotsWithPath = useMemo(
+    () => hotspots.filter((h) => Boolean(h.file_path)),
+    [hotspots],
+  );
   const expandable = !!renderExpandedRow;
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const toggleExpand = (filePath: string) => {
@@ -95,7 +99,7 @@ export function HotspotTable({
   }
 
   const filtered = useMemo(() => {
-    let items = hotspots;
+    let items = hotspotsWithPath;
 
     if (search) {
       const q = search.toLowerCase();
@@ -131,9 +135,9 @@ export function HotspotTable({
     });
 
     return items;
-  }, [hotspots, search, filter, sortKey, sortDir]);
+  }, [hotspotsWithPath, search, filter, sortKey, sortDir]);
 
-  if (hotspots.length === 0) {
+  if (hotspotsWithPath.length === 0) {
     return (
       <EmptyState
         title="No hotspots found"
@@ -143,10 +147,10 @@ export function HotspotTable({
   }
 
   const filters: { key: Filter; label: string; count: number }[] = [
-    { key: "all", label: "All", count: hotspots.length },
-    { key: "hot", label: "Hot", count: hotspots.filter((h) => h.is_hotspot).length },
-    { key: "risk", label: "Bus factor risk", count: hotspots.filter((h) => h.bus_factor <= 1).length },
-    { key: "accelerating", label: "Accelerating", count: hotspots.filter((h) => h.commit_count_30d * 3 > h.commit_count_90d).length },
+    { key: "all", label: "All", count: hotspotsWithPath.length },
+    { key: "hot", label: "Hot", count: hotspotsWithPath.filter((h) => h.is_hotspot).length },
+    { key: "risk", label: "Bus factor risk", count: hotspotsWithPath.filter((h) => h.bus_factor <= 1).length },
+    { key: "accelerating", label: "Accelerating", count: hotspotsWithPath.filter((h) => h.commit_count_30d * 3 > h.commit_count_90d).length },
   ];
 
   return (

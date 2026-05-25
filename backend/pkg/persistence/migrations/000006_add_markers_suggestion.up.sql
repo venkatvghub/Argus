@@ -1,1 +1,0 @@
-ALTER TABLE markers ADD COLUMN suggestion TEXT NOT NULL DEFAULT '';

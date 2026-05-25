@@ -57,6 +57,10 @@ type geminiResponse struct {
 			} `json:"parts"`
 		} `json:"content"`
 	} `json:"candidates"`
+	UsageMetadata struct {
+		PromptTokenCount     int `json:"promptTokenCount"`
+		CandidatesTokenCount int `json:"candidatesTokenCount"`
+	} `json:"usageMetadata"`
 }
 
 func (p *GeminiProvider) buildPayload(prompt string) ([]byte, error) {
@@ -104,7 +108,7 @@ func (p *GeminiProvider) Chat(ctx context.Context, prompt string) (string, error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		return "", fmt.Errorf("gemini chat: status %d: %s", resp.StatusCode, string(raw))
 	}
 
@@ -116,6 +120,42 @@ func (p *GeminiProvider) Chat(ctx context.Context, prompt string) (string, error
 		return "", fmt.Errorf("gemini chat: empty candidates in response")
 	}
 	return result.Candidates[0].Content.Parts[0].Text, nil
+}
+
+// ChatWithUsage is like Chat but also returns input and output token counts.
+func (p *GeminiProvider) ChatWithUsage(ctx context.Context, prompt string) (string, int, int, error) {
+	if p.apiKey == "" {
+		return "", 0, 0, fmt.Errorf("Gemini API key is missing")
+	}
+	body, err := p.buildPayload(prompt)
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("gemini chat: marshal: %w", err)
+	}
+	url := fmt.Sprintf("%s/%s:generateContent", geminiBaseURL, p.model)
+	req, err := p.newRequest(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("gemini chat: request: %w", err)
+	}
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("gemini chat: http: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		return "", 0, 0, fmt.Errorf("gemini chat: status %d: %s", resp.StatusCode, string(raw))
+	}
+	var result geminiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", 0, 0, fmt.Errorf("gemini chat: decode: %w", err)
+	}
+	if len(result.Candidates) == 0 || len(result.Candidates[0].Content.Parts) == 0 {
+		return "", 0, 0, fmt.Errorf("gemini chat: empty candidates in response")
+	}
+	return result.Candidates[0].Content.Parts[0].Text,
+		result.UsageMetadata.PromptTokenCount,
+		result.UsageMetadata.CandidatesTokenCount,
+		nil
 }
 
 // ChatStream sends a prompt to Gemini with SSE streaming enabled and emits tokens on the returned channel.
@@ -140,7 +180,7 @@ func (p *GeminiProvider) ChatStream(ctx context.Context, repoID string, prompt s
 		return nil, nil, fmt.Errorf("gemini stream: http: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		resp.Body.Close()
 		return nil, nil, fmt.Errorf("gemini stream: status %d: %s", resp.StatusCode, string(raw))
 	}
@@ -213,7 +253,7 @@ func (p *GeminiProvider) ListModels(ctx context.Context) ([]string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		return nil, fmt.Errorf("gemini list models: status %d: %s", resp.StatusCode, string(raw))
 	}
 

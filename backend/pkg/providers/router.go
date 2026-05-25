@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -20,14 +21,18 @@ type TieredConfig struct {
 
 // TieredRouter routes LLM calls to different models based on generation tier.
 type TieredRouter struct {
-	cheap   Provider
-	medium  Provider
-	premium Provider
+	cheap      Provider
+	medium     Provider
+	premium    Provider
+	tc         TieredConfig
+	pricingMap map[string][2]float64 // live pricing from provider discovery; nil = static fallback only
 }
 
 // NewTieredRouter creates a TieredRouter by constructing three Provider instances
 // from the same config, each overriding the model field for its tier.
-func NewTieredRouter(cfg *config.Config, tc TieredConfig) (*TieredRouter, error) {
+// pricingMap is optional live pricing from provider discovery (e.g. OpenRouter);
+// nil falls back to the static pricing table in pricing.go.
+func NewTieredRouter(cfg *config.Config, tc TieredConfig, pricingMap map[string][2]float64) (*TieredRouter, error) {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
@@ -62,10 +67,37 @@ func NewTieredRouter(cfg *config.Config, tc TieredConfig) (*TieredRouter, error)
 
 	retryCfg := retryConfigFromConfig(cfg)
 	return &TieredRouter{
-		cheap:   newRetryingProvider(cheap, retryCfg),
-		medium:  newRetryingProvider(medium, retryCfg),
-		premium: newRetryingProvider(premium, retryCfg),
+		cheap:      newRetryingProvider(cheap, retryCfg),
+		medium:     newRetryingProvider(medium, retryCfg),
+		premium:    newRetryingProvider(premium, retryCfg),
+		tc:         tc,
+		pricingMap: pricingMap,
 	}, nil
+}
+
+// ModelForTier returns the model name used for the given tier.
+func (t *TieredRouter) ModelForTier(tier string) string {
+	switch tier {
+	case TierCheap:
+		return t.tc.CheapModel
+	case TierMedium:
+		return t.tc.MediumModel
+	case TierPremium:
+		return t.tc.PremiumModel
+	default:
+		return t.tc.MediumModel
+	}
+}
+
+// CostPer1M returns (inputCostPer1M, outputCostPer1M) for a model.
+// Uses live pricing from provider discovery when available, falls back to static table.
+func (t *TieredRouter) CostPer1M(model string) (float64, float64) {
+	return DynamicModelCostPer1M(model, t.pricingMap)
+}
+
+// PricingMap returns the live pricing map stored in the router (may be nil).
+func (t *TieredRouter) PricingMap() map[string][2]float64 {
+	return t.pricingMap
 }
 
 // retryConfigFromConfig converts config fields to a RetryConfig.
@@ -92,6 +124,49 @@ func (t *TieredRouter) ChatTier(ctx context.Context, tier, prompt string) (strin
 	default:
 		return "", fmt.Errorf("unknown tier %q", tier)
 	}
+}
+
+// usageProvider is optionally implemented by concrete providers to return token counts.
+type usageProvider interface {
+	ChatWithUsage(ctx context.Context, prompt string) (string, int, int, error)
+}
+
+// ChatTierWithUsage calls the tier provider and returns token counts when the
+// underlying provider implements usageProvider/ChatWithUsage (after unwrapping
+// retryingProvider). Otherwise it falls back to Chat plus a best-effort estimate.
+func (t *TieredRouter) ChatTierWithUsage(ctx context.Context, tier, prompt string) (content string, inputTokens, outputTokens int, err error) {
+	var p Provider
+	switch tier {
+	case TierCheap:
+		p = t.cheap
+	case TierMedium:
+		p = t.medium
+	case TierPremium:
+		p = t.premium
+	default:
+		return "", 0, 0, fmt.Errorf("unknown tier %q", tier)
+	}
+	// Unwrap retrying wrapper to reach the concrete provider.
+	if rp, ok := p.(*retryingProvider); ok {
+		if up, ok := rp.inner.(usageProvider); ok {
+			return up.ChatWithUsage(ctx, prompt)
+		}
+	}
+	if up, ok := p.(usageProvider); ok {
+		return up.ChatWithUsage(ctx, prompt)
+	}
+	// Best-effort fallback only when usageProvider/ChatWithUsage is unavailable
+	// (including after unwrapping retryingProvider): call Chat and estimate
+	// tokens from byte length / 4 — not provider-reported usage.
+	content, err = p.Chat(ctx, prompt)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	log.Printf(
+		"providers: ChatTierWithUsage using estimated token counts (tier=%q provider=%q model=%q); provider does not implement ChatWithUsage",
+		tier, p.Name(), t.ModelForTier(tier),
+	)
+	return content, len(prompt) / 4, len(content) / 4, nil
 }
 
 // ProviderForTier returns the Provider for a given tier (for direct use).

@@ -59,7 +59,7 @@ export function FirstFiveFiles({
                 </div>
               );
             return (
-              <li key={f.file_path}>
+              <li key={f.file_path ?? i}>
                 <Wrapper>
                   <span className="text-xs tabular-nums text-[var(--color-text-tertiary)] mt-0.5">{i + 1}</span>
                   <div className="min-w-0 flex-1">

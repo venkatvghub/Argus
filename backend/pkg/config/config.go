@@ -12,6 +12,10 @@ import (
 	"github.com/kelseyhightower/envconfig"
 )
 
+// DefaultCORSMaxAge is the default preflight cache duration in seconds.
+// Kept here as the authoritative value; cors.go references this instead of duplicating it.
+const DefaultCORSMaxAge = 86400
+
 // Config represents the application's global configuration.
 type Config struct {
 	// AppName is the identifier for the service.
@@ -22,9 +26,8 @@ type Config struct {
 	LogLevel string `envconfig:"LOG_LEVEL" default:"info"`
 
 	// Persistence configuration
-	DBPath  string `envconfig:"DB_PATH" default:"argus.db"`
-	DataDir string `envconfig:"DATA_DIR" default:"data"`
-	DocsDir string `envconfig:"DOCS_DIR" default:"docs"`
+	DatabaseURL string `envconfig:"DATABASE_URL" default:"postgres://argus:argus@localhost:5432/argus?sslmode=disable"`
+	DocsDir     string `envconfig:"DOCS_DIR" default:"docs"`
 
 	// Compliance patterns (comma-separated identifiers: AADHAAR, PAN, UPI_ID, MOBILE, EMAIL)
 	PIIPatterns []string `envconfig:"PII_PATTERNS" default:"AADHAAR,PAN,UPI_ID,MOBILE,EMAIL"`
@@ -61,6 +64,8 @@ type Config struct {
 
 	// CORSAllowedOrigins lists origins permitted for browser SSE access (comma-separated).
 	CORSAllowedOrigins []string `envconfig:"CORS_ALLOWED_ORIGINS"`
+	// CORSMaxAge is the preflight cache duration in seconds for browser CORS.
+	CORSMaxAge int `envconfig:"CORS_MAX_AGE" default:"86400"`
 
 	// CoverageFile is the path to the coverage report file (lcov.info, coverage.xml, or clover.xml).
 	// If empty, Argus auto-discovers coverage files in the repository root.
@@ -72,6 +77,11 @@ type Config struct {
 
 	// RecentAuthorCutoffDays is the lookback window for counting distinct recent authors per file.
 	RecentAuthorCutoffDays int `envconfig:"RECENT_AUTHOR_CUTOFF_DAYS" default:"90"`
+
+	// OwnerHotspotChurnThreshold is the minimum file churn to count as a hotspot in owner metrics.
+	OwnerHotspotChurnThreshold int `envconfig:"OWNER_HOTSPOT_CHURN_THRESHOLD" default:"10"`
+	// OwnerDefaultCutoffDays is the git log lookback for owner commit stats.
+	OwnerDefaultCutoffDays int `envconfig:"OWNER_DEFAULT_CUTOFF_DAYS" default:"90"`
 
 	// LLM Retry & Circuit Breaker — applied per-tier in the TieredRouter.
 	// MaxRetries=0 disables retry (pass-through). CircuitFailureThreshold=0 disables CB.
@@ -110,6 +120,11 @@ func Load() (*Config, error) {
 
 const defaultLLMHTTPTimeoutS = 120
 
+const (
+	defaultOwnerHotspotChurnThreshold = 10
+	defaultOwnerDefaultCutoffDays     = 90
+)
+
 // LLMHTTPTimeout returns the HTTP client timeout for LLM provider requests.
 func (c *Config) LLMHTTPTimeout() time.Duration {
 	s := c.LLMHTTPTimeoutS
@@ -117,6 +132,22 @@ func (c *Config) LLMHTTPTimeout() time.Duration {
 		s = defaultLLMHTTPTimeoutS
 	}
 	return time.Duration(s) * time.Second
+}
+
+// OwnerHotspotChurnThresholdOrDefault returns the hotspot churn cutoff for owner metrics.
+func (c *Config) OwnerHotspotChurnThresholdOrDefault() int {
+	if c == nil || c.OwnerHotspotChurnThreshold <= 0 {
+		return defaultOwnerHotspotChurnThreshold
+	}
+	return c.OwnerHotspotChurnThreshold
+}
+
+// OwnerDefaultCutoffDaysOrDefault returns the git log lookback for owner stats.
+func (c *Config) OwnerDefaultCutoffDaysOrDefault() int {
+	if c == nil || c.OwnerDefaultCutoffDays <= 0 {
+		return defaultOwnerDefaultCutoffDays
+	}
+	return c.OwnerDefaultCutoffDays
 }
 
 func validateConfig(cfg *Config) error {

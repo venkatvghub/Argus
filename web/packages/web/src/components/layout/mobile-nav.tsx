@@ -121,6 +121,8 @@ export function MobileNav({ repos = [], workspace }: MobileNavProps) {
           alt="argus"
           width={24}
           height={24}
+          priority
+          style={{ width: "24px", height: "24px" }}
           className="shrink-0 drop-shadow-[0_0_8px_rgba(245,149,32,0.3)]"
         />
         <span className="text-base font-semibold text-[var(--color-text-primary)] tracking-tight truncate">
@@ -147,6 +149,7 @@ export function MobileNav({ repos = [], workspace }: MobileNavProps) {
               alt="argus"
               width={28}
               height={28}
+              style={{ width: "28px", height: "28px" }}
               className="shrink-0 drop-shadow-[0_0_8px_rgba(245,149,32,0.3)]"
             />
             <SheetTitle className="text-base">argus</SheetTitle>

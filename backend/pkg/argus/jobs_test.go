@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/venkatvghub/argus/pkg/config"
 	"github.com/venkatvghub/argus/pkg/constants"
 	"github.com/venkatvghub/argus/pkg/models"
@@ -19,18 +20,20 @@ func TestJobManager(t *testing.T) {
 	defer jm.Close()
 
 	t.Run("Create and Get Job", func(t *testing.T) {
-		job := jm.CreateJob("test")
+		job := jm.CreateJob("test", "test-repo")
 		assert.NotEmpty(t, job.ID)
 		assert.Equal(t, "test", job.Type)
+		assert.Equal(t, "test-repo", job.RepoID)
 		assert.Equal(t, models.JobStatusPending, job.Status)
 
 		fetched, ok := jm.GetJob(job.ID)
 		assert.True(t, ok)
 		assert.Equal(t, job.ID, fetched.ID)
+		assert.Equal(t, "test-repo", fetched.RepoID)
 	})
 
 	t.Run("Update Status and Notify", func(t *testing.T) {
-		job := jm.CreateJob("notify_test")
+		job := jm.CreateJob("notify_test", "")
 		ch, _ := jm.Subscribe(job.ID)
 
 		go func() {
@@ -58,7 +61,7 @@ func TestJobManager(t *testing.T) {
 	})
 
 	t.Run("Job Cancellation", func(t *testing.T) {
-		job := jm.CreateJob("cancel_test")
+		job := jm.CreateJob("cancel_test", "")
 		ctx, cancel := context.WithCancel(context.Background())
 		jm.RegisterCancel(job.ID, cancel)
 
@@ -78,7 +81,7 @@ func TestJobManager(t *testing.T) {
 	})
 
 	t.Run("Error Handling", func(t *testing.T) {
-		job := jm.CreateJob("error_test")
+		job := jm.CreateJob("error_test", "")
 		testErr := errors.New("something went wrong")
 		jm.UpdateStatus(job.ID, models.JobStatusFailed, "0%", testErr)
 
@@ -91,8 +94,8 @@ func TestJobManager(t *testing.T) {
 func TestBackgroundExecution(t *testing.T) {
 	// This tests that Analyze indeed runs in background and returns a job ID
 	ctx := context.Background()
-	inst, err := New(ctx, nil)
-	assert.NoError(t, err)
+	inst, err := NewForTest(ctx, nil)
+	require.NoError(t, err)
 	defer inst.Close()
 
 	// Use a fake repo path for testing
@@ -109,7 +112,7 @@ func TestBackgroundExecution(t *testing.T) {
 func TestWorkerPoolSubmit(t *testing.T) {
 	jm := NewJobManager(nil)
 	defer jm.Close()
-	job := jm.CreateJob("pool_submit_test")
+	job := jm.CreateJob("pool_submit_test", "")
 
 	executed := make(chan struct{}, 1)
 	fn := func() {
@@ -142,7 +145,7 @@ func TestWorkerPoolPanicRecovery(t *testing.T) {
 	// Test that panics in fn are recovered and job transitions to Failed
 	jm := NewJobManager(nil)
 	defer jm.Close()
-	job := jm.CreateJob("pool_panic_test")
+	job := jm.CreateJob("pool_panic_test", "")
 
 	panicFunc := func() {
 		panic("test panic")
@@ -180,7 +183,7 @@ func TestWorkerPoolConcurrency(t *testing.T) {
 
 	jobs := make([]*models.Job, jobCount)
 	for i := 0; i < jobCount; i++ {
-		jobs[i] = jm.CreateJob(fmt.Sprintf("concurrent_job_%d", i))
+		jobs[i] = jm.CreateJob(fmt.Sprintf("concurrent_job_%d", i), "")
 	}
 
 	globalCh, unsubscribe := jm.Subscribe(constants.AllJobsWildcard)

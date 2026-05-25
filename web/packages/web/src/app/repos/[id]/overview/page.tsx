@@ -9,6 +9,7 @@ import { getGraph, getModuleGraph, getCommunities, getExecutionFlows } from "@/l
 import { getProviders } from "@/lib/api/providers";
 import { listJobs } from "@/lib/api/jobs";
 import { getKnowledgeMap } from "@/lib/api/knowledge-map";
+import { getHealthOverview } from "@/lib/api/code-health";
 import { Badge } from "@argus-dev/ui/ui/badge";
 import { StatCard } from "@argus-dev/ui/shared/stat-card";
 import { HealthScoreRing } from "@argus-dev/ui/dashboard/health-score-ring";
@@ -61,7 +62,7 @@ export default async function OverviewPage({ params }: Props) {
   if (!repo) notFound();
 
   // Fetch all data in parallel — each independently failable
-  const [stats, gitSummary, hotspots, ownership, deadCodeSummary, deadCodeSafe, decisions, decisionHealth, graph, moduleGraph, providers, completedJobs, knowledgeMap, communities, executionFlows] =
+  const [stats, gitSummary, hotspots, ownership, deadCodeSummary, deadCodeSafe, decisions, decisionHealth, graph, moduleGraph, providers, completedJobs, knowledgeMap, communities, executionFlows, healthOverview] =
     await Promise.all([
       safeFetch(() => getRepoStats(id)),
       safeFetch(() => getGitSummary(id)),
@@ -78,24 +79,35 @@ export default async function OverviewPage({ params }: Props) {
       safeFetch(() => getKnowledgeMap(id)),
       safeFetch(() => getCommunities(id)),
       safeFetch(() => getExecutionFlows(id, { top_n: 5, max_depth: 5 })),
+      safeFetch(() => getHealthOverview(id, 0)),
     ]);
 
   // Find timestamps for last sync and last full re-index from completed jobs
   const lastSyncJob = completedJobs?.find((j) => !j.config?.mode || j.config.mode === "sync");
   const lastResyncJob = completedJobs?.find((j) => j.config?.mode === "full_resync");
 
-  // Compute health score
+  // Compute health score — prefer the backend biomarker-based score when available
+  // (markers are loaded from DB on startup; stats engine may not be loaded after restart).
   const siloCount = ownership?.filter((o) => o.is_silo).length ?? 0;
-  const healthScore = computeHealthScore({
-    docCoveragePct: stats?.doc_coverage_pct ?? 0,
-    freshnessScore: stats?.freshness_score ?? 0,
-    deadExportCount: stats?.dead_export_count ?? 0,
-    symbolCount: stats?.symbol_count ?? 1,
-    hotspotCount: gitSummary?.hotspot_count ?? 0,
-    totalFiles: gitSummary?.total_files ?? 1,
-    siloCount,
-    totalModules: ownership?.length ?? 1,
-  });
+  const backendAvgHealth = healthOverview?.summary?.average_health;
+  const healthScore =
+    backendAvgHealth != null && backendAvgHealth > 0
+      ? {
+          score: Math.round(backendAvgHealth * 10),
+          components: [],
+          indexOnly: false,
+          note: undefined,
+        }
+      : computeHealthScore({
+          docCoveragePct: stats?.doc_coverage_pct ?? 0,
+          freshnessScore: stats?.freshness_score ?? 0,
+          deadExportCount: stats?.dead_export_count ?? 0,
+          symbolCount: stats?.symbol_count ?? 1,
+          hotspotCount: gitSummary?.hotspot_count ?? 0,
+          totalFiles: gitSummary?.total_files ?? 1,
+          siloCount,
+          totalModules: ownership?.length ?? 1,
+        });
 
   // Build attention items
   const attentionItems = buildAttentionItems({

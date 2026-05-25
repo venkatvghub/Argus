@@ -1,340 +1,873 @@
-// Package persistence provides the data access layer for Argus.
+// Package persistence provides the PostgreSQL-backed data access layer for Argus.
 package persistence
 
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
-	"embed"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
 	"time"
 
-	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/sqlite"
-	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/venkatvghub/argus/pkg/models"
-	_ "modernc.org/sqlite"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"gorm.io/gorm/logger"
 )
 
-//go:embed migrations/*.sql
-var migrationsFS embed.FS
-
-// DB represents a persistent store instance.
+// DB wraps the GORM database connection.
 type DB struct {
-	*sql.DB
+	db *gorm.DB
 }
 
-// New initializes a new SQLite connection at the specified path and
-// runs pending migrations.
-func New(dbPath string) (*DB, error) {
-	if err := os.MkdirAll(filepath.Dir(dbPath), defaultDirPerm); err != nil {
-		return nil, fmt.Errorf("failed to create db directory: %w", err)
-	}
+// ErrRepoNotFound is returned when a repository ID is not in the database.
+var ErrRepoNotFound = errors.New("repo not found")
 
-	// WAL mode + busy timeout: allow concurrent readers, serialise writers, avoid SQLITE_BUSY.
-	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=10000&_synchronous=NORMAL"
-	db, err := sql.Open("sqlite", dsn)
+// -- GORM models ----------------------------------------------------------
+
+type repositoryRow struct {
+	ID         string    `gorm:"column:id;type:text;primaryKey"`
+	Name       string    `gorm:"column:name;type:text;not null"`
+	LocalPath  string    `gorm:"column:local_path;type:text;not null"`
+	LastCommit string    `gorm:"column:last_commit;type:text"`
+	CreatedAt  time.Time `gorm:"column:created_at;type:timestamptz;autoCreateTime"`
+	UpdatedAt  time.Time `gorm:"column:updated_at;type:timestamptz;autoUpdateTime"`
+}
+
+func (*repositoryRow) TableName() string { return "repositories" }
+
+type markerRow struct {
+	ID         int64   `gorm:"column:id;type:bigserial;primaryKey"`
+	RepoID     string  `gorm:"column:repo_id;type:text;not null;index"`
+	File       string  `gorm:"column:file;type:text;not null"`
+	Type       string  `gorm:"column:type;type:text;not null"`
+	Severity   string  `gorm:"column:severity;type:text;not null"`
+	Message    string  `gorm:"column:message;type:text;not null"`
+	Line       int     `gorm:"column:line;type:integer"`
+	Deduction  float64 `gorm:"column:deduction;type:double precision"`
+	Category   string  `gorm:"column:category;type:text"`
+	Suggestion string  `gorm:"column:suggestion;type:text"`
+}
+
+func (*markerRow) TableName() string { return "markers" }
+
+type wikiJobRow struct {
+	ID         string    `gorm:"column:id;type:text;primaryKey"`
+	RepoID     string    `gorm:"column:repo_id;type:text;not null;index"`
+	Status     string    `gorm:"column:status;type:text;not null"`
+	TotalPages int       `gorm:"column:total_pages;type:integer;not null"`
+	CreatedAt  time.Time `gorm:"column:created_at;type:timestamptz;autoCreateTime"`
+	UpdatedAt  time.Time `gorm:"column:updated_at;type:timestamptz;autoUpdateTime"`
+}
+
+func (*wikiJobRow) TableName() string { return "wiki_jobs" }
+
+type wikiJobPageRow struct {
+	JobID  string `gorm:"column:job_id;type:text;primaryKey"`
+	PageID string `gorm:"column:page_id;type:text;primaryKey"`
+}
+
+func (*wikiJobPageRow) TableName() string { return "wiki_job_pages" }
+
+type wikiPageRow struct {
+	ID        string    `gorm:"column:id;type:text;primaryKey"`
+	RepoID    string    `gorm:"column:repo_id;type:text;not null;index"`
+	JobID     string    `gorm:"column:job_id;type:text;not null"`
+	Type      string    `gorm:"column:type;type:text;not null"`
+	Subject   string    `gorm:"column:subject;type:text;not null"`
+	Content   string    `gorm:"column:content;type:text"`
+	Model     string    `gorm:"column:model;type:text;not null;default:''"`
+	Level     int       `gorm:"column:level;type:integer"`
+	CreatedAt time.Time `gorm:"column:created_at;type:timestamptz;autoCreateTime"`
+	UpdatedAt time.Time `gorm:"column:updated_at;type:timestamptz;autoUpdateTime"`
+}
+
+func (*wikiPageRow) TableName() string { return "wiki_pages" }
+
+type jobRow struct {
+	ID        string    `gorm:"column:id;type:text;primaryKey"`
+	RepoID    string    `gorm:"column:repo_id;type:text;not null;index"`
+	Type      string    `gorm:"column:type;type:text;not null"`
+	Status    string    `gorm:"column:status;type:text;not null"`
+	Progress  string    `gorm:"column:progress;type:text"`
+	Error     string    `gorm:"column:error;type:text"`
+	CreatedAt time.Time `gorm:"column:created_at;type:timestamptz;autoCreateTime"`
+	UpdatedAt time.Time `gorm:"column:updated_at;type:timestamptz;autoUpdateTime"`
+}
+
+func (*jobRow) TableName() string { return "jobs" }
+
+type conversationRow struct {
+	ID           string    `gorm:"column:id;type:text;primaryKey"`
+	RepoID       string    `gorm:"column:repo_id;type:text;not null;index"`
+	Title        string    `gorm:"column:title;type:text"`
+	MessageCount int       `gorm:"column:message_count;type:integer;not null;default:0"`
+	CreatedAt    time.Time `gorm:"column:created_at;type:timestamptz;autoCreateTime"`
+	UpdatedAt    time.Time `gorm:"column:updated_at;type:timestamptz;autoUpdateTime"`
+}
+
+func (*conversationRow) TableName() string { return "conversations" }
+
+type chatMessageRow struct {
+	ID             string    `gorm:"column:id;type:text;primaryKey"`
+	ConversationID string    `gorm:"column:conversation_id;type:text;not null;index"`
+	Role           string    `gorm:"column:role;type:text;not null"`
+	Content        string    `gorm:"column:content;type:text;not null"`
+	CreatedAt      time.Time `gorm:"column:created_at;type:timestamptz;autoCreateTime"`
+}
+
+func (*chatMessageRow) TableName() string { return "chat_messages" }
+
+type llmCostRow struct {
+	ID           int64     `gorm:"column:id;type:bigserial;primaryKey"`
+	RepoID       string    `gorm:"column:repo_id;type:text;not null;index"`
+	Model        string    `gorm:"column:model;type:text;not null"`
+	Operation    string    `gorm:"column:operation;type:text;not null"`
+	InputTokens  int       `gorm:"column:input_tokens;type:integer;not null;default:0"`
+	OutputTokens int       `gorm:"column:output_tokens;type:integer;not null;default:0"`
+	CostUSD      float64   `gorm:"column:cost_usd;type:double precision;not null;default:0"`
+	CalledAt     time.Time `gorm:"column:called_at;type:timestamptz;autoCreateTime"`
+}
+
+func (*llmCostRow) TableName() string { return "llm_costs" }
+
+// providerPricingRow caches live model pricing fetched from provider discovery APIs.
+// One row per provider (e.g. "openrouter"); pricing stored as JSON blob.
+type providerPricingRow struct {
+	Provider    string    `gorm:"column:provider;type:text;primaryKey"`
+	PricingJSON []byte    `gorm:"column:pricing_json;type:jsonb;not null"`
+	FetchedAt   time.Time `gorm:"column:fetched_at;type:timestamptz;autoUpdateTime"`
+}
+
+func (*providerPricingRow) TableName() string { return "provider_pricing" }
+
+type repoFileRow struct {
+	ID                      int64      `gorm:"column:id;type:bigserial;primaryKey"`
+	RepoID                  string     `gorm:"column:repo_id;type:text;not null;uniqueIndex:idx_repo_files_repo_path"`
+	Path                    string     `gorm:"column:path;type:text;not null;uniqueIndex:idx_repo_files_repo_path"`
+	Language                string     `gorm:"column:language;type:text"`
+	Churn                   int        `gorm:"column:churn;type:integer;not null;default:0"`
+	Ownership               float64    `gorm:"column:ownership;type:double precision;not null;default:0"`
+	AuthorCount             int        `gorm:"column:author_count;type:integer;not null;default:0"`
+	LineCoverage            float64    `gorm:"column:line_coverage;type:double precision;not null;default:0"`
+	Size                    int64      `gorm:"column:size;type:bigint;not null;default:0"`
+	PrimaryAuthor           string     `gorm:"column:primary_author;type:text"`
+	PrimaryAuthorLastCommit *time.Time `gorm:"column:primary_author_last_commit;type:timestamptz"`
+}
+
+func (*repoFileRow) TableName() string { return "repo_files" }
+
+type repoSymbolRow struct {
+	ID       int64  `gorm:"column:id;type:bigserial;primaryKey"`
+	RepoID   string `gorm:"column:repo_id;type:text;not null;index"`
+	Name     string `gorm:"column:name;type:text;not null"`
+	Type     string `gorm:"column:type;type:text;not null"`
+	FilePath string `gorm:"column:file_path;type:text;not null"`
+	Line     int    `gorm:"column:line;type:integer;not null;default:0"`
+	EndLine  int    `gorm:"column:end_line;type:integer;not null;default:0"`
+}
+
+func (*repoSymbolRow) TableName() string { return "repo_symbols" }
+
+// -- Lifecycle ------------------------------------------------------------
+
+// New opens a PostgreSQL connection at dsn and runs AutoMigrate for all tables.
+func New(dsn string) (*DB, error) {
+	gdb, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger:                                   logger.Default.LogMode(logger.Silent),
+		DisableForeignKeyConstraintWhenMigrating: true,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to open sqlite: %w", err)
+		return nil, fmt.Errorf("failed to open postgres: %w", err)
 	}
 
-	// WAL mode allows concurrent readers; cap idle connections to limit overhead.
-	db.SetMaxOpenConns(runtime.NumCPU())
-	db.SetMaxIdleConns(1)
+	sqlDB, err := gdb.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)
 
-	if err := runMigrations(db); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to run migrations: %w", err)
+	if err := gdb.AutoMigrate(
+		&repositoryRow{},
+		&markerRow{},
+		&wikiJobRow{},
+		&wikiJobPageRow{},
+		&wikiPageRow{},
+		&jobRow{},
+		&conversationRow{},
+		&chatMessageRow{},
+		&llmCostRow{},
+		&providerPricingRow{},
+		&repoFileRow{},
+		&repoSymbolRow{},
+	); err != nil {
+		return nil, fmt.Errorf("AutoMigrate failed: %w", err)
 	}
 
-	return &DB{db}, nil
+	return &DB{db: gdb}, nil
 }
 
 // Close gracefully shuts down the database connection.
-func (db *DB) Close() error {
-	return db.DB.Close()
-}
-
-// UpsertRepository inserts or updates a repository record.
-func (db *DB) UpsertRepository(ctx context.Context, repo models.Repository) error {
-	_, err := db.ExecContext(ctx, `
-		INSERT INTO repositories (id, name, local_path, last_commit, updated_at)
-		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-		ON CONFLICT(id) DO UPDATE SET
-			name=excluded.name,
-			local_path=excluded.local_path,
-			last_commit=excluded.last_commit,
-			updated_at=CURRENT_TIMESTAMP`,
-		repo.ID, repo.Name, repo.Path, repo.LastCommit)
-	return err
-}
-
-// GetRepository returns a single repository by ID. Returns sql.ErrNoRows if not found.
-func (db *DB) GetRepository(ctx context.Context, repoID string) (models.Repository, error) {
-	var r models.Repository
-	err := db.QueryRowContext(ctx,
-		"SELECT id, name, local_path, last_commit, created_at FROM repositories WHERE id = ?",
-		repoID,
-	).Scan(&r.ID, &r.Name, &r.Path, &r.LastCommit, &r.CreatedAt)
-	return r, err
-}
-
-// ListRepositories returns all indexed repositories.
-func (db *DB) ListRepositories(ctx context.Context) ([]models.Repository, error) {
-	rows, err := db.QueryContext(ctx, "SELECT id, name, local_path, last_commit, created_at FROM repositories")
+func (d *DB) Close() error {
+	sqlDB, err := d.db.DB()
 	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
+}
+
+// -- Repositories ---------------------------------------------------------
+
+func (d *DB) UpsertRepository(ctx context.Context, repo models.Repository) error {
+	row := repositoryRow{
+		ID:         repo.ID,
+		Name:       repo.Name,
+		LocalPath:  repo.Path,
+		LastCommit: repo.LastCommit,
+	}
+	return d.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"name", "local_path", "last_commit", "updated_at"}),
+		}).
+		Create(&row).Error
+}
+
+func (d *DB) ClearRepoLastCommit(ctx context.Context, repoID string) error {
+	return d.db.WithContext(ctx).
+		Model(&repositoryRow{}).
+		Where("id = ?", repoID).
+		Update("last_commit", "").Error
+}
+
+func (d *DB) GetRepository(ctx context.Context, repoID string) (models.Repository, error) {
+	var row repositoryRow
+	err := d.db.WithContext(ctx).Where("id = ?", repoID).First(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.Repository{}, fmt.Errorf("repository %q: %w", repoID, ErrRepoNotFound)
+		}
+		return models.Repository{}, err
+	}
+	return models.Repository{
+		ID:         row.ID,
+		Name:       row.Name,
+		Path:       row.LocalPath,
+		LastCommit: row.LastCommit,
+		CreatedAt:  row.CreatedAt,
+		UpdatedAt:  row.UpdatedAt,
+	}, nil
+}
+
+func (d *DB) ListRepositories(ctx context.Context) ([]models.Repository, error) {
+	var rows []repositoryRow
+	if err := d.db.WithContext(ctx).Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var repos []models.Repository = []models.Repository{}
-	for rows.Next() {
-		var r models.Repository
-		if err := rows.Scan(&r.ID, &r.Name, &r.Path, &r.LastCommit, &r.CreatedAt); err != nil {
-			return nil, err
-		}
-		repos = append(repos, r)
+	repos := make([]models.Repository, 0, len(rows))
+	for _, r := range rows {
+		repos = append(repos, models.Repository{
+			ID:         r.ID,
+			Name:       r.Name,
+			Path:       r.LocalPath,
+			LastCommit: r.LastCommit,
+			CreatedAt:  r.CreatedAt,
+			UpdatedAt:  r.UpdatedAt,
+		})
 	}
 	return repos, nil
 }
 
-// UpsertMarkers replaces all markers for the given repo with the provided slice.
-func (db *DB) UpsertMarkers(ctx context.Context, repoID string, markers []models.Marker) error {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback() //nolint:errcheck
+func (d *DB) DeleteRepository(ctx context.Context, repoID string) error {
+	return d.db.WithContext(ctx).Where("id = ?", repoID).Delete(&repositoryRow{}).Error
+}
 
-	if _, err := tx.ExecContext(ctx, "DELETE FROM markers WHERE repo_id = ?", repoID); err != nil {
-		return err
-	}
+// -- Markers --------------------------------------------------------------
 
-	stmt, err := tx.PrepareContext(ctx,
-		`INSERT INTO markers (repo_id, file, type, severity, message, line, deduction, category, suggestion)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for _, m := range markers {
-		if _, err := stmt.ExecContext(ctx, repoID, m.File, m.Type, m.Severity, m.Message, m.Line, m.Deduction, string(m.Category), m.Suggestion); err != nil {
+func (d *DB) UpsertMarkers(ctx context.Context, repoID string, markers []models.Marker) error {
+	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("repo_id = ?", repoID).Delete(&markerRow{}).Error; err != nil {
 			return err
 		}
-	}
-	return tx.Commit()
+		if len(markers) == 0 {
+			return nil
+		}
+		rows := make([]markerRow, 0, len(markers))
+		for _, m := range markers {
+			rows = append(rows, markerRow{
+				RepoID:     repoID,
+				File:       m.File,
+				Type:       m.Type,
+				Severity:   m.Severity,
+				Message:    m.Message,
+				Line:       m.Line,
+				Deduction:  m.Deduction,
+				Category:   string(m.Category),
+				Suggestion: m.Suggestion,
+			})
+		}
+		return tx.Create(&rows).Error
+	})
 }
 
-// LoadAllMarkers reads all persisted markers grouped by repo ID.
-func (db *DB) LoadAllMarkers(ctx context.Context) (map[string][]models.Marker, error) {
-	rows, err := db.QueryContext(ctx,
-		`SELECT repo_id, file, type, severity, message, line, deduction, category, suggestion FROM markers`)
-	if err != nil {
+func (d *DB) LoadAllMarkers(ctx context.Context) (map[string][]models.Marker, error) {
+	var rows []markerRow
+	if err := d.db.WithContext(ctx).Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
 	result := make(map[string][]models.Marker)
-	for rows.Next() {
-		var repoID string
-		var m models.Marker
-		var cat string
-		if err := rows.Scan(&repoID, &m.File, &m.Type, &m.Severity, &m.Message, &m.Line, &m.Deduction, &cat, &m.Suggestion); err != nil {
-			return nil, err
-		}
-		m.Category = models.ScoreCategory(cat)
-		result[repoID] = append(result[repoID], m)
+	for _, r := range rows {
+		result[r.RepoID] = append(result[r.RepoID], models.Marker{
+			File:       r.File,
+			Type:       r.Type,
+			Severity:   r.Severity,
+			Message:    r.Message,
+			Line:       r.Line,
+			Deduction:  r.Deduction,
+			Category:   models.ScoreCategory(r.Category),
+			Suggestion: r.Suggestion,
+		})
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
-// CreateWikiJob inserts a new wiki generation job and returns its ID.
-// The ID is a sha256-based short hash of repoID + current time.
-func (db *DB) CreateWikiJob(ctx context.Context, repoID string, totalPages int) (string, error) {
+// -- Wiki jobs ------------------------------------------------------------
+
+func (d *DB) CreateWikiJob(ctx context.Context, repoID string, totalPages int) (string, error) {
 	id := fmt.Sprintf("%x", sha256.Sum256([]byte(repoID+time.Now().UTC().String())))[:16]
-	_, err := db.ExecContext(ctx, `
-		INSERT INTO wiki_jobs (id, repo_id, status, total_pages, created_at, updated_at)
-		VALUES (?, ?, 'pending', ?, datetime('now'), datetime('now'))`,
-		id, repoID, totalPages)
-	return id, err
+	row := wikiJobRow{
+		ID:         id,
+		RepoID:     repoID,
+		Status:     string(models.WikiJobPending),
+		TotalPages: totalPages,
+	}
+	if err := d.db.WithContext(ctx).Create(&row).Error; err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
-// UpdateWikiJobStatus updates the status of a wiki generation job.
-func (db *DB) UpdateWikiJobStatus(ctx context.Context, jobID string, status models.WikiJobStatus) error {
-	_, err := db.ExecContext(ctx, `
-		UPDATE wiki_jobs SET status = ?, updated_at = datetime('now') WHERE id = ?`,
-		string(status), jobID)
-	return err
+func (d *DB) UpdateWikiJobStatus(ctx context.Context, jobID string, status models.WikiJobStatus) error {
+	return d.db.WithContext(ctx).
+		Model(&wikiJobRow{}).
+		Where("id = ?", jobID).
+		Updates(map[string]any{"status": string(status), "updated_at": time.Now().UTC()}).Error
 }
 
-// MarkWikiPageComplete records a page as completed in a wiki generation job.
-func (db *DB) MarkWikiPageComplete(ctx context.Context, jobID, pageID string) error {
-	_, err := db.ExecContext(ctx, `
-		INSERT OR IGNORE INTO wiki_job_pages (job_id, page_id) VALUES (?, ?)`,
-		jobID, pageID)
-	return err
+func (d *DB) MarkWikiPageComplete(ctx context.Context, jobID, pageID string) error {
+	row := wikiJobPageRow{JobID: jobID, PageID: pageID}
+	return d.db.WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&row).Error
 }
 
-// GetCompletedWikiPages returns the set of completed page IDs for a job.
-func (db *DB) GetCompletedWikiPages(ctx context.Context, jobID string) (map[string]struct{}, error) {
-	rows, err := db.QueryContext(ctx, `SELECT page_id FROM wiki_job_pages WHERE job_id = ?`, jobID)
+func (d *DB) GetCompletedWikiPages(ctx context.Context, jobID string) (map[string]struct{}, error) {
+	var rows []wikiJobPageRow
+	if err := d.db.WithContext(ctx).Where("job_id = ?", jobID).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	result := make(map[string]struct{}, len(rows))
+	for _, r := range rows {
+		result[r.PageID] = struct{}{}
+	}
+	return result, nil
+}
+
+func (d *DB) GetWikiJob(ctx context.Context, jobID string) (models.WikiJob, error) {
+	var row wikiJobRow
+	err := d.db.WithContext(ctx).Where("id = ?", jobID).First(&row).Error
+	if err != nil {
+		return models.WikiJob{}, err
+	}
+	return models.WikiJob{
+		ID:         row.ID,
+		RepoID:     row.RepoID,
+		Status:     models.WikiJobStatus(row.Status),
+		TotalPages: row.TotalPages,
+		CreatedAt:  row.CreatedAt,
+		UpdatedAt:  row.UpdatedAt,
+	}, nil
+}
+
+func (d *DB) ListWikiJobs(ctx context.Context, repoID string) ([]models.WikiJob, error) {
+	var rows []wikiJobRow
+	if err := d.db.WithContext(ctx).
+		Where("repo_id = ?", repoID).
+		Order("created_at DESC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	jobs := make([]models.WikiJob, 0, len(rows))
+	for _, r := range rows {
+		jobs = append(jobs, models.WikiJob{
+			ID:         r.ID,
+			RepoID:     r.RepoID,
+			Status:     models.WikiJobStatus(r.Status),
+			TotalPages: r.TotalPages,
+			CreatedAt:  r.CreatedAt,
+			UpdatedAt:  r.UpdatedAt,
+		})
+	}
+	return jobs, nil
+}
+
+// -- Wiki pages -----------------------------------------------------------
+
+func (d *DB) UpsertWikiPage(ctx context.Context, page models.WikiPage) error {
+	row := wikiPageRow{
+		ID:      page.ID,
+		RepoID:  page.RepoID,
+		JobID:   page.JobID,
+		Type:    page.Type,
+		Subject: page.Subject,
+		Content: page.Content,
+		Model:   page.Model,
+		Level:   page.Level,
+	}
+	return d.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"content", "model", "updated_at"}),
+		}).
+		Create(&row).Error
+}
+
+func (d *DB) ListWikiPages(ctx context.Context, repoID string) ([]models.WikiPage, error) {
+	var rows []wikiPageRow
+	if err := d.db.WithContext(ctx).
+		Where("repo_id = ?", repoID).
+		Order("level, type, subject").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	pages := make([]models.WikiPage, 0, len(rows))
+	for _, r := range rows {
+		pages = append(pages, models.WikiPage{
+			ID:        r.ID,
+			RepoID:    r.RepoID,
+			JobID:     r.JobID,
+			Type:      r.Type,
+			Subject:   r.Subject,
+			Content:   r.Content,
+			Model:     r.Model,
+			Level:     r.Level,
+			CreatedAt: r.CreatedAt,
+			UpdatedAt: r.UpdatedAt,
+		})
+	}
+	return pages, nil
+}
+
+func (d *DB) GetWikiPage(ctx context.Context, pageID string) (models.WikiPage, error) {
+	var row wikiPageRow
+	if err := d.db.WithContext(ctx).Where("id = ?", pageID).First(&row).Error; err != nil {
+		return models.WikiPage{}, err
+	}
+	return models.WikiPage{
+		ID:        row.ID,
+		RepoID:    row.RepoID,
+		JobID:     row.JobID,
+		Type:      row.Type,
+		Subject:   row.Subject,
+		Content:   row.Content,
+		Model:     row.Model,
+		Level:     row.Level,
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
+	}, nil
+}
+
+// -- Jobs -----------------------------------------------------------------
+
+func (d *DB) CreateJob(ctx context.Context, job models.Job) error {
+	row := jobRow{
+		ID:       job.ID,
+		RepoID:   job.RepoID,
+		Type:     job.Type,
+		Status:   string(job.Status),
+		Progress: job.Progress,
+		Error:    job.Error,
+	}
+	return d.db.WithContext(ctx).Create(&row).Error
+}
+
+func (d *DB) GetJob(ctx context.Context, jobID string) (models.Job, error) {
+	var row jobRow
+	if err := d.db.WithContext(ctx).Where("id = ?", jobID).First(&row).Error; err != nil {
+		return models.Job{}, err
+	}
+	return models.Job{
+		ID:        row.ID,
+		RepoID:    row.RepoID,
+		Type:      row.Type,
+		Status:    models.JobStatus(row.Status),
+		Progress:  row.Progress,
+		Error:     row.Error,
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
+	}, nil
+}
+
+func (d *DB) ListJobs(ctx context.Context, repoID string) ([]models.Job, error) {
+	q := d.db.WithContext(ctx).Order("created_at DESC")
+	if repoID != "" {
+		q = q.Where("repo_id = ?", repoID)
+	}
+	var rows []jobRow
+	if err := q.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	jobs := make([]models.Job, 0, len(rows))
+	for _, r := range rows {
+		jobs = append(jobs, models.Job{
+			ID:        r.ID,
+			RepoID:    r.RepoID,
+			Type:      r.Type,
+			Status:    models.JobStatus(r.Status),
+			Progress:  r.Progress,
+			Error:     r.Error,
+			CreatedAt: r.CreatedAt,
+			UpdatedAt: r.UpdatedAt,
+		})
+	}
+	return jobs, nil
+}
+
+func (d *DB) UpdateJobStatus(ctx context.Context, jobID, status, progress, errMsg string) error {
+	return d.db.WithContext(ctx).
+		Model(&jobRow{}).
+		Where("id = ?", jobID).
+		Updates(map[string]any{
+			"status":     status,
+			"progress":   progress,
+			"error":      errMsg,
+			"updated_at": time.Now().UTC(),
+		}).Error
+}
+
+// -- Conversations --------------------------------------------------------
+
+func (d *DB) CreateConversation(ctx context.Context, conv models.Conversation) error {
+	row := conversationRow{
+		ID:     conv.ID,
+		RepoID: conv.RepositoryID,
+		Title:  conv.Title,
+	}
+	return d.db.WithContext(ctx).Create(&row).Error
+}
+
+func (d *DB) GetConversation(ctx context.Context, convID string) (models.Conversation, error) {
+	var row conversationRow
+	if err := d.db.WithContext(ctx).Where("id = ?", convID).First(&row).Error; err != nil {
+		return models.Conversation{}, err
+	}
+	return models.Conversation{
+		ID:           row.ID,
+		RepositoryID: row.RepoID,
+		Title:        row.Title,
+		MessageCount: row.MessageCount,
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
+	}, nil
+}
+
+func (d *DB) ListConversations(ctx context.Context, repoID string) ([]models.Conversation, error) {
+	var rows []conversationRow
+	if err := d.db.WithContext(ctx).
+		Where("repo_id = ?", repoID).
+		Order("updated_at DESC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	convs := make([]models.Conversation, 0, len(rows))
+	for _, r := range rows {
+		convs = append(convs, models.Conversation{
+			ID:           r.ID,
+			RepositoryID: r.RepoID,
+			Title:        r.Title,
+			MessageCount: r.MessageCount,
+			CreatedAt:    r.CreatedAt,
+			UpdatedAt:    r.UpdatedAt,
+		})
+	}
+	return convs, nil
+}
+
+func (d *DB) DeleteConversation(ctx context.Context, convID string) error {
+	return d.db.WithContext(ctx).Where("id = ?", convID).Delete(&conversationRow{}).Error
+}
+
+func (d *DB) IncrementMessageCount(ctx context.Context, convID string) error {
+	return d.db.WithContext(ctx).
+		Model(&conversationRow{}).
+		Where("id = ?", convID).
+		Updates(map[string]any{
+			"message_count": gorm.Expr("message_count + 1"),
+			"updated_at":    time.Now().UTC(),
+		}).Error
+}
+
+// -- Chat messages --------------------------------------------------------
+
+func (d *DB) CreateChatMessage(ctx context.Context, msg models.ChatMessage) error {
+	row := chatMessageRow{
+		ID:             msg.ID,
+		ConversationID: msg.ConversationID,
+		Role:           msg.Role,
+		Content:        msg.Content,
+	}
+	return d.db.WithContext(ctx).Create(&row).Error
+}
+
+func (d *DB) ListChatMessages(ctx context.Context, convID string) ([]models.ChatMessage, error) {
+	var rows []chatMessageRow
+	if err := d.db.WithContext(ctx).
+		Where("conversation_id = ?", convID).
+		Order("created_at ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	msgs := make([]models.ChatMessage, 0, len(rows))
+	for _, r := range rows {
+		msgs = append(msgs, models.ChatMessage{
+			ID:             r.ID,
+			ConversationID: r.ConversationID,
+			Role:           r.Role,
+			Content:        r.Content,
+			CreatedAt:      r.CreatedAt,
+		})
+	}
+	return msgs, nil
+}
+
+// -- LLM costs ------------------------------------------------------------
+
+// LLMCostRecord is a single LLM call cost entry to persist.
+type LLMCostRecord struct {
+	RepoID       string
+	Model        string
+	Operation    string
+	InputTokens  int
+	OutputTokens int
+	CostUSD      float64
+}
+
+// CostGroup is an aggregated cost row returned by ListLLMCosts.
+type CostGroup struct {
+	Group        string  `json:"group"`
+	Calls        int     `json:"calls"`
+	InputTokens  int     `json:"input_tokens"`
+	OutputTokens int     `json:"output_tokens"`
+	CostUSD      float64 `json:"cost_usd"`
+}
+
+// CostSummary is the aggregate cost totals for a repo.
+type CostSummary struct {
+	TotalCostUSD      float64 `json:"total_cost_usd"`
+	TotalCalls        int     `json:"total_calls"`
+	TotalInputTokens  int     `json:"total_input_tokens"`
+	TotalOutputTokens int     `json:"total_output_tokens"`
+	Since             *string `json:"since"`
+}
+
+func (d *DB) RecordLLMCost(ctx context.Context, rec LLMCostRecord) error {
+	op := rec.Operation
+	if op == "" {
+		op = "chat"
+	}
+	row := llmCostRow{
+		RepoID:       rec.RepoID,
+		Model:        rec.Model,
+		Operation:    op,
+		InputTokens:  rec.InputTokens,
+		OutputTokens: rec.OutputTokens,
+		CostUSD:      rec.CostUSD,
+	}
+	return d.db.WithContext(ctx).Create(&row).Error
+}
+
+func (d *DB) ListLLMCosts(ctx context.Context, repoID, by string) ([]CostGroup, error) {
+	var groupExpr string
+	switch by {
+	case "model":
+		groupExpr = "model"
+	case "operation":
+		groupExpr = "operation"
+	default:
+		groupExpr = "DATE(called_at)"
+	}
+	q := fmt.Sprintf(`
+		SELECT %s AS grp, COUNT(*) AS calls, SUM(input_tokens), SUM(output_tokens), SUM(cost_usd)
+		FROM llm_costs WHERE repo_id = $1
+		GROUP BY grp ORDER BY grp DESC`, groupExpr)
+	rows, err := d.db.WithContext(ctx).Raw(q, repoID).Rows()
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	result := make(map[string]struct{})
+	var groups []CostGroup
 	for rows.Next() {
-		var pageID string
-		if err := rows.Scan(&pageID); err != nil {
+		var g CostGroup
+		if err := rows.Scan(&g.Group, &g.Calls, &g.InputTokens, &g.OutputTokens, &g.CostUSD); err != nil {
 			return nil, err
 		}
-		result[pageID] = struct{}{}
+		groups = append(groups, g)
 	}
-	return result, rows.Err()
+	return groups, rows.Err()
 }
 
-// GetWikiJob returns a wiki job by ID.
-func (db *DB) GetWikiJob(ctx context.Context, jobID string) (models.WikiJob, error) {
-	var j models.WikiJob
-	var status, createdAt, updatedAt string
-	err := db.QueryRowContext(ctx, `
-		SELECT id, repo_id, status, total_pages, created_at, updated_at
-		FROM wiki_jobs WHERE id = ?`, jobID).
-		Scan(&j.ID, &j.RepoID, &status, &j.TotalPages, &createdAt, &updatedAt)
-	if err != nil {
-		return j, err
+func (d *DB) GetLLMCostSummary(ctx context.Context, repoID string) (CostSummary, error) {
+	var summary CostSummary
+	var since *string
+	row := d.db.WithContext(ctx).Raw(`
+		SELECT COUNT(*), COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COALESCE(SUM(cost_usd),0.0), MIN(called_at)::text
+		FROM llm_costs WHERE repo_id = $1`, repoID).Row()
+	if err := row.Scan(&summary.TotalCalls, &summary.TotalInputTokens, &summary.TotalOutputTokens, &summary.TotalCostUSD, &since); err != nil {
+		return summary, err
 	}
-	j.Status = models.WikiJobStatus(status)
-	var parseErr error
-	if j.CreatedAt, parseErr = parseSQLiteTimestamp("created_at", createdAt); parseErr != nil {
-		return j, fmt.Errorf("wiki job %q: %w", jobID, parseErr)
-	}
-	if j.UpdatedAt, parseErr = parseSQLiteTimestamp("updated_at", updatedAt); parseErr != nil {
-		return j, fmt.Errorf("wiki job %q: %w", jobID, parseErr)
-	}
-	return j, nil
+	summary.Since = since
+	return summary, nil
 }
 
-// ListWikiJobs returns all wiki jobs for a repository, ordered by created_at desc.
-func (db *DB) ListWikiJobs(ctx context.Context, repoID string) ([]models.WikiJob, error) {
-	rows, err := db.QueryContext(ctx, `
-		SELECT id, repo_id, status, total_pages, created_at, updated_at
-		FROM wiki_jobs WHERE repo_id = ? ORDER BY created_at DESC`, repoID)
+// -- Provider pricing cache -----------------------------------------------
+
+// SaveProviderPricing persists a live pricing map for a provider (upsert by provider name).
+func (d *DB) SaveProviderPricing(ctx context.Context, provider string, pricing map[string][2]float64) error {
+	if len(pricing) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(pricing)
 	if err != nil {
+		return fmt.Errorf("marshal pricing: %w", err)
+	}
+	return d.db.WithContext(ctx).Save(&providerPricingRow{
+		Provider:    provider,
+		PricingJSON: data,
+	}).Error
+}
+
+// LoadProviderPricing retrieves the cached pricing map for a provider.
+// Returns nil map (not an error) when no cached pricing exists.
+func (d *DB) LoadProviderPricing(ctx context.Context, provider string) (map[string][2]float64, error) {
+	var row providerPricingRow
+	if err := d.db.WithContext(ctx).First(&row, "provider = ?", provider).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
-	defer rows.Close()
-	var jobs []models.WikiJob
-	for rows.Next() {
-		var j models.WikiJob
-		var status, createdAt, updatedAt string
-		if err := rows.Scan(&j.ID, &j.RepoID, &status, &j.TotalPages, &createdAt, &updatedAt); err != nil {
-			return nil, err
-		}
-		j.Status = models.WikiJobStatus(status)
-		if j.CreatedAt, err = parseSQLiteTimestamp("created_at", createdAt); err != nil {
-			return nil, fmt.Errorf("wiki job %q: %w", j.ID, err)
-		}
-		if j.UpdatedAt, err = parseSQLiteTimestamp("updated_at", updatedAt); err != nil {
-			return nil, fmt.Errorf("wiki job %q: %w", j.ID, err)
-		}
-		jobs = append(jobs, j)
+	var pricing map[string][2]float64
+	if err := json.Unmarshal(row.PricingJSON, &pricing); err != nil {
+		return nil, fmt.Errorf("unmarshal pricing: %w", err)
 	}
-	return jobs, rows.Err()
+	return pricing, nil
 }
 
-// UpsertWikiPage inserts or replaces a generated wiki page.
-func (db *DB) UpsertWikiPage(ctx context.Context, page models.WikiPage) error {
-	_, err := db.ExecContext(ctx, `
-		INSERT INTO wiki_pages (id, repo_id, job_id, type, subject, content, level, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-		ON CONFLICT(id) DO UPDATE SET
-			content = excluded.content,
-			updated_at = datetime('now')`,
-		page.ID, page.RepoID, page.JobID, page.Type, page.Subject, page.Content, page.Level)
-	return err
+// -- Repo files -----------------------------------------------------------
+
+func (d *DB) UpsertRepoFiles(ctx context.Context, repoID string, files []models.FileNode) error {
+	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("repo_id = ?", repoID).Delete(&repoFileRow{}).Error; err != nil {
+			return err
+		}
+		if len(files) == 0 {
+			return nil
+		}
+		rows := make([]repoFileRow, 0, len(files))
+		for _, f := range files {
+			var pac *time.Time
+			if !f.PrimaryAuthorLastCommit.IsZero() {
+				t := f.PrimaryAuthorLastCommit
+				pac = &t
+			}
+			rows = append(rows, repoFileRow{
+				RepoID:                  repoID,
+				Path:                    f.Path,
+				Language:                f.Language,
+				Churn:                   f.Churn,
+				Ownership:               f.Ownership,
+				AuthorCount:             f.AuthorCount,
+				LineCoverage:            f.LineCoverage,
+				Size:                    f.Size,
+				PrimaryAuthor:           f.PrimaryAuthor,
+				PrimaryAuthorLastCommit: pac,
+			})
+		}
+		return tx.CreateInBatches(&rows, 500).Error
+	})
 }
 
-// ListWikiPages returns all wiki pages for a repository.
-func (db *DB) ListWikiPages(ctx context.Context, repoID string) ([]models.WikiPage, error) {
-	rows, err := db.QueryContext(ctx, `
-		SELECT id, repo_id, job_id, type, subject, content, level, created_at, updated_at
-		FROM wiki_pages WHERE repo_id = ? ORDER BY level, type, subject`, repoID)
-	if err != nil {
+func (d *DB) GetRepoFiles(ctx context.Context, repoID string) ([]models.FileNode, error) {
+	var rows []repoFileRow
+	if err := d.db.WithContext(ctx).
+		Where("repo_id = ?", repoID).
+		Order("churn DESC").
+		Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var pages []models.WikiPage
-	for rows.Next() {
-		var p models.WikiPage
-		var createdAt, updatedAt string
-		if err := rows.Scan(&p.ID, &p.RepoID, &p.JobID, &p.Type, &p.Subject, &p.Content, &p.Level, &createdAt, &updatedAt); err != nil {
-			return nil, err
+	files := make([]models.FileNode, 0, len(rows))
+	for _, r := range rows {
+		f := models.FileNode{
+			Path:          r.Path,
+			Language:      r.Language,
+			Churn:         r.Churn,
+			Ownership:     r.Ownership,
+			AuthorCount:   r.AuthorCount,
+			LineCoverage:  r.LineCoverage,
+			Size:          r.Size,
+			PrimaryAuthor: r.PrimaryAuthor,
+			IsFile:        true,
 		}
-		if p.CreatedAt, err = parseSQLiteTimestamp("created_at", createdAt); err != nil {
-			return nil, fmt.Errorf("wiki page %q: %w", p.ID, err)
+		if r.PrimaryAuthorLastCommit != nil {
+			f.PrimaryAuthorLastCommit = *r.PrimaryAuthorLastCommit
 		}
-		if p.UpdatedAt, err = parseSQLiteTimestamp("updated_at", updatedAt); err != nil {
-			return nil, fmt.Errorf("wiki page %q: %w", p.ID, err)
-		}
-		pages = append(pages, p)
+		files = append(files, f)
 	}
-	return pages, rows.Err()
+	return files, nil
 }
 
-// GetWikiPage returns a single wiki page by ID.
-func (db *DB) GetWikiPage(ctx context.Context, pageID string) (models.WikiPage, error) {
-	var p models.WikiPage
-	var createdAt, updatedAt string
-	err := db.QueryRowContext(ctx, `
-		SELECT id, repo_id, job_id, type, subject, content, level, created_at, updated_at
-		FROM wiki_pages WHERE id = ?`, pageID).
-		Scan(&p.ID, &p.RepoID, &p.JobID, &p.Type, &p.Subject, &p.Content, &p.Level, &createdAt, &updatedAt)
-	if err != nil {
-		return p, err
-	}
-	if p.CreatedAt, err = parseSQLiteTimestamp("created_at", createdAt); err != nil {
-		return p, fmt.Errorf("wiki page %q: %w", pageID, err)
-	}
-	if p.UpdatedAt, err = parseSQLiteTimestamp("updated_at", updatedAt); err != nil {
-		return p, fmt.Errorf("wiki page %q: %w", pageID, err)
-	}
-	return p, nil
+// -- Repo symbols ---------------------------------------------------------
+
+func (d *DB) UpsertRepoSymbols(ctx context.Context, repoID string, symbols []models.Symbol) error {
+	return d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("repo_id = ?", repoID).Delete(&repoSymbolRow{}).Error; err != nil {
+			return err
+		}
+		if len(symbols) == 0 {
+			return nil
+		}
+		rows := make([]repoSymbolRow, 0, len(symbols))
+		for _, s := range symbols {
+			rows = append(rows, repoSymbolRow{
+				RepoID:   repoID,
+				Name:     s.Name,
+				Type:     string(s.Type),
+				FilePath: s.FilePath,
+				Line:     s.Line,
+				EndLine:  s.EndLine,
+			})
+		}
+		return tx.CreateInBatches(&rows, 500).Error
+	})
 }
 
-const sqliteTimestampLayout = "2006-01-02 15:04:05"
-
-func parseSQLiteTimestamp(field, raw string) (time.Time, error) {
-	t, err := time.Parse(sqliteTimestampLayout, raw)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("parse %s timestamp %q: %w", field, raw, err)
+func (d *DB) GetRepoSymbols(ctx context.Context, repoID string) ([]models.Symbol, error) {
+	var rows []repoSymbolRow
+	if err := d.db.WithContext(ctx).Where("repo_id = ?", repoID).Find(&rows).Error; err != nil {
+		return nil, err
 	}
-	return t, nil
-}
-
-func runMigrations(db *sql.DB) error {
-	d, err := iofs.New(migrationsFS, "migrations")
-	if err != nil {
-		return fmt.Errorf("failed to create iofs driver: %w", err)
+	symbols := make([]models.Symbol, 0, len(rows))
+	for _, r := range rows {
+		symbols = append(symbols, models.Symbol{
+			Name:     r.Name,
+			Type:     models.SymbolType(r.Type),
+			FilePath: r.FilePath,
+			Line:     r.Line,
+			EndLine:  r.EndLine,
+		})
 	}
-
-	driver, err := sqlite.WithInstance(db, &sqlite.Config{})
-	if err != nil {
-		return fmt.Errorf("failed to create migration driver: %w", err)
-	}
-
-	m, err := migrate.NewWithInstance("iofs", d, "sqlite", driver)
-	if err != nil {
-		return fmt.Errorf("failed to create migration instance: %w", err)
-	}
-
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("failed to apply migrations: %w", err)
-	}
-
-	return nil
+	return symbols, nil
 }

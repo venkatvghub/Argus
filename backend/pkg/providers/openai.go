@@ -60,6 +60,10 @@ type openAIChatResponse struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
 }
 
 // openAIStreamChunk is one SSE chunk in a streaming response.
@@ -86,10 +90,9 @@ func (p *OpenAIProvider) newRequest(ctx context.Context, path string, body []byt
 	return req, nil
 }
 
-// Chat sends a prompt to the OpenAI chat completions endpoint and returns the full response.
-func (p *OpenAIProvider) Chat(ctx context.Context, prompt string) (string, error) {
+func (p *OpenAIProvider) fetchOpenAIChatResponse(ctx context.Context, prompt string) (openAIChatResponse, error) {
 	if p.apiKey == "" {
-		return "", fmt.Errorf("OpenAI API key is missing")
+		return openAIChatResponse{}, fmt.Errorf("OpenAI API key is missing")
 	}
 
 	payload := openAIChatRequest{
@@ -99,33 +102,51 @@ func (p *OpenAIProvider) Chat(ctx context.Context, prompt string) (string, error
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return "", fmt.Errorf("openai chat: marshal: %w", err)
+		return openAIChatResponse{}, fmt.Errorf("openai chat: marshal: %w", err)
 	}
 
 	req, err := p.newRequest(ctx, "/chat/completions", body)
 	if err != nil {
-		return "", fmt.Errorf("openai chat: request: %w", err)
+		return openAIChatResponse{}, fmt.Errorf("openai chat: request: %w", err)
 	}
 
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("openai chat: http: %w", err)
+		return openAIChatResponse{}, fmt.Errorf("openai chat: http: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("openai chat: status %d: %s", resp.StatusCode, string(raw))
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		return openAIChatResponse{}, fmt.Errorf("openai chat: status %d: %s", resp.StatusCode, string(raw))
 	}
 
 	var result openAIChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("openai chat: decode: %w", err)
+		return openAIChatResponse{}, fmt.Errorf("openai chat: decode: %w", err)
 	}
 	if len(result.Choices) == 0 {
-		return "", fmt.Errorf("openai chat: empty choices in response")
+		return openAIChatResponse{}, fmt.Errorf("openai chat: empty choices in response")
+	}
+	return result, nil
+}
+
+// Chat sends a prompt to the OpenAI chat completions endpoint and returns the full response.
+func (p *OpenAIProvider) Chat(ctx context.Context, prompt string) (string, error) {
+	result, err := p.fetchOpenAIChatResponse(ctx, prompt)
+	if err != nil {
+		return "", err
 	}
 	return result.Choices[0].Message.Content, nil
+}
+
+// ChatWithUsage is like Chat but also returns input and output token counts.
+func (p *OpenAIProvider) ChatWithUsage(ctx context.Context, prompt string) (string, int, int, error) {
+	result, err := p.fetchOpenAIChatResponse(ctx, prompt)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	return result.Choices[0].Message.Content, result.Usage.PromptTokens, result.Usage.CompletionTokens, nil
 }
 
 // ChatStream sends a prompt to OpenAI with streaming enabled and emits tokens on the returned channel.
@@ -154,7 +175,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, repoID string, prompt s
 		return nil, nil, fmt.Errorf("openai stream: http: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		resp.Body.Close()
 		return nil, nil, fmt.Errorf("openai stream: status %d: %s", resp.StatusCode, string(raw))
 	}
@@ -235,7 +256,7 @@ func (p *OpenAIProvider) ListModels(ctx context.Context) ([]string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		return nil, fmt.Errorf("openai list models: status %d: %s", resp.StatusCode, string(raw))
 	}
 

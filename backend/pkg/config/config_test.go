@@ -15,13 +15,11 @@ func TestLoad(t *testing.T) {
 	initErr = nil
 
 	t.Setenv("ARGUS_APP_NAME", "test-argus")
-	t.Setenv("ARGUS_DATA_DIR", "/tmp/argus-data")
 	t.Setenv("ARGUS_PII_PATTERNS", "AADHAAR,PAN")
 
 	c, err := Load()
 	assert.NoError(t, err)
 	assert.Equal(t, "test-argus", c.AppName)
-	assert.Equal(t, "/tmp/argus-data", c.DataDir)
 	assert.Contains(t, c.PIIPatterns, "AADHAAR")
 	assert.Contains(t, c.PIIPatterns, "PAN")
 }
@@ -136,6 +134,13 @@ func TestLoad_LLMResilienceValidation(t *testing.T) {
 			assert.NotNil(t, c)
 		})
 	}
+}
+
+func TestConfig_OwnerDefaults(t *testing.T) {
+	assert.Equal(t, 10, (&Config{}).OwnerHotspotChurnThresholdOrDefault())
+	assert.Equal(t, 90, (&Config{}).OwnerDefaultCutoffDaysOrDefault())
+	assert.Equal(t, 15, (&Config{OwnerHotspotChurnThreshold: 15}).OwnerHotspotChurnThresholdOrDefault())
+	assert.Equal(t, 120, (&Config{OwnerDefaultCutoffDays: 120}).OwnerDefaultCutoffDaysOrDefault())
 }
 
 func TestConfig_LLMHTTPTimeout(t *testing.T) {

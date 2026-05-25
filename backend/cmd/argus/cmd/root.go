@@ -14,7 +14,6 @@ var (
 	rootRepoID string
 
 	// persistent flag values
-	flagDataDir  string
 	flagLogLevel string
 )
 
@@ -25,9 +24,6 @@ var rootCmd = &cobra.Command{
 		cfg, err := config.Load()
 		if err != nil {
 			return fmt.Errorf("config: %w", err)
-		}
-		if flagDataDir != "" {
-			cfg.DataDir = flagDataDir
 		}
 		if flagLogLevel != "" {
 			cfg.LogLevel = flagLogLevel
@@ -56,7 +52,6 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&flagDataDir, "data-dir", "", "override data directory")
 	rootCmd.PersistentFlags().StringVar(&flagLogLevel, "log-level", "", "override log level")
 	rootCmd.PersistentFlags().StringVar(&rootRepoID, "repo-id", "", "repository ID for query commands")
 

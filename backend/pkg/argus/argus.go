@@ -19,7 +19,7 @@ import (
 // Instance manages the lifecycle and resources for a single Argus session.
 type Instance struct {
 	cfg    *config.Config
-	db     *persistence.DB
+	db     dbStore
 	log    *logger.Logger
 	parser *ingestion.TreeSitterParser
 	Jobs   *JobManager
@@ -31,8 +31,26 @@ type Instance struct {
 	upToDate     map[string]bool     // repoID → true when HEAD unchanged, analysis skipped
 }
 
-// New creates and initializes a new Argus instance.
+// New creates and initializes a new Argus instance backed by PostgreSQL.
 func New(ctx context.Context, cfg *config.Config) (*Instance, error) {
+	if cfg == nil {
+		var err error
+		cfg, err = config.Load()
+		if err != nil {
+			return nil, fmt.Errorf("config load: %w", err)
+		}
+	}
+
+	db, err := persistence.New(cfg.DatabaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("persistence init: %w", err)
+	}
+
+	return newWithDB(ctx, cfg, db)
+}
+
+// newWithDB creates an Instance using the provided dbStore implementation.
+func newWithDB(ctx context.Context, cfg *config.Config, db dbStore) (*Instance, error) {
 	if cfg == nil {
 		var err error
 		cfg, err = config.Load()
@@ -49,11 +67,6 @@ func New(ctx context.Context, cfg *config.Config) (*Instance, error) {
 	}
 	log := logger.FromContext(ctx)
 
-	db, err := persistence.New(cfg.ResolveDBPath())
-	if err != nil {
-		return nil, fmt.Errorf("persistence init: %w", err)
-	}
-
 	parser, err := ingestion.NewTreeSitterParser()
 	if err != nil {
 		log.Warn("failed to initialize tree-sitter parser", "error", err)
@@ -62,10 +75,10 @@ func New(ctx context.Context, cfg *config.Config) (*Instance, error) {
 	markerMap := make(map[string][]models.Marker)
 	if loaded, err := db.LoadAllMarkers(ctx); err == nil {
 		for repoID, ms := range loaded {
-		for i := range ms {
-			if ms[i].Suggestion == "" {
-				ms[i].Suggestion = analysis.SuggestionFor(ms[i].Type)
-			}
+			for i := range ms {
+				if ms[i].Suggestion == "" {
+					ms[i].Suggestion = analysis.SuggestionFor(ms[i].Type)
+				}
 			}
 			loaded[repoID] = ms
 		}
@@ -110,23 +123,42 @@ func (i *Instance) Close() error {
 // If the repo was previously indexed and HEAD has not changed, the job completes
 // immediately with status "Up-to-date" and no re-analysis occurs.
 func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error) {
-	job := i.Jobs.CreateJob(jobTypeAnalysis)
+	// Pre-compute repoID so the job is scoped from creation and filterable by caller.
+	absPath, err := filepath.Abs(repoPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve path: %w", err)
+	}
+	repoID := fmt.Sprintf("%x", sha256.Sum256([]byte(absPath)))[:constants.RepoIDLength]
+	repoName := filepath.Base(absPath)
 
-	jobCtx, cancel := context.WithCancel(ctx)
+	job := i.Jobs.CreateJob(jobTypeAnalysis, repoID)
+
+	// Detach from the caller's context so the job survives HTTP request completion.
+	// WithoutCancel preserves values (logger, trace IDs) but not the cancellation signal.
+	jobCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	i.Jobs.RegisterCancel(job.ID, cancel)
+
+	// Persist the job to DB so it survives process restarts.
+	if dbErr := i.db.CreateJob(ctx, *job); dbErr != nil {
+		i.log.Warn("failed to persist job to DB", "job_id", job.ID, "error", dbErr)
+	}
+
+	// updateStatus updates both in-memory and DB job state.
+	updateStatus := func(status models.JobStatus, progress string, statusErr error) {
+		i.Jobs.UpdateStatus(job.ID, status, progress, statusErr)
+		errMsg := ""
+		if statusErr != nil {
+			errMsg = statusErr.Error()
+		}
+		if dbErr := i.db.UpdateJobStatus(jobCtx, job.ID, string(status), progress, errMsg); dbErr != nil {
+			i.log.Warn("failed to update job status in DB", "job_id", job.ID, "error", dbErr)
+		}
+	}
 
 	i.Jobs.Submit(job.ID, func() {
 		defer cancel()
 
-		i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, "Reading commit history...", nil)
-
-		absPath, err := filepath.Abs(repoPath)
-		if err != nil {
-			i.Jobs.UpdateStatus(job.ID, models.JobStatusFailed, "Failed", err)
-			return
-		}
-		repoName := filepath.Base(absPath)
-		repoID := fmt.Sprintf("%x", sha256.Sum256([]byte(absPath)))[:constants.RepoIDLength]
+		updateStatus(models.JobStatusInProgress, "Reading commit history...", nil)
 
 		i.log.Info("starting analysis", "repo_path", absPath, "repo_id", repoID)
 
@@ -137,20 +169,25 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 		} else {
 			existing, dbErr := i.db.GetRepository(jobCtx, repoID)
 			if dbErr == nil && existing.LastCommit == headCommit {
-				// Nothing changed. Reload markers from DB so in-memory state is warm.
-				i.log.Info("repo HEAD unchanged; skipping re-analysis", "repo_id", repoID, "commit", headCommit)
-				if loaded, mErr := i.db.LoadAllMarkers(jobCtx); mErr == nil {
-					i.mu.Lock()
-					if ms, ok := loaded[repoID]; ok {
-						i.markers[repoID] = ms
+				// HEAD unchanged — skip re-analysis only if files are already persisted.
+				// If DB has no files (pre-persistence index), fall through to re-analyze.
+				dbFiles, _ := i.db.GetRepoFiles(jobCtx, repoID)
+				if len(dbFiles) > 0 {
+					i.log.Info("repo HEAD unchanged; skipping re-analysis", "repo_id", repoID, "commit", headCommit)
+					if loaded, mErr := i.db.LoadAllMarkers(jobCtx); mErr == nil {
+						i.mu.Lock()
+						if ms, ok := loaded[repoID]; ok {
+							i.markers[repoID] = ms
+						}
+						i.mu.Unlock()
 					}
+					i.mu.Lock()
+					i.upToDate[repoID] = true
 					i.mu.Unlock()
+					updateStatus(models.JobStatusCompleted, "Up-to-date", nil)
+					return
 				}
-				i.mu.Lock()
-				i.upToDate[repoID] = true
-				i.mu.Unlock()
-				i.Jobs.UpdateStatus(job.ID, models.JobStatusCompleted, "Up-to-date", nil)
-				return
+				i.log.Info("repo HEAD unchanged but DB has no files; re-analyzing to populate persistence", "repo_id", repoID, "commit", headCommit)
 			}
 
 			// Compute changed files for use by downstream wiki generation.
@@ -169,28 +206,28 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 		walker := ingestion.NewGitWalker(absPath, i.parser)
 		walker.RecentAuthorCutoffDays = i.cfg.RecentAuthorCutoffDays
 		walker.OnHistoryProgress = func(n int) {
-			i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, fmt.Sprintf("Reading commit history... (%d commits)", n), nil)
+			updateStatus(models.JobStatusInProgress, fmt.Sprintf("Reading commit history... (%d commits)", n), nil)
 		}
 		var totalFiles int
 		walker.OnTotalFiles = func(total int) {
 			totalFiles = total
 		}
 		walker.OnProgress = func(n int) {
-			i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, fmt.Sprintf("Parsing files... (%d/%d)", n, totalFiles), nil)
+			updateStatus(models.JobStatusInProgress, fmt.Sprintf("Parsing files... (%d/%d)", n, totalFiles), nil)
 		}
 		nodes, symbols, err := walker.Walk(jobCtx)
 		if err != nil {
-			i.Jobs.UpdateStatus(job.ID, models.JobStatusFailed, "Failed", err)
+			updateStatus(models.JobStatusFailed, "Failed", err)
 			return
 		}
 
-		i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, "Assembling Graph...", nil)
+		updateStatus(models.JobStatusInProgress, "Assembling Graph...", nil)
 
 		i.log.Info("analysis complete", "files", len(nodes), "biomarkers_found", len(symbols))
 
 		engine := analysis.NewGraphEngine()
 		if err := engine.BuildGraph(nodes, symbols, nil); err != nil {
-			i.Jobs.UpdateStatus(job.ID, models.JobStatusFailed, "Failed", err)
+			updateStatus(models.JobStatusFailed, "Failed", err)
 			return
 		}
 		_ = engine.DetectCommunities()
@@ -211,13 +248,19 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 		if err := i.db.UpsertMarkers(jobCtx, repoID, markers); err != nil {
 			i.log.Warn("failed to persist markers", "error", err)
 		}
+		if err := i.db.UpsertRepoFiles(jobCtx, repoID, nodes); err != nil {
+			i.log.Warn("failed to persist repo files", "error", err)
+		}
+		if err := i.db.UpsertRepoSymbols(jobCtx, repoID, symbols); err != nil {
+			i.log.Warn("failed to persist repo symbols", "error", err)
+		}
 
 		i.mu.Lock()
 		i.engines[repoID] = engine
 		i.markers[repoID] = markers
 		i.mu.Unlock()
 
-		i.Jobs.UpdateStatus(job.ID, models.JobStatusCompleted, "Complete", nil)
+		updateStatus(models.JobStatusCompleted, "Complete", nil)
 	})
 
 	return job.ID, nil
@@ -237,6 +280,13 @@ func (i *Instance) IsRepoUpToDate(repoID string) bool {
 	i.mu.RLock()
 	defer i.mu.RUnlock()
 	return i.upToDate[repoID]
+}
+
+// ResetAnalysisCheckpoint clears the persisted last_commit for a repo so that
+// the next Analyze call performs a full re-analysis regardless of HEAD state.
+// Used by --force-wiki to ensure the in-memory graph engine is populated.
+func (i *Instance) ResetAnalysisCheckpoint(ctx context.Context, repoID string) error {
+	return i.db.ClearRepoLastCommit(ctx, repoID)
 }
 
 // ListRepositories returns all indexed repositories.
@@ -300,25 +350,38 @@ func (i *Instance) GetCommunityGraph(ctx context.Context, repoID string, communi
 }
 
 // GetRepoSymbols returns all symbols for a specific repository.
+// Falls back to DB when the engine is not in memory.
 func (i *Instance) GetRepoSymbols(ctx context.Context, repoID string) ([]models.Symbol, error) {
 	i.mu.RLock()
-	defer i.mu.RUnlock()
-
 	engine, ok := i.engines[repoID]
-	if !ok {
-		return nil, ErrRepoNotFound
-	}
+	i.mu.RUnlock()
 
-	var results []models.Symbol = []models.Symbol{}
-	for _, node := range engine.GetNodes() {
-		if node.InternalType() == analysis.NodeTypeSymbol {
-			s := node.Symbol()
-			if s != nil {
-				results = append(results, *s)
+	if ok {
+		var results []models.Symbol = []models.Symbol{}
+		for _, node := range engine.GetNodes() {
+			if node.InternalType() == analysis.NodeTypeSymbol {
+				s := node.Symbol()
+				if s != nil {
+					results = append(results, *s)
+				}
 			}
 		}
+		return results, nil
 	}
-	return results, nil
+
+	// Engine not in memory — fall back to DB.
+	if _, err := i.db.GetRepository(ctx, repoID); err != nil {
+		return nil, ErrRepoNotFound
+	}
+	dbSymbols, err := i.db.GetRepoSymbols(ctx, repoID)
+	if err != nil {
+		i.log.Warn("failed to load repo symbols from DB", "repo_id", repoID, "error", err)
+		return []models.Symbol{}, nil
+	}
+	if dbSymbols == nil {
+		return []models.Symbol{}, nil
+	}
+	return dbSymbols, nil
 }
 
 // GetRepoMarkers returns all markers for a specific repository.
@@ -440,39 +503,137 @@ func (i *Instance) GetWikiPage(ctx context.Context, pageID string) (models.WikiP
 	return i.db.GetWikiPage(ctx, pageID)
 }
 
-// GetRepoFiles returns all file nodes for a repository from the in-memory graph engine.
-// Returns ErrRepoNotFound if the repo has not been analyzed in this session.
+// SaveProviderPricing persists live pricing from provider discovery for future runs.
+func (i *Instance) SaveProviderPricing(ctx context.Context, provider string, pricing map[string][2]float64) error {
+	return i.db.SaveProviderPricing(ctx, provider, pricing)
+}
+
+// LoadProviderPricing retrieves cached live pricing for a provider. Returns nil when not cached.
+func (i *Instance) LoadProviderPricing(ctx context.Context, provider string) (map[string][2]float64, error) {
+	return i.db.LoadProviderPricing(ctx, provider)
+}
+
+// GetRepoFiles returns all file nodes for a repository.
+// Falls back to DB when the engine is not in memory, and further falls back to
+// deriving a file list from in-memory markers when the DB has no rows yet.
 func (i *Instance) GetRepoFiles(ctx context.Context, repoID string) ([]models.FileNode, error) {
 	i.mu.RLock()
-	defer i.mu.RUnlock()
 	engine, ok := i.engines[repoID]
-	if !ok {
-		return nil, ErrRepoNotFound
-	}
-	var files []models.FileNode
-	for _, n := range engine.GetNodes() {
-		if n.InternalType() == analysis.NodeTypeFile {
-			if f := n.File(); f != nil {
-				files = append(files, *f)
+	i.mu.RUnlock()
+
+	if ok {
+		var files []models.FileNode
+		for _, n := range engine.GetNodes() {
+			if n.InternalType() == analysis.NodeTypeFile {
+				if f := n.File(); f != nil {
+					files = append(files, *f)
+				}
 			}
 		}
+		return files, nil
+	}
+
+	// Engine not in memory — verify repo exists.
+	if _, err := i.db.GetRepository(ctx, repoID); err != nil {
+		return nil, ErrRepoNotFound
+	}
+
+	// Try DB first (populated by Analyze).
+	dbFiles, err := i.db.GetRepoFiles(ctx, repoID)
+	if err == nil && len(dbFiles) > 0 {
+		return dbFiles, nil
+	}
+
+	// Last resort: derive from in-memory markers (available after restart from LoadAllMarkers).
+	i.mu.RLock()
+	markers, hasMark := i.markers[repoID]
+	i.mu.RUnlock()
+	if !hasMark {
+		return []models.FileNode{}, nil
+	}
+	seen := make(map[string]struct{})
+	var files []models.FileNode
+	for _, m := range markers {
+		if _, already := seen[m.File]; already {
+			continue
+		}
+		seen[m.File] = struct{}{}
+		files = append(files, models.FileNode{
+			Path:     m.File,
+			IsFile:   true,
+			Language: langFromExt(m.File),
+		})
 	}
 	return files, nil
 }
 
 // GetCommunityCount returns the number of distinct communities detected for a repository.
+// Returns 0 (no error) when the engine is not in memory.
 func (i *Instance) GetCommunityCount(ctx context.Context, repoID string) (int, error) {
 	i.mu.RLock()
-	defer i.mu.RUnlock()
 	engine, ok := i.engines[repoID]
+	i.mu.RUnlock()
 	if !ok {
-		return 0, ErrRepoNotFound
+		return 0, nil
 	}
 	seen := make(map[int]struct{})
 	for _, n := range engine.GetNodes() {
 		seen[n.CommunityID] = struct{}{}
 	}
 	return len(seen), nil
+}
+
+// GetJob returns a job by ID from the in-memory JobManager.
+func (i *Instance) GetJob(ctx context.Context, jobID string) (models.Job, error) {
+	job, ok := i.Jobs.GetJob(jobID)
+	if !ok {
+		return models.Job{}, ErrJobNotFound
+	}
+	return *job, nil
+}
+
+// ListJobs merges DB-persisted jobs (supports repoID filter) with live in-memory
+// state so callers see both historical jobs and up-to-date progress for active ones.
+func (i *Instance) ListJobs(ctx context.Context, repoID string) ([]models.Job, error) {
+	dbJobs, err := i.db.ListJobs(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build index of in-memory jobs for fast lookup.
+	memJobs := i.Jobs.ListJobs()
+	memByID := make(map[string]models.Job, len(memJobs))
+	for _, j := range memJobs {
+		memByID[j.ID] = j
+	}
+
+	// Overlay in-memory state (authoritative for live progress) onto DB rows.
+	result := make([]models.Job, 0, len(dbJobs))
+	seen := make(map[string]struct{}, len(dbJobs))
+	for _, j := range dbJobs {
+		if mem, ok := memByID[j.ID]; ok {
+			result = append(result, mem)
+		} else {
+			result = append(result, j)
+		}
+		seen[j.ID] = struct{}{}
+	}
+
+	// Include in-memory-only jobs (created but not yet flushed to DB, matching repoID filter).
+	for _, j := range memJobs {
+		if _, ok := seen[j.ID]; ok {
+			continue
+		}
+		if repoID == "" || j.RepoID == repoID {
+			result = append(result, j)
+		}
+	}
+	return result, nil
+}
+
+// CancelJob cancels a running job.
+func (i *Instance) CancelJob(ctx context.Context, jobID string) error {
+	return i.Jobs.CancelJob(jobID)
 }
 
 // Run starts the default pipeline.

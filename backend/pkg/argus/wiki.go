@@ -143,7 +143,7 @@ func (i *Instance) GenerateWiki(
 				}
 
 				prompt := buildPrompt(job, repoPath, engine, markers)
-				content, err := router.ChatTier(ctx, job.tier, prompt)
+				content, inputTok, outputTok, err := router.ChatTierWithUsage(ctx, job.tier, prompt)
 				if err != nil {
 					i.log.Warn("wiki page generation failed", "page_id", job.id, "error", err)
 					mu.Lock()
@@ -162,6 +162,9 @@ func (i *Instance) GenerateWiki(
 					}
 					return
 				}
+				if recordErr := i.RecordCost(ctx, repoID, router.ModelForTier(job.tier), "wiki:"+job.pgType, inputTok, outputTok, router.PricingMap()); recordErr != nil {
+					i.log.Warn("failed to record wiki cost", "page_id", job.id, "error", recordErr)
+				}
 
 				page := models.WikiPage{
 					ID:      job.id,
@@ -170,6 +173,7 @@ func (i *Instance) GenerateWiki(
 					Type:    job.pgType,
 					Subject: job.subject,
 					Content: content,
+					Model:   router.ModelForTier(job.tier),
 					Level:   job.level,
 				}
 				if err := i.db.UpsertWikiPage(ctx, page); err != nil {

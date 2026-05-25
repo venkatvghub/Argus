@@ -24,7 +24,6 @@ func TestRootCmd_PersistentFlagsRegistered(t *testing.T) {
 		name     string
 		flagName string
 	}{
-		{"data-dir flag", "data-dir"},
 		{"log-level flag", "log-level"},
 		{"repo-id flag", "repo-id"},
 	}

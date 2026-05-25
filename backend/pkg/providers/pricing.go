@@ -93,6 +93,18 @@ var modelPricing = []modelPrice{
 	{"meta-llama/llama-3-70b-instruct", 0.52, 0.75},
 	{"meta-llama/llama-3.1-8b-instruct", 0.06, 0.06},
 	{"meta-llama/llama-3.1-70b-instruct", 0.52, 0.75},
+	// Qwen — OpenRouter style
+	{"qwen/qwen3.7-max", 0.38, 1.12},
+	{"qwen/qwen-2.5-72b-instruct", 0.40, 1.20},
+	{"qwen/qwen-turbo", 0.05, 0.20},
+	// Gemini — OpenRouter style (additional variants)
+	{"google/gemini-3.1-flash-lite", 0.04, 0.15},
+	{"google/gemini-2.0-flash-lite", 0.04, 0.15},
+	{"google/gemini-2.5-flash", 0.15, 0.60},
+	{"google/gemini-flash-1.5", 0.075, 0.30},
+	// OpenAI — additional
+	{"openai/o3-mini", 1.10, 4.40},
+	{"openai/o4-mini", 1.10, 4.40},
 }
 
 type modelPrice struct {
@@ -101,8 +113,17 @@ type modelPrice struct {
 	outPer1M   float64
 }
 
+// fallbackInputPer1M and fallbackOutputPer1M are conservative defaults for unknown models.
+// Matches claude-sonnet-tier pricing — better to over-estimate than record $0.
+const (
+	fallbackInputPer1M  = 3.0
+	fallbackOutputPer1M = 15.0
+)
+
 // ModelCostPer1M returns (inputCostPer1M, outputCostPer1M) for a model name.
-// Uses exact match first, then longest prefix match. Returns (0,0) if unknown.
+// Uses exact match first, then longest prefix match.
+// Returns conservative fallback (3.0, 15.0) for unknown models — never (0, 0).
+// Call IsKnownModel first if you need to distinguish known vs fallback.
 func ModelCostPer1M(model string) (float64, float64) {
 	var best *modelPrice
 	for i := range modelPricing {
@@ -119,7 +140,21 @@ func ModelCostPer1M(model string) (float64, float64) {
 	if best != nil {
 		return best.inputPer1M, best.outPer1M
 	}
-	return 0, 0
+	return fallbackInputPer1M, fallbackOutputPer1M
+}
+
+// IsKnownModel reports whether model has an entry in the static pricing table or dynamic map.
+func IsKnownModel(model string, dynamic map[string][2]float64) bool {
+	if _, ok := dynamic[model]; ok {
+		return true
+	}
+	for i := range modelPricing {
+		mp := &modelPricing[i]
+		if model == mp.prefix || strings.HasPrefix(model, mp.prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // EstimatePageCost returns the estimated USD cost for generating count pages of the given type

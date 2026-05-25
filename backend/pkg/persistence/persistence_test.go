@@ -1,6 +1,8 @@
 package persistence
 
 import (
+	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -8,29 +10,33 @@ import (
 	"github.com/venkatvghub/argus/pkg/models"
 )
 
+func testDSN(t *testing.T) string {
+	t.Helper()
+	dsn := os.Getenv("ARGUS_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ARGUS_TEST_DATABASE_URL not set — skipping persistence integration tests")
+	}
+	return dsn
+}
+
 func TestDB(t *testing.T) {
-	dataDir := t.TempDir()
-	// New() now takes a full DB path, not just a directory.
-	dbPath := dataDir + "/argus.db"
-	db, err := New(dbPath)
+	db, err := New(testDSN(t))
 	require.NoError(t, err)
 	defer db.Close()
 
-	// Verify table exists
-	var name string
-	err = db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='repositories'").Scan(&name)
-	assert.NoError(t, err)
-	assert.Equal(t, "repositories", name)
+	// Verify connection is alive
+	sqlDB, err := db.db.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Ping())
 }
 
 func TestUpsertMarkers_PersistsSuggestion(t *testing.T) {
-	dataDir := t.TempDir()
-	db, err := New(dataDir + "/argus.db")
+	db, err := New(testDSN(t))
 	require.NoError(t, err)
 	defer db.Close()
 
-	ctx := t.Context()
-	repoID := "test-repo"
+	ctx := context.Background()
+	repoID := "test-repo-markers"
 	markers := []models.Marker{
 		{
 			Type:       "token_bloat",

@@ -68,12 +68,13 @@ func NewJobManager(cfg *config.Config) *JobManager {
 	return jm
 }
 
-func (jm *JobManager) CreateJob(jobType string) *models.Job {
+func (jm *JobManager) CreateJob(jobType, repoID string) *models.Job {
 	jm.mu.Lock()
 	defer jm.mu.Unlock()
 
 	job := &models.Job{
 		ID:        uuid.New().String(),
+		RepoID:    repoID,
 		Type:      jobType,
 		Status:    models.JobStatusPending,
 		CreatedAt: time.Now(),

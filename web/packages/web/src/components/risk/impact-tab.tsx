@@ -90,9 +90,9 @@ export function ImpactTab({ repoId }: { repoId: string }) {
 
           {hotspotSuggestions && hotspotSuggestions.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {hotspotSuggestions.map((h) => (
+              {hotspotSuggestions.map((h, i) => (
                 <button
-                  key={h.file_path}
+                  key={h.file_path || String(i)}
                   type="button"
                   onClick={() => addSuggestion(h.file_path)}
                   className="inline-flex items-center gap-1 rounded-full border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] px-2.5 py-1 text-[11px] font-mono text-[var(--color-text-secondary)] hover:border-[var(--color-accent-primary)] hover:text-[var(--color-text-primary)] transition-colors"

@@ -40,6 +40,7 @@ function riskColor(score: number): string {
 export function RiskDistributionChart({ hotspots, maxBars = 30 }: RiskDistributionChartProps) {
   const data = useMemo(() => {
     return hotspots
+      .filter((h) => h.file_path)
       .map((h) => ({
         name: h.file_path.split("/").pop() ?? h.file_path,
         fullPath: h.file_path,

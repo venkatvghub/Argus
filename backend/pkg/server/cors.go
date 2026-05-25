@@ -1,15 +1,56 @@
+// Package server provides HTTP and MCP server implementations for Argus.
+// It handles CORS, SSE streaming, and RPC protocol support.
 package server
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
+
+	"github.com/venkatvghub/argus/pkg/config"
 )
+
+// corsMiddleware returns a middleware that handles CORS for all routes,
+// using the server's configured allowed origins.
+func (s *RESTServer) corsMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := strings.TrimSpace(r.Header.Get("Origin"))
+			allowed := false
+			if origin != "" {
+				for _, o := range s.corsAllowedOrigins() {
+					if origin == strings.TrimSpace(o) {
+						allowed = true
+						break
+					}
+				}
+			}
+			if allowed {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, PATCH, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Cache-Control, Last-Event-ID")
+			}
+			if r.Method == http.MethodOptions {
+				if allowed {
+					w.Header().Set("Access-Control-Max-Age", strconv.Itoa(s.corsMaxAge()))
+				}
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
 
 func setSSEHeaders(w http.ResponseWriter, r *http.Request, allowedOrigins []string) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	setCORSHeaders(w, r, allowedOrigins)
+	// CORS is now handled by corsMiddleware; only set here as fallback when middleware is absent.
+	if w.Header().Get("Access-Control-Allow-Origin") == "" {
+		setCORSHeaders(w, r, allowedOrigins)
+	}
 }
 
 func setCORSHeaders(w http.ResponseWriter, r *http.Request, allowedOrigins []string) {
@@ -37,4 +78,15 @@ func (s *RESTServer) corsAllowedOrigins() []string {
 		return nil
 	}
 	return cfg.CORSAllowedOrigins
+}
+
+func (s *RESTServer) corsMaxAge() int {
+	if s.argus == nil {
+		return config.DefaultCORSMaxAge
+	}
+	cfg := s.argus.Config()
+	if cfg == nil || cfg.CORSMaxAge <= 0 {
+		return config.DefaultCORSMaxAge
+	}
+	return cfg.CORSMaxAge
 }

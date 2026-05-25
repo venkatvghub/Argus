@@ -49,6 +49,22 @@ export default function RiskPage() {
 
       <RiskSummaryStrip repoId={repoId} />
 
+      <details className="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-elevated)] px-4 py-3 text-xs text-[var(--color-text-secondary)]">
+        <summary className="cursor-pointer font-medium text-[var(--color-text-primary)] select-none">
+          What do these metrics mean?
+        </summary>
+        <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div><dt className="font-semibold text-[var(--color-text-primary)]">Hotspot</dt><dd>A file changed so often it statistically contains more bugs. Ranked by churn percentile — how often it was edited vs. all other files in this repo.</dd></div>
+          <div><dt className="font-semibold text-[var(--color-text-primary)]">Bus factor</dt><dd>Minimum number of contributors whose loss would leave the code unmaintainable. Factor&nbsp;≤&nbsp;1 means one person&rsquo;s absence puts that module at serious risk.</dd></div>
+          <div><dt className="font-semibold text-[var(--color-text-primary)]">Silo</dt><dd>A module where &gt;80% of commits come from a single developer. Ownership concentration — not a bug, but a knowledge-risk flag.</dd></div>
+          <div><dt className="font-semibold text-[var(--color-text-primary)]">Reclaimable lines</dt><dd>Dead-code lines that have no callers or importers and have been confirmed safe to delete. Fewer lines = lower maintenance burden.</dd></div>
+          <div><dt className="font-semibold text-[var(--color-text-primary)]">Stale decisions</dt><dd>Architecture Decision Records (ADRs) that were last reviewed more than 6 months ago and may no longer reflect the current design.</dd></div>
+          <div><dt className="font-semibold text-[var(--color-text-primary)]">Hotspot trend</dt><dd>Whether a file&rsquo;s edit rate in the last 30 days is accelerating versus its 90-day baseline. Heating arrow means the risk is growing.</dd></div>
+          <div><dt className="font-semibold text-[var(--color-text-primary)]">Ownership heatmap</dt><dd>Treemap where each tile is a module. Tile size = code volume. Color = primary owner. Border color = bus factor (red&nbsp;≤1, amber&nbsp;2, green&nbsp;≥3).</dd></div>
+          <div><dt className="font-semibold text-[var(--color-text-primary)]">Health score</dt><dd>Composite 0–100 score across churn, ownership concentration, dead code, and doc coverage. Lower is worse.</dd></div>
+        </dl>
+      </details>
+
       <Tabs value={activeTab} onValueChange={setTab} className="space-y-4">
         <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="heatmap">Heatmap</TabsTrigger>

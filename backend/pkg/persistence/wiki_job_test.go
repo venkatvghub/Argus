@@ -2,6 +2,7 @@ package persistence_test
 
 import (
 	"context"
+	"os"
 	"strconv"
 	"testing"
 
@@ -12,14 +13,27 @@ import (
 )
 
 func setupTestDB(t *testing.T) *persistence.DB {
-	dataDir := t.TempDir()
-	dbPath := dataDir + "/argus_test.db"
-	db, err := persistence.New(dbPath)
+	t.Helper()
+	dsn := os.Getenv("ARGUS_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ARGUS_TEST_DATABASE_URL not set — skipping persistence integration tests")
+	}
+	db, err := persistence.New(dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = db.Close()
 	})
 	return db
+}
+
+func upsertTestRepo(t *testing.T, db *persistence.DB, repoID string) {
+	t.Helper()
+	err := db.UpsertRepository(context.Background(), models.Repository{
+		ID:   repoID,
+		Name: repoID,
+		Path: "/tmp/" + repoID,
+	})
+	require.NoError(t, err)
 }
 
 func TestCreateWikiJob(t *testing.T) {

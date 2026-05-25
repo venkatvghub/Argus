@@ -19,29 +19,30 @@ import (
 	"github.com/venkatvghub/argus/pkg/config"
 )
 
-func setupTestArgus(t *testing.T) (*argus.Instance, func()) {
-	tmpDir, err := os.MkdirTemp("", "argus-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
+func testDBURLServer(t *testing.T) string {
+	t.Helper()
+	dsn := os.Getenv("ARGUS_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ARGUS_TEST_DATABASE_URL not set")
 	}
+	return dsn
+}
 
-	dbPath := filepath.Join(tmpDir, "test.db")
+func setupTestArgus(t *testing.T) (*argus.Instance, func()) {
 	cfg := &config.Config{
-		DBPath:   dbPath,
-		LogLevel: "error",
-		AppName:  "ArgusTest",
+		DatabaseURL: testDBURLServer(t),
+		LogLevel:    "error",
+		AppName:     "ArgusTest",
 	}
 
 	ctx := context.Background()
-	argus, err := argus.New(ctx, cfg)
+	instance, err := argus.New(ctx, cfg)
 	if err != nil {
-		os.RemoveAll(tmpDir)
 		t.Fatalf("failed to create argus instance: %v", err)
 	}
 
-	return argus, func() {
-		argus.Close()
-		os.RemoveAll(tmpDir)
+	return instance, func() {
+		instance.Close()
 	}
 }
 

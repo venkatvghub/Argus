@@ -79,7 +79,7 @@ export default function RefactoringTargetsPage() {
   const biomarkerOptions = useMemo(() => {
     const set = new Set<string>();
     (overview?.biomarkers ?? []).forEach((b) => set.add(b.biomarker_type));
-    (data?.targets ?? []).forEach((t) => t.biomarkers.forEach((b) => set.add(b)));
+    (data?.targets ?? []).forEach((t) => (t.biomarkers ?? []).forEach((b) => set.add(b)));
     return [...set].sort();
   }, [overview, data]);
 

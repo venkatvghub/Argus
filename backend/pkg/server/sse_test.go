@@ -25,14 +25,14 @@ import (
 
 func TestSSEHandler(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	assert.NoError(t, err)
 	defer inst.Close()
 
 	srv := NewRESTServer(inst)
 
 	t.Run("Subscribe and Receive Updates", func(t *testing.T) {
-		job := inst.Jobs.CreateJob("sse_test")
+		job := inst.Jobs.CreateJob("sse_test", "test-repo")
 
 		req := httptest.NewRequest("GET", "/api/events?jobId="+job.ID, nil)
 		rr := httptest.NewRecorder()
@@ -84,7 +84,7 @@ func TestSSEHandler(t *testing.T) {
 
 		time.Sleep(100 * time.Millisecond)
 
-		job := inst.Jobs.CreateJob("global_test")
+		job := inst.Jobs.CreateJob("global_test", "test-repo")
 		inst.Jobs.UpdateStatus(job.ID, models.JobStatusCompleted, "Done", nil)
 
 		time.Sleep(100 * time.Millisecond)
@@ -97,14 +97,14 @@ func TestSSEHandler(t *testing.T) {
 func TestSSEParsing(t *testing.T) {
 	// More detailed parsing test
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	if err != nil {
 		t.Fatalf("failed to create argus instance: %v", err)
 	}
 	defer inst.Close()
 	srv := NewRESTServer(inst)
 
-	job := inst.Jobs.CreateJob("parse_test")
+	job := inst.Jobs.CreateJob("parse_test", "test-repo")
 
 	req := httptest.NewRequest("GET", "/api/events?jobId="+job.ID, nil)
 	rr := httptest.NewRecorder()
@@ -149,7 +149,7 @@ func TestSSEParsing(t *testing.T) {
 
 func TestChatStreamHandler_MissingRepoID(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -166,7 +166,7 @@ func TestChatStreamHandler_MissingRepoID(t *testing.T) {
 
 func TestChatStreamHandler_MissingQuery(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -183,7 +183,7 @@ func TestChatStreamHandler_MissingQuery(t *testing.T) {
 
 func TestChatStreamHandler_RepoNotFound(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -202,7 +202,7 @@ func TestChatStreamHandler_RepoNotFound(t *testing.T) {
 
 func TestChatStreamHandler_NoProvider(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -220,7 +220,7 @@ func TestChatStreamHandler_NoProvider(t *testing.T) {
 
 func TestChatStreamHandler_StreamsTokens(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -246,7 +246,7 @@ func TestChatStreamHandler_StreamsTokens(t *testing.T) {
 
 func TestChatStreamHandler_StreamingError(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
@@ -270,7 +270,7 @@ func TestChatStreamHandler_StreamingError(t *testing.T) {
 
 func TestSetProvider(t *testing.T) {
 	ctx := context.Background()
-	inst, err := argus.New(ctx, nil)
+	inst, err := argus.NewForTest(ctx, nil)
 	require.NoError(t, err)
 	defer inst.Close()
 
