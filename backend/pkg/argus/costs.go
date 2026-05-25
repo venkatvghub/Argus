@@ -8,8 +8,10 @@ import (
 )
 
 // RecordCost records an LLM call cost entry for a repository.
-func (i *Instance) RecordCost(ctx context.Context, repoID, model, operation string, inputTokens, outputTokens int) error {
-	inPer1M, outPer1M := providers.ModelCostPer1M(model)
+// pricingMap is optional live pricing from provider discovery (e.g. OpenRouter);
+// nil falls back to the static pricing table. CostUSD is 0 when model pricing is unknown in both.
+func (i *Instance) RecordCost(ctx context.Context, repoID, model, operation string, inputTokens, outputTokens int, pricingMap map[string][2]float64) error {
+	inPer1M, outPer1M := providers.DynamicModelCostPer1M(model, pricingMap)
 	costUSD := float64(inputTokens)*inPer1M/1_000_000 + float64(outputTokens)*outPer1M/1_000_000
 	return i.db.RecordLLMCost(ctx, persistence.LLMCostRecord{
 		RepoID:       repoID,

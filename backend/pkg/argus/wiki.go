@@ -162,7 +162,7 @@ func (i *Instance) GenerateWiki(
 					}
 					return
 				}
-				if recordErr := i.RecordCost(ctx, repoID, i.ActiveModelName(), "wiki:"+job.pgType, inputTok, outputTok); recordErr != nil {
+				if recordErr := i.RecordCost(ctx, repoID, router.ModelForTier(job.tier), "wiki:"+job.pgType, inputTok, outputTok, router.PricingMap()); recordErr != nil {
 					i.log.Warn("failed to record wiki cost", "page_id", job.id, "error", recordErr)
 				}
 

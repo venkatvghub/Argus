@@ -202,7 +202,7 @@ func (s *RESTServer) postChatMessage(w http.ResponseWriter, r *http.Request) {
 				modelName := s.argus.ActiveModelName()
 				inputTokens := len(body.Message) / 4
 				outputTokens := len(assistantContent) / 4
-				if recordErr := s.argus.RecordCost(ctx, repoID, modelName, "chat", inputTokens, outputTokens); recordErr != nil {
+				if recordErr := s.argus.RecordCost(ctx, repoID, modelName, "chat", inputTokens, outputTokens, nil); recordErr != nil {
 					logger.FromContext(ctx).Warn("failed to record LLM cost", "repo_id", repoID, "error", recordErr)
 				}
 				donePayload, _ := json.Marshal(map[string]string{

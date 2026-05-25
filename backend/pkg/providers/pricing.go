@@ -93,6 +93,18 @@ var modelPricing = []modelPrice{
 	{"meta-llama/llama-3-70b-instruct", 0.52, 0.75},
 	{"meta-llama/llama-3.1-8b-instruct", 0.06, 0.06},
 	{"meta-llama/llama-3.1-70b-instruct", 0.52, 0.75},
+	// Qwen — OpenRouter style
+	{"qwen/qwen3.7-max", 0.38, 1.12},
+	{"qwen/qwen-2.5-72b-instruct", 0.40, 1.20},
+	{"qwen/qwen-turbo", 0.05, 0.20},
+	// Gemini — OpenRouter style (additional variants)
+	{"google/gemini-3.1-flash-lite", 0.04, 0.15},
+	{"google/gemini-2.0-flash-lite", 0.04, 0.15},
+	{"google/gemini-2.5-flash", 0.15, 0.60},
+	{"google/gemini-flash-1.5", 0.075, 0.30},
+	// OpenAI — additional
+	{"openai/o3-mini", 1.10, 4.40},
+	{"openai/o4-mini", 1.10, 4.40},
 }
 
 type modelPrice struct {

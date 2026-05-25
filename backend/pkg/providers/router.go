@@ -20,14 +20,18 @@ type TieredConfig struct {
 
 // TieredRouter routes LLM calls to different models based on generation tier.
 type TieredRouter struct {
-	cheap   Provider
-	medium  Provider
-	premium Provider
+	cheap      Provider
+	medium     Provider
+	premium    Provider
+	tc         TieredConfig
+	pricingMap map[string][2]float64 // live pricing from provider discovery; nil = static fallback only
 }
 
 // NewTieredRouter creates a TieredRouter by constructing three Provider instances
 // from the same config, each overriding the model field for its tier.
-func NewTieredRouter(cfg *config.Config, tc TieredConfig) (*TieredRouter, error) {
+// pricingMap is optional live pricing from provider discovery (e.g. OpenRouter);
+// nil falls back to the static pricing table in pricing.go.
+func NewTieredRouter(cfg *config.Config, tc TieredConfig, pricingMap map[string][2]float64) (*TieredRouter, error) {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
@@ -62,10 +66,37 @@ func NewTieredRouter(cfg *config.Config, tc TieredConfig) (*TieredRouter, error)
 
 	retryCfg := retryConfigFromConfig(cfg)
 	return &TieredRouter{
-		cheap:   newRetryingProvider(cheap, retryCfg),
-		medium:  newRetryingProvider(medium, retryCfg),
-		premium: newRetryingProvider(premium, retryCfg),
+		cheap:      newRetryingProvider(cheap, retryCfg),
+		medium:     newRetryingProvider(medium, retryCfg),
+		premium:    newRetryingProvider(premium, retryCfg),
+		tc:         tc,
+		pricingMap: pricingMap,
 	}, nil
+}
+
+// ModelForTier returns the model name used for the given tier.
+func (t *TieredRouter) ModelForTier(tier string) string {
+	switch tier {
+	case TierCheap:
+		return t.tc.CheapModel
+	case TierMedium:
+		return t.tc.MediumModel
+	case TierPremium:
+		return t.tc.PremiumModel
+	default:
+		return t.tc.MediumModel
+	}
+}
+
+// CostPer1M returns (inputCostPer1M, outputCostPer1M) for a model.
+// Uses live pricing from provider discovery when available, falls back to static table.
+func (t *TieredRouter) CostPer1M(model string) (float64, float64) {
+	return DynamicModelCostPer1M(model, t.pricingMap)
+}
+
+// PricingMap returns the live pricing map stored in the router (may be nil).
+func (t *TieredRouter) PricingMap() map[string][2]float64 {
+	return t.pricingMap
 }
 
 // retryConfigFromConfig converts config fields to a RetryConfig.

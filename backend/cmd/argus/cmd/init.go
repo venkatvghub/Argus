@@ -183,7 +183,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// ── Step 8: Build tiered router ─────────────────────────────────────
-	router, err := providers.NewTieredRouter(cfg, tc)
+	router, err := providers.NewTieredRouter(cfg, tc, pricingMap)
 	if err != nil {
 		return fmt.Errorf("build router: %w", err)
 	}
