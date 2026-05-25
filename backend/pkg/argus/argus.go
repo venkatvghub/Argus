@@ -156,20 +156,25 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 		} else {
 			existing, dbErr := i.db.GetRepository(jobCtx, repoID)
 			if dbErr == nil && existing.LastCommit == headCommit {
-				// Nothing changed. Reload markers from DB so in-memory state is warm.
-				i.log.Info("repo HEAD unchanged; skipping re-analysis", "repo_id", repoID, "commit", headCommit)
-				if loaded, mErr := i.db.LoadAllMarkers(jobCtx); mErr == nil {
-					i.mu.Lock()
-					if ms, ok := loaded[repoID]; ok {
-						i.markers[repoID] = ms
+				// HEAD unchanged — skip re-analysis only if files are already persisted.
+				// If DB has no files (pre-persistence index), fall through to re-analyze.
+				dbFiles, _ := i.db.GetRepoFiles(jobCtx, repoID)
+				if len(dbFiles) > 0 {
+					i.log.Info("repo HEAD unchanged; skipping re-analysis", "repo_id", repoID, "commit", headCommit)
+					if loaded, mErr := i.db.LoadAllMarkers(jobCtx); mErr == nil {
+						i.mu.Lock()
+						if ms, ok := loaded[repoID]; ok {
+							i.markers[repoID] = ms
+						}
+						i.mu.Unlock()
 					}
+					i.mu.Lock()
+					i.upToDate[repoID] = true
 					i.mu.Unlock()
+					updateStatus(models.JobStatusCompleted, "Up-to-date", nil)
+					return
 				}
-				i.mu.Lock()
-				i.upToDate[repoID] = true
-				i.mu.Unlock()
-				updateStatus(models.JobStatusCompleted, "Up-to-date", nil)
-				return
+				i.log.Info("repo HEAD unchanged but DB has no files; re-analyzing to populate persistence", "repo_id", repoID, "commit", headCommit)
 			}
 
 			// Compute changed files for use by downstream wiki generation.
