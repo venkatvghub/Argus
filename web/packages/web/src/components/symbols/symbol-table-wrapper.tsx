@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import useSWR from "swr";
 import useSWRInfinite from "swr/infinite";
 import { SymbolTable, type SymbolFilters } from "@argus-dev/ui/symbols/symbol-table";
 import { HotSymbolsBoard, type HotSymbol } from "@argus-dev/ui/symbols/hot-symbols-board";
 import { SymbolDrawerWrapper } from "./symbol-drawer-wrapper";
 import { listSymbolsPage, type SymbolSortKey } from "@/lib/api/symbols";
+import { getRepoStats } from "@/lib/api/repos";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import type { Paginated, SymbolResponse } from "@/lib/api/types";
 
@@ -82,6 +84,26 @@ export function SymbolTableWrapper({ repoId }: Props) {
       }));
   }, [data]);
 
+  // Fetch repo stats once to get the full language list for the dropdown.
+  const { data: statsData } = useSWR(
+    `repo-stats:${repoId}`,
+    () => getRepoStats(repoId),
+    { revalidateOnFocus: false },
+  );
+  const availableLanguages = useMemo(() => {
+    if (statsData?.languages && Object.keys(statsData.languages).length > 0) {
+      return Object.keys(statsData.languages).sort();
+    }
+    // Fallback: collect from loaded symbol pages.
+    const seen = new Set<string>();
+    for (const page of data ?? []) {
+      for (const sym of page.items) {
+        if (sym.language) seen.add(sym.language);
+      }
+    }
+    return Array.from(seen).sort();
+  }, [statsData, data]);
+
   return (
     <div className="space-y-6">
       {hotSymbols.length > 0 && (
@@ -98,6 +120,7 @@ export function SymbolTableWrapper({ repoId }: Props) {
         onFiltersChange={setFilters}
         onLoadMore={() => setSize(size + 1)}
         onSelect={setSelected}
+        availableLanguages={availableLanguages}
         drawer={
           <SymbolDrawerWrapper
             symbol={selected}

@@ -49,7 +49,7 @@ func New(ctx context.Context, cfg *config.Config) (*Instance, error) {
 	}
 	log := logger.FromContext(ctx)
 
-	db, err := persistence.New(cfg.ResolveDBPath())
+	db, err := persistence.New(cfg.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("persistence init: %w", err)
 	}

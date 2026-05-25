@@ -57,6 +57,8 @@ export interface SymbolTableProps {
   repoId?: string;
   linkPrefix?: string;
   drawer?: ReactNode;
+  /** Languages actually present in this repo. Falls back to a hardcoded list when absent. */
+  availableLanguages?: string[];
 }
 
 function ImportanceBar({ score }: { score: number | null | undefined }) {
@@ -178,7 +180,9 @@ export function SymbolTable({
   repoId,
   linkPrefix,
   drawer,
+  availableLanguages,
 }: SymbolTableProps) {
+  const languageList = availableLanguages && availableLanguages.length > 0 ? availableLanguages : LANGUAGES;
   const prefix = linkPrefix ?? (repoId ? `/repos/${repoId}` : undefined);
 
   function patch(p: Partial<SymbolFilters>) {
@@ -213,7 +217,7 @@ export function SymbolTable({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All languages</SelectItem>
-            {LANGUAGES.map((l) => (
+            {languageList.map((l) => (
               <SelectItem key={l} value={l}>
                 {l}
               </SelectItem>
@@ -297,9 +301,9 @@ export function SymbolTable({
                 </tr>
               </thead>
               <tbody>
-                {items.map((sym) => (
+                {items.map((sym, i) => (
                   <tr
-                    key={sym.id}
+                    key={sym.id ?? `${sym.file_path}:${sym.name}:${sym.start_line ?? i}`}
                     className="border-b border-[var(--color-border-default)] hover:bg-[var(--color-bg-elevated)] transition-colors last:border-0 cursor-pointer focus:outline-none focus:bg-[var(--color-bg-elevated)]"
                     tabIndex={0}
                     role="button"

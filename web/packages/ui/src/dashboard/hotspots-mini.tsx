@@ -74,7 +74,7 @@ export function HotspotsMini({
       </CardHeader>
       <CardContent className="pt-0">
         <div className="space-y-2">
-          {top.map((h) => (
+          {top.filter((h) => h.file_path).map((h) => (
             <a
               key={h.file_path}
               href={`${prefix}/graph?node=${encodeURIComponent(h.file_path)}`}

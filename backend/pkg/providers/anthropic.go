@@ -51,6 +51,10 @@ type anthropicResponse struct {
 	Content []struct {
 		Text string `json:"text"`
 	} `json:"content"`
+	Usage struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	} `json:"usage"`
 }
 
 // anthropicStreamData is the data payload for content_block_delta SSE events.
@@ -114,6 +118,43 @@ func (p *AnthropicProvider) Chat(ctx context.Context, prompt string) (string, er
 		return "", fmt.Errorf("anthropic chat: empty content in response")
 	}
 	return result.Content[0].Text, nil
+}
+
+// ChatWithUsage is like Chat but also returns input and output token counts from the API response.
+func (p *AnthropicProvider) ChatWithUsage(ctx context.Context, prompt string) (string, int, int, error) {
+	if p.apiKey == "" {
+		return "", 0, 0, fmt.Errorf("Anthropic API key is missing")
+	}
+	payload := anthropicRequest{
+		Model:     p.model,
+		MaxTokens: defaultMaxTokens,
+		Messages:  []anthropicMessage{{Role: "user", Content: prompt}},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("anthropic chat: marshal: %w", err)
+	}
+	req, err := p.newRequest(ctx, body, false)
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("anthropic chat: request: %w", err)
+	}
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("anthropic chat: http: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		return "", 0, 0, fmt.Errorf("anthropic chat: status %d: %s", resp.StatusCode, string(raw))
+	}
+	var result anthropicResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", 0, 0, fmt.Errorf("anthropic chat: decode: %w", err)
+	}
+	if len(result.Content) == 0 {
+		return "", 0, 0, fmt.Errorf("anthropic chat: empty content in response")
+	}
+	return result.Content[0].Text, result.Usage.InputTokens, result.Usage.OutputTokens, nil
 }
 
 // ChatStream sends a prompt to Anthropic with streaming enabled and emits tokens on the returned channel.

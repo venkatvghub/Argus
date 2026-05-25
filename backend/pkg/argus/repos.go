@@ -5,8 +5,9 @@ package argus
 
 import (
 	"context"
-	"database/sql"
 	"errors"
+
+	"gorm.io/gorm"
 
 	"github.com/venkatvghub/argus/pkg/analysis"
 	"github.com/venkatvghub/argus/pkg/models"
@@ -15,7 +16,7 @@ import (
 // GetRepository returns a single repository by ID.
 func (i *Instance) GetRepository(ctx context.Context, repoID string) (models.Repository, error) {
 	r, err := i.db.GetRepository(ctx, repoID)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return r, ErrRepoNotFound
 	}
 	return r, err
@@ -26,7 +27,7 @@ func (i *Instance) GetRepository(ctx context.Context, repoID string) (models.Rep
 // lock together so concurrent Analyze() cannot repopulate maps between them.
 func (i *Instance) DeleteRepository(ctx context.Context, repoID string) error {
 	if _, err := i.db.GetRepository(ctx, repoID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrRepoNotFound
 		}
 		return err

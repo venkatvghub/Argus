@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,15 +14,20 @@ import (
 	"github.com/venkatvghub/argus/pkg/config"
 )
 
+func testDBURLHealth(t *testing.T) string {
+	t.Helper()
+	dsn := os.Getenv("ARGUS_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ARGUS_TEST_DATABASE_URL not set")
+	}
+	return dsn
+}
+
 func setupHealthTestServer(t *testing.T) (*RESTServer, func()) {
 	t.Helper()
 
-	tmpDir, err := os.MkdirTemp("", "argus-health-test-*")
-	require.NoError(t, err)
-
-	dbPath := filepath.Join(tmpDir, "test.db")
 	cfg := &config.Config{
-		DBPath:             dbPath,
+		DatabaseURL:        testDBURLHealth(t),
 		LogLevel:           "error",
 		AppName:            "ArgusTest",
 		CORSAllowedOrigins: []string{"http://localhost:3000"},
@@ -37,7 +41,6 @@ func setupHealthTestServer(t *testing.T) (*RESTServer, func()) {
 
 	return restServer, func() {
 		instance.Close()
-		os.RemoveAll(tmpDir)
 	}
 }
 

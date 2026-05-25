@@ -94,6 +94,42 @@ func (t *TieredRouter) ChatTier(ctx context.Context, tier, prompt string) (strin
 	}
 }
 
+// usageProvider is optionally implemented by concrete providers to return token counts.
+type usageProvider interface {
+	ChatWithUsage(ctx context.Context, prompt string) (string, int, int, error)
+}
+
+// ChatTierWithUsage calls ChatTier and also returns input/output token counts if the underlying
+// provider supports it. Falls back to estimation (len/4) when not supported.
+func (t *TieredRouter) ChatTierWithUsage(ctx context.Context, tier, prompt string) (content string, inputTokens, outputTokens int, err error) {
+	var p Provider
+	switch tier {
+	case TierCheap:
+		p = t.cheap
+	case TierMedium:
+		p = t.medium
+	case TierPremium:
+		p = t.premium
+	default:
+		return "", 0, 0, fmt.Errorf("unknown tier %q", tier)
+	}
+	// Unwrap retrying wrapper to reach the concrete provider.
+	if rp, ok := p.(*retryingProvider); ok {
+		if up, ok := rp.inner.(usageProvider); ok {
+			return up.ChatWithUsage(ctx, prompt)
+		}
+	}
+	if up, ok := p.(usageProvider); ok {
+		return up.ChatWithUsage(ctx, prompt)
+	}
+	// Fallback: call Chat and estimate tokens.
+	content, err = p.Chat(ctx, prompt)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	return content, len(prompt) / 4, len(content) / 4, nil
+}
+
 // ProviderForTier returns the Provider for a given tier (for direct use).
 func (t *TieredRouter) ProviderForTier(tier string) (Provider, error) {
 	switch tier {

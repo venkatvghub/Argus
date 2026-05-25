@@ -130,6 +130,8 @@ export function Sidebar({ repos = [], activeRepoId, workspace }: SidebarProps) {
           alt="argus"
           width={28}
           height={28}
+          priority
+          style={{ width: "28px", height: "28px" }}
           className="shrink-0 drop-shadow-[0_0_8px_rgba(245,149,32,0.3)]"
         />
         {!isIconOnly && (

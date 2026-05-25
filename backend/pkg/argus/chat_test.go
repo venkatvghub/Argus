@@ -3,7 +3,6 @@ package argus_test
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,16 +11,21 @@ import (
 	"github.com/venkatvghub/argus/pkg/config"
 )
 
+func testDBURLExternal(t *testing.T) string {
+	t.Helper()
+	dsn := os.Getenv("ARGUS_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("ARGUS_TEST_DATABASE_URL not set")
+	}
+	return dsn
+}
+
 func setupTestInstance(t *testing.T) (*argus.Instance, func()) {
 	t.Helper()
-	tmpDir, err := os.MkdirTemp("", "argus-chat-test-*")
-	require.NoError(t, err)
-
-	dbPath := filepath.Join(tmpDir, "test.db")
 	cfg := &config.Config{
-		DBPath:   dbPath,
-		LogLevel: "error",
-		AppName:  "ArgusTest",
+		DatabaseURL: testDBURLExternal(t),
+		LogLevel:    "error",
+		AppName:     "ArgusTest",
 	}
 
 	ctx := context.Background()
@@ -30,7 +34,6 @@ func setupTestInstance(t *testing.T) (*argus.Instance, func()) {
 
 	return instance, func() {
 		instance.Close()
-		os.RemoveAll(tmpDir)
 	}
 }
 

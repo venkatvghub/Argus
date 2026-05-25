@@ -3,9 +3,10 @@ package argus
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"errors"
 	"fmt"
+
+	"gorm.io/gorm"
 
 	"github.com/venkatvghub/argus/pkg/models"
 )
@@ -39,7 +40,7 @@ func (i *Instance) CreateConversation(ctx context.Context, repoID, title string)
 // GetConversation returns a conversation by ID.
 func (i *Instance) GetConversation(ctx context.Context, convID string) (models.Conversation, error) {
 	c, err := i.db.GetConversation(ctx, convID)
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return c, ErrConversationNotFound
 	}
 	return c, err

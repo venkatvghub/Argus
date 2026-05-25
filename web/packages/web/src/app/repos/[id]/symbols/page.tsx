@@ -19,7 +19,10 @@ export default async function SymbolsPage({
           Symbol Index
         </h1>
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Searchable index of all functions, classes, and exports.
+          Searchable index of all functions, classes, and exports parsed from this repository.
+        </p>
+        <p className="mt-2 text-xs text-[var(--color-text-tertiary)] max-w-2xl">
+          Symbols are ranked by <strong className="text-[var(--color-text-secondary)]">importance</strong> — a combination of PageRank centrality, how many other files import this symbol, and whether it lives in a high-churn hotspot file. Use filters to narrow by kind, language, or visibility. Click a row to inspect callers, callees, git history, and health.
         </p>
       </div>
       <SymbolTable repoId={id} />

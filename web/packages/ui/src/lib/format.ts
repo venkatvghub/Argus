@@ -77,7 +77,8 @@ export function formatLOC(n: number): string {
 }
 
 /** Truncate a file path keeping as many trailing components as fit: src/very/long/path/file.py → …/long/path/file.py */
-export function truncatePath(path: string, maxChars = 60): string {
+export function truncatePath(path: string | undefined | null, maxChars = 60): string {
+  if (!path) return "";
   if (path.length <= maxChars) return path;
   const parts = path.split("/");
   if (parts.length <= 1) return `…${path.slice(-(maxChars - 1))}`;

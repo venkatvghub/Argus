@@ -68,11 +68,11 @@ export function HotspotTrendStrip({
 
   return (
     <ul className={cn("divide-y divide-[var(--color-border-default)]", className)}>
-      {items.map((h) => {
+      {items.filter((h) => h.file_path).map((h, i) => {
         const trend = trendFor(h);
         const Tag = onSelect ? "button" : "div";
         return (
-          <li key={h.file_path}>
+          <li key={h.file_path ?? i}>
             <Tag
               type={onSelect ? "button" : undefined}
               onClick={onSelect ? () => onSelect(h.file_path) : undefined}

@@ -237,7 +237,7 @@ export function HotspotTable({
                 const trendScore = h.temporal_hotspot_score;
                 const isExpanded = expanded.has(h.file_path);
                 return (
-                  <React.Fragment key={h.file_path}>
+                  <React.Fragment key={h.file_path ?? i}>
                   <tr
                     onClick={onSelect ? () => onSelect(h) : undefined}
                     className={cn(

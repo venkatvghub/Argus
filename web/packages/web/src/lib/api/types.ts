@@ -342,6 +342,11 @@ export interface HotFilesGraphResponse {
 
 export interface RepoStatsResponse {
   file_count: number;
+  languages?: Record<string, number>;
+  total_symbols?: number;
+  score?: number;
+  last_commit?: string;
+  community_count?: number;
   symbol_count: number;
   entry_point_count: number;
   doc_coverage_pct: number;

@@ -19,3 +19,10 @@ cd backend && go test ./pkg/<pkg>/... -run TestName
 - **Backend Go details** (constants, packages, IDs): see `.claude/rules/backend-go.md` when editing `backend/**/*.go`.
 - **Architecture & product context**: [docs/architecture.md](docs/architecture.md) — read on demand, not from memory here.
 - **Changes**: minimal diffs; match existing package patterns; run `go test` for touched packages.
+
+## PostgreSQL / GORM conventions
+
+- **No FK constraints at DB level** — app manages referential integrity. GORM configured with `DisableForeignKeyConstraintWhenMigrating: true`.
+- **Schema**: GORM `AutoMigrate` on startup (`persistence.New`). Add new GORM model fields/tables for schema changes — no migration files.
+- **Type rules for GORM model fields**: `time.Time` → `timestamptz`, `float64` → `double precision`, strings → `text`, auto-int PK → `bigserial`, text PK → `text;primaryKey`, JSON → `jsonb`.
+- **Connection**: `ARGUS_DATABASE_URL` env var. Start DB: `docker compose up -d postgres`.

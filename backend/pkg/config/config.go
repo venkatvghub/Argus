@@ -22,9 +22,9 @@ type Config struct {
 	LogLevel string `envconfig:"LOG_LEVEL" default:"info"`
 
 	// Persistence configuration
-	DBPath  string `envconfig:"DB_PATH" default:"argus.db"`
-	DataDir string `envconfig:"DATA_DIR" default:"data"`
-	DocsDir string `envconfig:"DOCS_DIR" default:"docs"`
+	DatabaseURL string `envconfig:"DATABASE_URL" default:"postgres://argus:argus@localhost:5432/argus?sslmode=disable"`
+	DataDir     string `envconfig:"DATA_DIR" default:"data"`
+	DocsDir     string `envconfig:"DOCS_DIR" default:"docs"`
 
 	// Compliance patterns (comma-separated identifiers: AADHAAR, PAN, UPI_ID, MOBILE, EMAIL)
 	PIIPatterns []string `envconfig:"PII_PATTERNS" default:"AADHAAR,PAN,UPI_ID,MOBILE,EMAIL"`

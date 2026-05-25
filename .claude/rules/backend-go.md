@@ -27,9 +27,9 @@ New tunable: add to `pkg/config/config.go`, wire callers, update `docs/configura
 | HTTP / SSE | `pkg/server` — `RESTServer`, `chatStreamHandler`, CORS allowlist |
 | MCP | `pkg/server` — `MCPServer` (stdio) |
 | LLM | `pkg/providers` — `Router`, provider implementations |
-| Storage | `pkg/persistence` — SQLite + `migrations/` |
+| Storage | `pkg/persistence` — PostgreSQL via GORM, AutoMigrate on startup |
 
-Pipeline: git walk → tree-sitter parse → graph + communities → markers → SQLite + in-memory maps on `Instance`.
+Pipeline: git walk → tree-sitter parse → graph + communities → markers → PostgreSQL + in-memory maps on `Instance`.
 
 ## Invariants
 
