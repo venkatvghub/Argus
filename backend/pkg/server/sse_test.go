@@ -32,7 +32,7 @@ func TestSSEHandler(t *testing.T) {
 	srv := NewRESTServer(inst)
 
 	t.Run("Subscribe and Receive Updates", func(t *testing.T) {
-		job := inst.Jobs.CreateJob("sse_test")
+		job := inst.Jobs.CreateJob("sse_test", "test-repo")
 
 		req := httptest.NewRequest("GET", "/api/events?jobId="+job.ID, nil)
 		rr := httptest.NewRecorder()
@@ -84,7 +84,7 @@ func TestSSEHandler(t *testing.T) {
 
 		time.Sleep(100 * time.Millisecond)
 
-		job := inst.Jobs.CreateJob("global_test")
+		job := inst.Jobs.CreateJob("global_test", "test-repo")
 		inst.Jobs.UpdateStatus(job.ID, models.JobStatusCompleted, "Done", nil)
 
 		time.Sleep(100 * time.Millisecond)
@@ -104,7 +104,7 @@ func TestSSEParsing(t *testing.T) {
 	defer inst.Close()
 	srv := NewRESTServer(inst)
 
-	job := inst.Jobs.CreateJob("parse_test")
+	job := inst.Jobs.CreateJob("parse_test", "test-repo")
 
 	req := httptest.NewRequest("GET", "/api/events?jobId="+job.ID, nil)
 	rr := httptest.NewRecorder()

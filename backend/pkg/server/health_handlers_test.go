@@ -2,11 +2,11 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -65,9 +65,7 @@ func TestGetRepoHealth_Overview_NotFound(t *testing.T) {
 
 	restServer.Routes().ServeHTTP(w, req)
 
-	// Health endpoint should return 404 or empty response for non-existent repo
-	// (depending on implementation, could be 200 with empty data or 404)
-	assert.Contains(t, []int{http.StatusNotFound, http.StatusOK}, w.Code)
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 // TestGetRepoHealth_Files_NotFound tests health files for non-existent repo.
@@ -80,14 +78,7 @@ func TestGetRepoHealth_Files_NotFound(t *testing.T) {
 
 	restServer.Routes().ServeHTTP(w, req)
 
-	// Should return 404 or empty array
-	assert.Contains(t, []int{http.StatusNotFound, http.StatusOK}, w.Code)
-
-	if w.Code == http.StatusOK {
-		var result interface{}
-		err := json.Unmarshal(w.Body.Bytes(), &result)
-		assert.NoError(t, err)
-	}
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 // TestGetRepoHealth_Findings_NotFound tests health findings for non-existent repo.
@@ -100,13 +91,7 @@ func TestGetRepoHealth_Findings_NotFound(t *testing.T) {
 
 	restServer.Routes().ServeHTTP(w, req)
 
-	assert.Contains(t, []int{http.StatusNotFound, http.StatusOK}, w.Code)
-
-	if w.Code == http.StatusOK {
-		var result interface{}
-		err := json.Unmarshal(w.Body.Bytes(), &result)
-		assert.NoError(t, err)
-	}
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 // TestHealthEndpointHeaders tests response headers for health endpoints.
@@ -151,7 +136,9 @@ func TestHealthEndpointContentType(t *testing.T) {
 
 	restServer.Routes().ServeHTTP(w, req)
 
-	// Should have a content type (JSON or text)
+	// Should have a content type (JSON or text); allow charset suffixes.
 	contentType := w.Header().Get("Content-Type")
-	assert.Contains(t, []string{"application/json", "text/plain"}, contentType)
+	assert.True(t,
+		strings.HasPrefix(contentType, "application/json") || strings.HasPrefix(contentType, "text/plain"),
+		"unexpected Content-Type: %q", contentType)
 }

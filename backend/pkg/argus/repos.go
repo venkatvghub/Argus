@@ -6,6 +6,7 @@ package argus
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/venkatvghub/argus/pkg/analysis"
 	"github.com/venkatvghub/argus/pkg/models"
@@ -14,7 +15,7 @@ import (
 // GetRepository returns a single repository by ID.
 func (i *Instance) GetRepository(ctx context.Context, repoID string) (models.Repository, error) {
 	r, err := i.db.GetRepository(ctx, repoID)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return r, ErrRepoNotFound
 	}
 	return r, err
@@ -58,8 +59,14 @@ func (i *Instance) GetRepoStats(ctx context.Context, repoID string) (map[string]
 		score = 0
 	}
 
-	repo, _ := i.db.GetRepository(ctx, repoID)
-	communityCount, _ := i.GetCommunityCount(ctx, repoID)
+	repo, err := i.GetRepository(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+	communityCount, err := i.GetCommunityCount(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
 
 	i.mu.RLock()
 	engine, hasEngine := i.engines[repoID]

@@ -83,13 +83,24 @@ func (s *RESTServer) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
 // postChatMessage handles POST /api/repos/{repoID}/chat/messages.
 // It persists the user message, streams the LLM response via SSE, then persists the assistant reply.
 func (s *RESTServer) postChatMessage(w http.ResponseWriter, r *http.Request) {
-	repoID := chi.URLParam(r, "repoID")
+	repoID := strings.TrimSpace(chi.URLParam(r, "repoID"))
+	if repoID == "" {
+		s.error(w, http.StatusBadRequest, "repoID is required")
+		return
+	}
+	if _, err := s.argus.GetRepoSymbols(r.Context(), repoID); err != nil {
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, "repo not found")
+		} else {
+			logger.FromContext(r.Context()).Error("get repo symbols failed", "repo_id", repoID, "error", err)
+			s.error(w, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
 
 	var body struct {
 		Message        string  `json:"message"`
 		ConversationID *string `json:"conversation_id"`
-		Provider       *string `json:"provider"`
-		Model          *string `json:"model"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request body")
@@ -110,10 +121,24 @@ func (s *RESTServer) postChatMessage(w http.ResponseWriter, r *http.Request) {
 	var convID string
 	if body.ConversationID != nil && strings.TrimSpace(*body.ConversationID) != "" {
 		convID = strings.TrimSpace(*body.ConversationID)
+		conv, err := s.argus.GetConversation(ctx, convID)
+		if err != nil {
+			if errors.Is(err, argus.ErrConversationNotFound) {
+				s.error(w, http.StatusNotFound, err.Error())
+			} else {
+				logger.FromContext(ctx).Error("get conversation failed", "repo_id", repoID, "conv_id", convID, "error", err)
+				s.error(w, http.StatusInternalServerError, "failed to load conversation")
+			}
+			return
+		}
+		if conv.RepositoryID != repoID {
+			s.error(w, http.StatusNotFound, "conversation not found")
+			return
+		}
 	} else {
 		title := body.Message
-		if len(title) > 50 {
-			title = title[:50]
+		if runes := []rune(title); len(runes) > 50 {
+			title = string(runes[:50])
 		}
 		conv, err := s.argus.CreateConversation(ctx, repoID, title)
 		if err != nil {
@@ -168,6 +193,9 @@ func (s *RESTServer) postChatMessage(w http.ResponseWriter, r *http.Request) {
 				assistantMsg, persistErr := s.argus.CreateChatMessage(ctx, convID, "assistant", sb.String())
 				if persistErr != nil {
 					logger.FromContext(ctx).Error("persist assistant message failed", "conv_id", convID, "error", persistErr)
+					writeSSEEvent(w, `{"type":"error","message":"failed to persist assistant message"}`)
+					flusher.Flush()
+					return
 				}
 				donePayload, _ := json.Marshal(map[string]string{
 					"type":            "done",

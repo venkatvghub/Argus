@@ -13,6 +13,7 @@ import (
 func TestCreateJob(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
+	upsertTestRepo(t, db, "repo-001")
 
 	job := models.Job{
 		ID:       "job-001",
@@ -45,6 +46,7 @@ func TestGetJob(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("job exists", func(t *testing.T) {
+		upsertTestRepo(t, db, "repo-test")
 		job := models.Job{
 			ID:     "job-test",
 			RepoID: "repo-test",
@@ -70,6 +72,8 @@ func TestGetJob(t *testing.T) {
 func TestListJobs(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
+	upsertTestRepo(t, db, "repo-1")
+	upsertTestRepo(t, db, "repo-2")
 
 	// Create jobs for different repos
 	jobs := []models.Job{
@@ -137,6 +141,7 @@ func TestListJobs(t *testing.T) {
 func TestUpdateJobStatus(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
+	upsertTestRepo(t, db, "repo-1")
 
 	job := models.Job{
 		ID:       "job-update",
@@ -179,6 +184,7 @@ func TestUpdateJobStatus(t *testing.T) {
 func TestCreateConversation(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
+	upsertTestRepo(t, db, "repo-001")
 
 	conv := models.Conversation{
 		ID:           "conv-001",
@@ -206,6 +212,7 @@ func TestCreateConversation(t *testing.T) {
 func TestGetConversation(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
+	upsertTestRepo(t, db, "repo-1")
 
 	conv := models.Conversation{
 		ID:           "conv-test",
@@ -232,6 +239,8 @@ func TestGetConversation(t *testing.T) {
 func TestListConversations(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
+	upsertTestRepo(t, db, "repo-1")
+	upsertTestRepo(t, db, "repo-2")
 
 	// Create conversations for different repos
 	convs := []models.Conversation{
@@ -266,6 +275,7 @@ func TestListConversations(t *testing.T) {
 func TestDeleteConversation(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
+	upsertTestRepo(t, db, "repo-1")
 
 	conv := models.Conversation{
 		ID:           "conv-delete",
@@ -288,6 +298,7 @@ func TestDeleteConversation(t *testing.T) {
 func TestIncrementMessageCount(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
+	upsertTestRepo(t, db, "repo-1")
 
 	conv := models.Conversation{
 		ID:           "conv-count",
@@ -313,6 +324,7 @@ func TestIncrementMessageCount(t *testing.T) {
 func TestCreateChatMessage(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
+	upsertTestRepo(t, db, "repo-1")
 
 	// Create conversation first
 	conv := models.Conversation{
@@ -348,6 +360,7 @@ func TestCreateChatMessage(t *testing.T) {
 func TestListChatMessages(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
+	upsertTestRepo(t, db, "repo-1")
 
 	// Create conversation
 	conv := models.Conversation{
@@ -399,6 +412,7 @@ func TestListChatMessages(t *testing.T) {
 func TestChatMessageDeleteConversation(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
+	upsertTestRepo(t, db, "repo-1")
 
 	// Create conversation with messages
 	conv := models.Conversation{

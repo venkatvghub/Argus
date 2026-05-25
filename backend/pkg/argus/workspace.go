@@ -34,6 +34,6 @@ func (i *Instance) GetWorkspace(ctx context.Context) (WorkspaceResponse, error) 
 		ID:           "default",
 		Name:         name,
 		Repositories: repos,
-		CreatedAt:    time.Time{},
+		CreatedAt:    time.Now().UTC(),
 	}, nil
 }

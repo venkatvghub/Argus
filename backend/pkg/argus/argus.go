@@ -110,23 +110,40 @@ func (i *Instance) Close() error {
 // If the repo was previously indexed and HEAD has not changed, the job completes
 // immediately with status "Up-to-date" and no re-analysis occurs.
 func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error) {
-	job := i.Jobs.CreateJob(jobTypeAnalysis)
+	// Pre-compute repoID so the job is scoped from creation and filterable by caller.
+	absPath, err := filepath.Abs(repoPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve path: %w", err)
+	}
+	repoID := fmt.Sprintf("%x", sha256.Sum256([]byte(absPath)))[:constants.RepoIDLength]
+	repoName := filepath.Base(absPath)
+
+	job := i.Jobs.CreateJob(jobTypeAnalysis, repoID)
 
 	jobCtx, cancel := context.WithCancel(ctx)
 	i.Jobs.RegisterCancel(job.ID, cancel)
 
+	// Persist the job to DB so it survives process restarts.
+	if dbErr := i.db.CreateJob(ctx, *job); dbErr != nil {
+		i.log.Warn("failed to persist job to DB", "job_id", job.ID, "error", dbErr)
+	}
+
+	// updateStatus updates both in-memory and DB job state.
+	updateStatus := func(status models.JobStatus, progress string, statusErr error) {
+		i.Jobs.UpdateStatus(job.ID, status, progress, statusErr)
+		errMsg := ""
+		if statusErr != nil {
+			errMsg = statusErr.Error()
+		}
+		if dbErr := i.db.UpdateJobStatus(jobCtx, job.ID, string(status), progress, errMsg); dbErr != nil {
+			i.log.Warn("failed to update job status in DB", "job_id", job.ID, "error", dbErr)
+		}
+	}
+
 	i.Jobs.Submit(job.ID, func() {
 		defer cancel()
 
-		i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, "Reading commit history...", nil)
-
-		absPath, err := filepath.Abs(repoPath)
-		if err != nil {
-			i.Jobs.UpdateStatus(job.ID, models.JobStatusFailed, "Failed", err)
-			return
-		}
-		repoName := filepath.Base(absPath)
-		repoID := fmt.Sprintf("%x", sha256.Sum256([]byte(absPath)))[:constants.RepoIDLength]
+		updateStatus(models.JobStatusInProgress, "Reading commit history...", nil)
 
 		i.log.Info("starting analysis", "repo_path", absPath, "repo_id", repoID)
 
@@ -149,7 +166,7 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 				i.mu.Lock()
 				i.upToDate[repoID] = true
 				i.mu.Unlock()
-				i.Jobs.UpdateStatus(job.ID, models.JobStatusCompleted, "Up-to-date", nil)
+				updateStatus(models.JobStatusCompleted, "Up-to-date", nil)
 				return
 			}
 
@@ -169,28 +186,28 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 		walker := ingestion.NewGitWalker(absPath, i.parser)
 		walker.RecentAuthorCutoffDays = i.cfg.RecentAuthorCutoffDays
 		walker.OnHistoryProgress = func(n int) {
-			i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, fmt.Sprintf("Reading commit history... (%d commits)", n), nil)
+			updateStatus(models.JobStatusInProgress, fmt.Sprintf("Reading commit history... (%d commits)", n), nil)
 		}
 		var totalFiles int
 		walker.OnTotalFiles = func(total int) {
 			totalFiles = total
 		}
 		walker.OnProgress = func(n int) {
-			i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, fmt.Sprintf("Parsing files... (%d/%d)", n, totalFiles), nil)
+			updateStatus(models.JobStatusInProgress, fmt.Sprintf("Parsing files... (%d/%d)", n, totalFiles), nil)
 		}
 		nodes, symbols, err := walker.Walk(jobCtx)
 		if err != nil {
-			i.Jobs.UpdateStatus(job.ID, models.JobStatusFailed, "Failed", err)
+			updateStatus(models.JobStatusFailed, "Failed", err)
 			return
 		}
 
-		i.Jobs.UpdateStatus(job.ID, models.JobStatusInProgress, "Assembling Graph...", nil)
+		updateStatus(models.JobStatusInProgress, "Assembling Graph...", nil)
 
 		i.log.Info("analysis complete", "files", len(nodes), "biomarkers_found", len(symbols))
 
 		engine := analysis.NewGraphEngine()
 		if err := engine.BuildGraph(nodes, symbols, nil); err != nil {
-			i.Jobs.UpdateStatus(job.ID, models.JobStatusFailed, "Failed", err)
+			updateStatus(models.JobStatusFailed, "Failed", err)
 			return
 		}
 		_ = engine.DetectCommunities()
@@ -217,7 +234,7 @@ func (i *Instance) Analyze(ctx context.Context, repoPath string) (string, error)
 		i.markers[repoID] = markers
 		i.mu.Unlock()
 
-		i.Jobs.UpdateStatus(job.ID, models.JobStatusCompleted, "Complete", nil)
+		updateStatus(models.JobStatusCompleted, "Complete", nil)
 	})
 
 	return job.ID, nil
@@ -484,11 +501,43 @@ func (i *Instance) GetJob(ctx context.Context, jobID string) (models.Job, error)
 	return *job, nil
 }
 
-// ListJobs returns all jobs tracked by the in-memory JobManager.
-// repoID is accepted for API consistency but is not currently used as a filter
-// since JobManager does not track repo associations in memory.
+// ListJobs merges DB-persisted jobs (supports repoID filter) with live in-memory
+// state so callers see both historical jobs and up-to-date progress for active ones.
 func (i *Instance) ListJobs(ctx context.Context, repoID string) ([]models.Job, error) {
-	return i.Jobs.ListJobs(), nil
+	dbJobs, err := i.db.ListJobs(ctx, repoID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build index of in-memory jobs for fast lookup.
+	memJobs := i.Jobs.ListJobs()
+	memByID := make(map[string]models.Job, len(memJobs))
+	for _, j := range memJobs {
+		memByID[j.ID] = j
+	}
+
+	// Overlay in-memory state (authoritative for live progress) onto DB rows.
+	result := make([]models.Job, 0, len(dbJobs))
+	seen := make(map[string]struct{}, len(dbJobs))
+	for _, j := range dbJobs {
+		if mem, ok := memByID[j.ID]; ok {
+			result = append(result, mem)
+		} else {
+			result = append(result, j)
+		}
+		seen[j.ID] = struct{}{}
+	}
+
+	// Include in-memory-only jobs (created but not yet flushed to DB, matching repoID filter).
+	for _, j := range memJobs {
+		if _, ok := seen[j.ID]; ok {
+			continue
+		}
+		if repoID == "" || j.RepoID == repoID {
+			result = append(result, j)
+		}
+	}
+	return result, nil
 }
 
 // CancelJob cancels a running job.

@@ -90,7 +90,17 @@ func (i *Instance) GetHealthFiles(ctx context.Context, repoID string) ([]HealthF
 	// Build per-file health scores.
 	result := make([]HealthFile, 0, len(files))
 	for _, f := range files {
-		score, _ := i.GetFileScore(ctx, repoID, f.Path)
+		score, err := i.GetFileScore(ctx, repoID, f.Path)
+		if err != nil {
+			i.log.Warn("failed to compute file health score", "repo_id", repoID, "file_path", f.Path, "error", err)
+			result = append(result, HealthFile{
+				Path:         f.Path,
+				Score:        0,
+				FindingCount: countByFile[f.Path],
+				Language:     f.Language,
+			})
+			continue
+		}
 		result = append(result, HealthFile{
 			Path:         f.Path,
 			Score:        score.Final,

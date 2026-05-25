@@ -2,22 +2,29 @@ package argus
 
 import (
 	"context"
-	"crypto/sha256"
+	"crypto/rand"
+	"database/sql"
+	"errors"
 	"fmt"
-	"time"
 
 	"github.com/venkatvghub/argus/pkg/models"
 )
 
-// newShortID generates a short unique ID from a seed string.
-func newShortID(seed string) string {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(seed+time.Now().UTC().String())))[:16]
+// newShortID returns a 16-char hex string from 8 crypto-random bytes.
+func newShortID() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		// Extremely unlikely; fall back to a deterministic but unique counter isn't
+		// available here, so we panic only in test/debug contexts.
+		panic("crypto/rand unavailable: " + err.Error())
+	}
+	return fmt.Sprintf("%x", b)
 }
 
 // CreateConversation creates a new conversation for a repository.
 func (i *Instance) CreateConversation(ctx context.Context, repoID, title string) (models.Conversation, error) {
 	conv := models.Conversation{
-		ID:           newShortID(repoID + title),
+		ID:           newShortID(),
 		RepositoryID: repoID,
 		Title:        title,
 	}
@@ -29,7 +36,11 @@ func (i *Instance) CreateConversation(ctx context.Context, repoID, title string)
 
 // GetConversation returns a conversation by ID.
 func (i *Instance) GetConversation(ctx context.Context, convID string) (models.Conversation, error) {
-	return i.db.GetConversation(ctx, convID)
+	c, err := i.db.GetConversation(ctx, convID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return c, ErrConversationNotFound
+	}
+	return c, err
 }
 
 // ListConversations returns all conversations for a repository.
@@ -52,7 +63,7 @@ func (i *Instance) DeleteConversation(ctx context.Context, convID string) error 
 // CreateChatMessage persists a new chat message and increments the conversation message count.
 func (i *Instance) CreateChatMessage(ctx context.Context, convID, role, content string) (models.ChatMessage, error) {
 	msg := models.ChatMessage{
-		ID:             newShortID(convID + role + content),
+		ID:             newShortID(),
 		ConversationID: convID,
 		Role:           role,
 		Content:        content,
@@ -61,8 +72,7 @@ func (i *Instance) CreateChatMessage(ctx context.Context, convID, role, content 
 		return models.ChatMessage{}, err
 	}
 	if err := i.db.IncrementMessageCount(ctx, convID); err != nil {
-		// Non-fatal: message is already persisted.
-		i.log.Warn("failed to increment message count", "conv_id", convID, "error", err)
+		return models.ChatMessage{}, fmt.Errorf("increment message count for conversation %q: %w", convID, err)
 	}
 	return msg, nil
 }

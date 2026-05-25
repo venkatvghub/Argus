@@ -132,7 +132,6 @@ func (s *RESTServer) listRepos(w http.ResponseWriter, r *http.Request) {
 func (s *RESTServer) createRepo(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Path string `json:"path"`
-		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		s.error(w, http.StatusBadRequest, "invalid request body")
@@ -295,7 +294,11 @@ func (s *RESTServer) getGraphExport(w http.ResponseWriter, r *http.Request) {
 	repoID := chi.URLParam(r, "repoID")
 	export, err := s.argus.GetGraphExport(r.Context(), repoID)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 	s.json(w, http.StatusOK, export)
@@ -305,7 +308,11 @@ func (s *RESTServer) getCommunities(w http.ResponseWriter, r *http.Request) {
 	repoID := chi.URLParam(r, "repoID")
 	communities, err := s.argus.GetCommunities(r.Context(), repoID)
 	if err != nil {
-		s.error(w, http.StatusInternalServerError, err.Error())
+		if errors.Is(err, argus.ErrRepoNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 	s.json(w, http.StatusOK, communities)
@@ -342,11 +349,12 @@ func (s *RESTServer) cancelJob(w http.ResponseWriter, r *http.Request) {
 
 func (s *RESTServer) jobStreamHandler(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobID")
-	// Reuse the sseHandler logic by injecting jobId as query param.
-	q := r.URL.Query()
+	// Clone the request before modifying the URL so middleware/tracing sees the original.
+	r2 := r.Clone(r.Context())
+	q := r2.URL.Query()
 	q.Set("jobId", jobID)
-	r.URL.RawQuery = q.Encode()
-	s.sseHandler(w, r)
+	r2.URL.RawQuery = q.Encode()
+	s.sseHandler(w, r2)
 }
 
 func (s *RESTServer) listConversations(w http.ResponseWriter, r *http.Request) {
@@ -360,10 +368,19 @@ func (s *RESTServer) listConversations(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *RESTServer) getConversation(w http.ResponseWriter, r *http.Request) {
+	repoID := chi.URLParam(r, "repoID")
 	convID := chi.URLParam(r, "convID")
 	conv, err := s.argus.GetConversation(r.Context(), convID)
 	if err != nil {
-		s.error(w, http.StatusNotFound, err.Error())
+		if errors.Is(err, argus.ErrConversationNotFound) {
+			s.error(w, http.StatusNotFound, err.Error())
+		} else {
+			s.error(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	if conv.RepositoryID != repoID {
+		s.error(w, http.StatusNotFound, "conversation not found")
 		return
 	}
 	msgs, err := s.argus.ListChatMessages(r.Context(), convID)

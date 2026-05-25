@@ -29,6 +29,9 @@ func (s *RESTServer) corsMiddleware() func(http.Handler) http.Handler {
 				w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Cache-Control, Last-Event-ID")
 			}
 			if r.Method == http.MethodOptions {
+				if allowed {
+					w.Header().Set("Access-Control-Max-Age", "86400")
+				}
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}

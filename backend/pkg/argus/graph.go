@@ -51,7 +51,7 @@ func (i *Instance) GetGraphExport(ctx context.Context, repoID string) (GraphExpo
 		}{},
 	}
 	if !ok {
-		return resp, nil
+		return resp, ErrRepoNotFound
 	}
 
 	for _, n := range engine.GetNodes() {
@@ -103,7 +103,7 @@ func (i *Instance) GetCommunities(ctx context.Context, repoID string) ([]Communi
 	i.mu.RUnlock()
 
 	if !ok {
-		return []CommunityInfo{}, nil
+		return nil, ErrRepoNotFound
 	}
 
 	byID := make(map[int][]string)

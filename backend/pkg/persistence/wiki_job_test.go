@@ -22,6 +22,16 @@ func setupTestDB(t *testing.T) *persistence.DB {
 	return db
 }
 
+func upsertTestRepo(t *testing.T, db *persistence.DB, repoID string) {
+	t.Helper()
+	err := db.UpsertRepository(context.Background(), models.Repository{
+		ID:   repoID,
+		Name: repoID,
+		Path: "/tmp/" + repoID,
+	})
+	require.NoError(t, err)
+}
+
 func TestCreateWikiJob(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
